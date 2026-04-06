@@ -38,7 +38,45 @@ const AddPaymentReceivedModal = ({
   }, [invoice, isOpen]);
 
   const [errors, setErrors] = useState({});
+  const [invoiceDetails, setInvoiceDetails] = useState(null);
   const [showErrors, setShowErrors] = useState(false);
+
+  React.useEffect(() => {
+    const fetchInvoiceDetails = async () => {
+      if (!formData.invoiceNumber) {
+        setInvoiceDetails(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("outstanding_invoice_view") // ✅ USE VIEW (VERY IMPORTANT)
+        .select("*")
+        .eq("invoice_number", formData.invoiceNumber)
+        .maybeSingle();
+
+      if (error) {
+        console.error("❌ Fetch error:", error);
+        return;
+      }
+
+      if (data) {
+        setInvoiceDetails(data);
+
+        // 🔥 AUTO FILL
+        setFormData((prev) => ({
+          ...prev,
+          client: data.client_name || "",
+          ledgerName: data.ledger_name || "",
+          entity: data.entity_name || "",
+          department: data.dept_name || "",
+        }));
+      } else {
+        setInvoiceDetails(null);
+      }
+    };
+
+    fetchInvoiceDetails();
+  }, [formData.invoiceNumber]);
 
   // Single handleChange function
   const handleChange = (field, value) => {
@@ -152,35 +190,35 @@ const AddPaymentReceivedModal = ({
 
       if (paymentError) throw paymentError;
 
-// 🔥🔥 ADD THIS BLOCK HERE (IMPORTANT)
-if (invoice?.dbId) {
-  const { data: inv, error: fetchError } = await supabase
-    .from("invoices")
-    .select("*")
-    .eq("id", invoice.dbId)
-    .single();
+      // 🔥🔥 ADD THIS BLOCK HERE (IMPORTANT)
+      if (invoice?.dbId) {
+        const { data: inv, error: fetchError } = await supabase
+          .from("invoices")
+          .select("*")
+          .eq("id", invoice.dbId)
+          .single();
 
-  if (fetchError) throw fetchError;
+        if (fetchError) throw fetchError;
 
-  const newReceived =
-    (inv.amount_received || 0) + Number(formData.amountReceived);
+        const newReceived =
+          (inv.amount_received || 0) + Number(formData.amountReceived);
 
-  const newReceivable =
-    inv.invoice_value - newReceived - (inv.cn_amount || 0); // ✅ FIXED
+        const newReceivable =
+          inv.invoice_value - newReceived - (inv.cn_amount || 0); // ✅ FIXED
 
-  let status = "partial";
-  if (newReceivable <= 0) status = "paid";
-  else if (newReceived === 0) status = "unpaid";
+        let status = "partial";
+        if (newReceivable <= 0) status = "paid";
+        else if (newReceived === 0) status = "unpaid";
 
-  await supabase
-    .from("invoices")
-    .update({
-      amount_received: newReceived,
-      receivable_amount: newReceivable,
-      status,
-    })
-    .eq("id", invoice.dbId);
-}
+        await supabase
+          .from("invoices")
+          .update({
+            amount_received: newReceived,
+            receivable_amount: newReceivable,
+            status,
+          })
+          .eq("id", invoice.dbId);
+      }
 
       // 🔥 BANK ENTRY
       const { error: bankError } = await supabase.from("bank_entries").insert([
@@ -371,7 +409,7 @@ if (invoice?.dbId) {
                           <input
                             type="text"
                             value={formData.invoiceNumber}
-                            readOnly={!!invoice}
+                            readOnly={false}
                             onChange={(e) =>
                               handleChange("invoiceNumber", e.target.value)
                             }
@@ -382,6 +420,19 @@ if (invoice?.dbId) {
                             }`}
                             placeholder="INV-2023001"
                           />
+                          {invoiceDetails && (
+                            <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
+                              <p>
+                                <b>Client:</b> {invoiceDetails.client_name}
+                              </p>
+                              <p>
+                                <b>Ledger:</b> {invoiceDetails.ledger_name}
+                              </p>
+                              <p>
+                                <b>Entity:</b> {invoiceDetails.entity_name}
+                              </p>
+                            </div>
+                          )}
                           <ErrorMessage error={errors.invoiceNumber} />
                         </div>
                         <div>

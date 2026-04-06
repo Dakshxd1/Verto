@@ -196,46 +196,51 @@ const AddInvoiceModal = ({
   useEffect(() => {
     const vertoFee = Number(formData.vertoFee) || 0;
     const grossValue = Number(formData.grossValue) || 0;
+    const gst = Number(formData.gst) || 0;
+    const tds = Number(formData.tds) || 0;
     const dept = formData.department;
 
-    let gst = 0;
+    let calculatedGST = gst;
+    let calculatedTDS = tds;
     let invoiceValue = 0;
-    let tds = 0;
     let vertoFeePostTds = 0;
 
-    // ✅ OS LOGIC
-    if (dept === "OS") {
-      gst = (vertoFee + grossValue) * 0.18;
-      invoiceValue = vertoFee + grossValue + gst;
-
-      // ✅ FIXED TDS (ONLY 2%)
-      tds = (vertoFee + grossValue) * 0.02;
-
-      // ⚠️ SAFE POST TDS
-      vertoFeePostTds = Math.max(0, vertoFee - tds);
+    // 🔥 AUTO CALCULATE ONLY IF EMPTY
+    if (!gst) {
+      calculatedGST =
+        dept === "OS" ? (vertoFee + grossValue) * 0.18 : vertoFee * 0.18;
     }
 
-    // ✅ REC / TEMP / PROJ / OTH
-    else {
-      gst = vertoFee * 0.18;
-      invoiceValue = vertoFee + gst;
-
-      tds = vertoFee * 0.1;
-
-      vertoFeePostTds = vertoFee - tds;
+    if (!tds) {
+      calculatedTDS =
+        dept === "OS" ? (vertoFee + grossValue) * 0.02 : vertoFee * 0.1;
     }
 
-    const receivable = invoiceValue - tds;
+    // ✅ INVOICE VALUE ALWAYS BASED ON CURRENT VALUES
+    invoiceValue =
+      dept === "OS"
+        ? vertoFee + grossValue + calculatedGST
+        : vertoFee + calculatedGST;
+
+    // ✅ POST TDS
+    vertoFeePostTds = Math.max(0, vertoFee - calculatedTDS);
+
+    // ✅ RECEIVABLE
+    const receivable = invoiceValue - calculatedTDS;
 
     setFormData((prev) => ({
       ...prev,
-      gst: gst.toFixed(2),
       invoiceValue: invoiceValue.toFixed(2),
-      tds: tds.toFixed(2),
       vertoFeePostTds: vertoFeePostTds.toFixed(2),
       receivableRs: receivable.toFixed(2),
     }));
-  }, [formData.vertoFee, formData.grossValue, formData.department]);
+  }, [
+    formData.vertoFee,
+    formData.grossValue,
+    formData.gst, // 🔥 IMPORTANT
+    formData.tds, // 🔥 IMPORTANT
+    formData.department,
+  ]);
   // Auto-calculate CTC for OS department
   useEffect(() => {
     if (formData.department === "OS") {
@@ -397,8 +402,7 @@ const AddInvoiceModal = ({
     setShowErrors(true);
 
     if (!validateForm()) return;
-    if (!formData.payHead.trim())
-      newErrors.payHead = "Pay Head is required";
+    if (!formData.payHead.trim()) newErrors.payHead = "Pay Head is required";
 
     try {
       console.log("🔥 FORM DATA:", formData);
@@ -463,10 +467,17 @@ const AddInvoiceModal = ({
         }
       }
 
+      if (gstMismatch || tdsMismatch || invoiceMismatch) {
+        console.warn("⚠️ Mismatch detected but saving allowed");
+      }
+
       // 🚨 Mismatch validation
       if (gstMismatch || tdsMismatch || invoiceMismatch) {
-        alert("❌ Values mismatch beyond ₹50 tolerance");
-        return;
+        const confirmSave = window.confirm(
+          "⚠️ Values mismatch detected.\nDo you still want to save?"
+        );
+
+        if (!confirmSave) return;
       }
 
       // 📦 Common data
