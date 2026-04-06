@@ -143,7 +143,8 @@ const Dashboard = ({
       console.log("🔥 FETCH RUNNING...");
       const { data, error } = await supabase
         .from("outstanding_invoice_view")
-        .select("*");
+        .select("*")
+        .order("invoice_date", { ascending: false });
 
       if (error) {
         console.error("Fetch error:", error);
@@ -184,7 +185,7 @@ const Dashboard = ({
         tds: Number(row.tds || 0),
         notRecvd: Number(row.outstanding || 0),
         delayDays: Number(row.delay_days || 0),
-        cnBadDebt: Number(row.cn_amount || 0),
+        cnBadDebt: Number(row.total_cn || 0),
         osDiff: Number(row.os_diff || 0),
 
         // 🧾 OS DATA (🔥 THIS WAS MISSING BEFORE)
@@ -221,19 +222,43 @@ const Dashboard = ({
 
     // 🔥 Realtime listener
     channel = supabase
-      .channel("payments-realtime-" + Date.now())
+      .channel("realtime-all")
+
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "payments_received",
-        },
-        (payload) => {
-          console.log("💰 New payment detected:", payload);
-          fetchInvoices();
-        }
+        { event: "*", schema: "public", table: "payments_received" },
+        () => fetchInvoices()
       )
+
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bounce_back" },
+        () => fetchInvoices()
+      )
+
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bank_entries" },
+        () => fetchInvoices()
+      )
+
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "software_entries" },
+        () => fetchInvoices()
+      )
+
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "invoices" },
+        () => fetchInvoices()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "credit_note_bad_debt" },
+        () => fetchInvoices()
+      )
+
       .subscribe();
 
     // 🔥 Cleanup
@@ -492,9 +517,9 @@ const Dashboard = ({
 
   const handleEdit = (type, row) => {
     console.log("🔥 FULL ROW DATA:", row);
-  
+
     setSelectedInvoiceData(row);
-  
+
     if (type === "CN") {
       setShowCNBadDebtModal(true);
     } else {
@@ -520,7 +545,8 @@ const Dashboard = ({
       // 🔄 Refresh data
       const { data, error: fetchError } = await supabase
         .from("outstanding_invoice_view")
-        .select("*");
+        .select("*")
+        .order("invoice_date", { ascending: false });
 
       if (!fetchError) {
         const formatted = data.map((row) => ({
@@ -540,7 +566,9 @@ const Dashboard = ({
             row.dept_name === "Outsourcing"
               ? row.invoice_value - row.receivable_amount
               : 0,
-          cnBadDebt: row.cn_amount,
+          cnBadDebt: Number(row.total_cn || 0),
+          bounce: Number(row.total_bounce || 0), // ✅ ADD THIS
+          osDiff: Number(row.os_diff || 0),
           entity: row.entity_name,
           status:
             row.outstanding === 0
@@ -653,8 +681,8 @@ const Dashboard = ({
       <AddCNBadDebtModal
         isOpen={showCNBadDebtModal}
         onClose={() => setShowCNBadDebtModal(false)}
-        editData={selectedInvoiceData} 
-        invoices={dbData.map((d) => d.id)} 
+        editData={selectedInvoiceData}
+        invoices={dbData.map((d) => d.id)}
         invoicesData={dbData} // ✅ IMPORTANT
       />
       <AddInvoiceModal
@@ -1391,7 +1419,7 @@ const Dashboard = ({
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setSelectedInvoiceData(row); 
+                                      setSelectedInvoiceData(row);
                                       setShowCNBadDebtModal(true);
                                     }}
                                     className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors text-sm font-medium"

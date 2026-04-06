@@ -1,61 +1,118 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowRight, AlertCircle, RefreshCcw } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import supabase from "../lib/supabaseClient";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, ArrowRight, AlertCircle, RefreshCcw } from "lucide-react";
 
-const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences = [] }) => {
+const AddBounceBackModal = ({
+  isOpen,
+  onClose,
+  invoices = [],
+  paymentReferences = [],
+}) => {
   // Local form state
   const [formData, setFormData] = useState({
-    invoiceOrPaymentRef: '',
-    dateOfBounceBack: '',
-    bankDetails: '',
-    bounceBackAmount: '',
-    employeeCount: '',
-    remarks: ''
+    invoiceOrPaymentRef: "",
+    dateOfBounceBack: "",
+    bankDetails: "",
+    bounceBackAmount: "",
+    employeeCount: "",
+    remarks: "",
   });
 
   const [errors, setErrors] = useState({});
   const [showErrors, setShowErrors] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   // Single handleChange function
   const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
+      setErrors((prev) => ({ ...prev, [field]: "" }));
     }
   };
 
   // When invoice/payment reference changes, fetch details
   useEffect(() => {
-    if (formData.invoiceOrPaymentRef) {
-      // TODO: Replace with actual API call to fetch invoice/payment details
-      // For now, simulate fetching details
-      const mockDetails = {
-        client: 'Acme Corp',
-        department: 'Operations',
-        entity: 'Verto India Pvt Ltd',
-        originalAmount: 45000,
-        amountPayable: 42000,
-        bankBalance: 150000,
-        invoiceDate: '15/01/2023'
-      };
-      setSelectedDetails(mockDetails);
-    } else {
-      setSelectedDetails(null);
-    }
+    const fetchDetails = async () => {
+      if (!formData.invoiceOrPaymentRef) {
+        setSelectedDetails(null);
+        return;
+      }
+  
+      console.log("INPUT:", formData.invoiceOrPaymentRef);
+  
+      let invoiceId = null;
+  
+      // 🔥 STEP 1: PAYMENT REF
+      const { data: payment } = await supabase
+        .from("payments_received")
+        .select("invoice_id")
+        .eq("payment_ref", formData.invoiceOrPaymentRef)
+        .maybeSingle();
+  
+      if (payment?.invoice_id) {
+        invoiceId = payment.invoice_id;
+        console.log("FOUND VIA PAYMENT:", invoiceId);
+      } else {
+        // 🔥 STEP 2: DIRECT INVOICE
+        const { data: inv } = await supabase
+          .from("invoices")
+          .select("id")
+          .eq("invoice_number", formData.invoiceOrPaymentRef)
+          .maybeSingle();
+  
+        invoiceId = inv?.id;
+        console.log("FOUND VIA INVOICE:", invoiceId);
+      }
+  
+      if (!invoiceId) {
+        console.log("❌ NO INVOICE FOUND");
+        setSelectedDetails(null);
+        return;
+      }
+  
+      // 🔥 STEP 3: VIEW FETCH
+      const { data } = await supabase
+        .from("outstanding_invoice_view")
+        .select("*")
+        .eq("id", invoiceId)
+        .maybeSingle();
+  
+      console.log("VIEW DATA:", data);
+  
+      if (!data) {
+        setSelectedDetails(null);
+        return;
+      }
+  
+      setSelectedDetails({
+        invoice_id: data.id,
+        invoiceNumber: data.invoice_number,
+        client: data.client_name,
+        ledger: data.ledger_name,
+        department: data.dept_name,
+        entity: data.entity_name,
+        originalAmount: data.receivable_amount || 0,
+        amountPayable: data.outstanding || 0,
+        bankBalance: 0,
+      });
+    };
+  
+    fetchDetails();
   }, [formData.invoiceOrPaymentRef]);
-
+  
   // Calculate new amounts after bounce back
   const calculateImpact = () => {
     if (!selectedDetails || !formData.bounceBackAmount) return null;
-    
+
     const bbAmount = parseFloat(formData.bounceBackAmount);
     const newAmountPayable = selectedDetails.amountPayable + bbAmount;
-    const newBankBalance = selectedDetails.bankBalance - bbAmount;
-    
+    const newBankBalance = (selectedDetails.bankBalance || 0) - bbAmount;
+
     return {
       newAmountPayable,
-      newBankBalance
+      newBankBalance,
     };
   };
 
@@ -63,21 +120,29 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.invoiceOrPaymentRef.trim()) newErrors.invoiceOrPaymentRef = 'Invoice number or payment reference is required';
-    if (!formData.dateOfBounceBack) newErrors.dateOfBounceBack = 'Date of bounce back is required';
-    if (!formData.bankDetails.trim()) newErrors.bankDetails = 'Bank details are required';
-    if (!formData.bounceBackAmount) newErrors.bounceBackAmount = 'Bounce back amount is required';
-    
+    if (!formData.invoiceOrPaymentRef.trim())
+      newErrors.invoiceOrPaymentRef =
+        "Invoice number or payment reference is required";
+    if (!formData.dateOfBounceBack)
+      newErrors.dateOfBounceBack = "Date of bounce back is required";
+    if (!formData.bankDetails.trim())
+      newErrors.bankDetails = "Bank details are required";
+    if (!formData.bounceBackAmount)
+      newErrors.bounceBackAmount = "Bounce back amount is required";
+
     // Employee count is required only for OS department
-    if (selectedDetails?.department === 'Operations' && !formData.employeeCount) {
-      newErrors.employeeCount = 'Employee count is required for OS department';
+    if (
+      selectedDetails?.department === "Operations" &&
+      !formData.employeeCount
+    ) {
+      newErrors.employeeCount = "Employee count is required for OS department";
     }
 
     // Validate amount
     if (formData.bounceBackAmount) {
       const amount = parseFloat(formData.bounceBackAmount);
       if (amount <= 0) {
-        newErrors.bounceBackAmount = 'Amount must be greater than 0';
+        newErrors.bounceBackAmount = "Amount must be greater than 0";
       }
     }
 
@@ -86,42 +151,111 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
   };
 
   // Handle form submission
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
+    if (loading) return; // ✅ prevent double click
+    setLoading(true);
     e.preventDefault();
     setShowErrors(true);
 
-    if (!validateForm()) {
-      return;
+    if (!validateForm()) return;
+
+    try {
+      // 🔥 1. FIND PAYMENT OR INVOICE
+      let payment = null;
+
+      const { data: paymentData } = await supabase
+        .from("payments_received")
+        .select("*")
+        .eq("payment_ref", formData.invoiceOrPaymentRef)
+        .maybeSingle();
+
+      payment = paymentData;
+
+      // 🔥 2. INSERT BOUNCE BACK
+      const { error } = await supabase.from("bounce_back").insert([
+        {
+          invoice_id:
+            selectedDetails?.invoice_id || payment?.invoice_id || null, // ✅ already correct
+          payment_ref: formData.invoiceOrPaymentRef,
+
+          amount: Number(formData.bounceBackAmount), // ✅ FIXED
+          bounce_date: formData.dateOfBounceBack, // ✅ FIXED
+          bank_details: formData.bankDetails, // ✅ FIXED
+          remarks: formData.remarks,
+        },
+      ]);
+
+
+      if (error) throw error;
+
+      // 🔥 3. REVERSE BANK ENTRY (NEGATIVE)
+      await supabase.from("bank_entries").insert([
+        {
+          bank_id: payment?.bank_id || null,
+          amount: -Number(formData.bounceBackAmount),
+          date: formData.dateOfBounceBack,
+          type: "debit",
+          remarks: "Bounce Back",
+        },
+      ]);
+
+      // 🔥 4. REVERSE SOFTWARE ENTRY
+      await supabase.from("software_entries").insert([
+        {
+          bank_id: payment?.bank_id || null,
+          amount: -Number(formData.bounceBackAmount),
+          date: formData.dateOfBounceBack,
+          remarks: "Bounce Back",
+        },
+      ]);
+
+      // 🔥 5. UPDATE INVOICE (VERY IMPORTANT)
+      if (payment?.invoice_id) {
+        const { data: inv } = await supabase
+          .from("invoices")
+          .select("*")
+          .eq("id", payment.invoice_id)
+          .single();
+
+        const newReceived = Math.max(
+          0,
+          (inv.amount_received || 0) - Number(formData.bounceBackAmount)
+        );
+
+        const newReceivable =
+        inv.invoice_value -
+        newReceived -
+        (inv.cn_amount || 0);// ✅ ADD BACK
+
+        await supabase
+          .from("invoices")
+          .update({
+            amount_received: newReceived,
+            receivable_amount: newReceivable,
+          })
+          .eq("id", inv.id);
+      }
+
+      alert("✅ Bounce Back saved");
+      setLoading(false);
+      window.refreshDashboard?.();
+
+      resetForm();
+      onClose();
+    } catch (err) {
+      setLoading(false);
+      alert("❌ " + err.message);
     }
-
-    // Prepare submission data
-    const impact = calculateImpact();
-    const submissionData = {
-      ...formData,
-      selectedDetails,
-      impact,
-      submittedAt: new Date().toISOString()
-    };
-
-    console.log('Bounce Back Submitted:', submissionData);
-    
-    // TODO: Send to backend API when available
-    // await api.saveBounceBack(submissionData);
-
-    // Reset form and close modal
-    resetForm();
-    onClose();
   };
-
   // Reset form to initial state
   const resetForm = () => {
     setFormData({
-      invoiceOrPaymentRef: '',
-      dateOfBounceBack: '',
-      bankDetails: '',
-      bounceBackAmount: '',
-      employeeCount: '',
-      remarks: ''
+      invoiceOrPaymentRef: "",
+      dateOfBounceBack: "",
+      bankDetails: "",
+      bounceBackAmount: "",
+      employeeCount: "",
+      remarks: "",
     });
     setSelectedDetails(null);
     setErrors({});
@@ -169,7 +303,9 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold">+ ADD BOUNCE BACK</h2>
-                  <p className="text-rose-100 text-sm mt-1">Record payment bounce back details</p>
+                  <p className="text-rose-100 text-sm mt-1">
+                    Record payment bounce back details
+                  </p>
                 </div>
                 <button
                   onClick={handleClose}
@@ -183,29 +319,38 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
             {/* Form Content */}
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
               <form onSubmit={handleSubmit} className="space-y-6">
-                
                 {/* Invoice/Payment Reference Selection */}
                 <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
                   <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wider mb-4 flex items-center">
                     <RefreshCcw className="w-4 h-4 mr-2" />
                     Reference Details
                   </h3>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Enter Invoice Number or Payment Reference <span className="text-rose-600">*</span>
+                        Enter Invoice Number or Payment Reference{" "}
+                        <span className="text-rose-600">*</span>
                       </label>
                       <input
                         type="text"
                         list="references-list"
                         value={formData.invoiceOrPaymentRef}
-                        onChange={(e) => handleChange('invoiceOrPaymentRef', e.target.value)}
+                        onChange={(e) =>
+                          handleChange("invoiceOrPaymentRef", e.target.value)
+                        }
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
-                          showErrors && errors.invoiceOrPaymentRef ? 'border-rose-500' : 'border-gray-300'
+                          showErrors && errors.invoiceOrPaymentRef
+                            ? "border-rose-500"
+                            : "border-gray-300"
                         }`}
                         placeholder="INV-2023001 or PI-AC-150123-01"
                       />
+                      {selectedDetails?.invoiceNumber && (
+                        <div className="mt-2 bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-xs font-medium">
+                          ✅ Linked Invoice: {selectedDetails.invoiceNumber}
+                        </div>
+                      )}
                       <datalist id="references-list">
                         {invoices.map((invoice, idx) => (
                           <option key={`inv-${idx}`} value={invoice} />
@@ -215,7 +360,9 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
                         ))}
                       </datalist>
                       <ErrorMessage error={errors.invoiceOrPaymentRef} />
-                      <p className="text-xs text-gray-500 mt-1">Rest details auto pop up</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Rest details auto pop up
+                      </p>
                     </div>
                   </div>
 
@@ -223,34 +370,67 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
                   {selectedDetails && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
+                      animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       className="mt-4 pt-4 border-t border-blue-200"
                     >
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">Client</p>
-                          <p className="font-semibold text-gray-900 mt-1">{selectedDetails.client}</p>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider">
+                            Client
+                          </p>
+                          <p className="font-semibold text-gray-900 mt-1">
+                            {selectedDetails.client}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">Department</p>
-                          <p className="font-semibold text-gray-900 mt-1">{selectedDetails.department}</p>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider">
+                            Department
+                          </p>
+                          <p className="font-semibold text-gray-900 mt-1">
+                            {selectedDetails.department}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">Entity</p>
-                          <p className="font-semibold text-gray-900 mt-1">{selectedDetails.entity}</p>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider">
+                            Entity
+                          </p>
+                          <p className="font-semibold text-gray-900 mt-1">
+                            {selectedDetails.entity}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">Original Amount</p>
-                          <p className="font-semibold text-gray-900 mt-1">₹ {selectedDetails.originalAmount.toLocaleString('en-IN')}</p>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider">
+                            Original Amount
+                          </p>
+                          <p className="font-semibold text-gray-900 mt-1">
+                            ₹{" "}
+                            {selectedDetails.originalAmount.toLocaleString(
+                              "en-IN"
+                            )}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">Current Amount Payable</p>
-                          <p className="font-semibold text-emerald-600 mt-1">₹ {selectedDetails.amountPayable.toLocaleString('en-IN')}</p>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider">
+                            Current Amount Payable
+                          </p>
+                          <p className="font-semibold text-emerald-600 mt-1">
+                            ₹{" "}
+                            {selectedDetails.amountPayable.toLocaleString(
+                              "en-IN"
+                            )}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">Bank Balance</p>
-                          <p className="font-semibold text-blue-600 mt-1">₹ {selectedDetails.bankBalance.toLocaleString('en-IN')}</p>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider">
+                            Bank Balance
+                          </p>
+                          <p className="font-semibold text-blue-600 mt-1">
+                            ₹{" "}
+                            {(selectedDetails.bankBalance || 0).toLocaleString(
+                              "en-IN"
+                            )}
+                          </p>
                         </div>
                       </div>
                     </motion.div>
@@ -262,18 +442,23 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
                   <h3 className="text-sm font-bold text-rose-900 uppercase tracking-wider mb-4">
                     Bounce Back Information
                   </h3>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Date of Bounce Back <span className="text-rose-600">*</span>
+                        Date of Bounce Back{" "}
+                        <span className="text-rose-600">*</span>
                       </label>
                       <input
                         type="date"
                         value={formData.dateOfBounceBack}
-                        onChange={(e) => handleChange('dateOfBounceBack', e.target.value)}
+                        onChange={(e) =>
+                          handleChange("dateOfBounceBack", e.target.value)
+                        }
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 ${
-                          showErrors && errors.dateOfBounceBack ? 'border-rose-500' : 'border-gray-300'
+                          showErrors && errors.dateOfBounceBack
+                            ? "border-rose-500"
+                            : "border-gray-300"
                         }`}
                       />
                       <ErrorMessage error={errors.dateOfBounceBack} />
@@ -286,9 +471,13 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
                       <input
                         type="text"
                         value={formData.bankDetails}
-                        onChange={(e) => handleChange('bankDetails', e.target.value)}
+                        onChange={(e) =>
+                          handleChange("bankDetails", e.target.value)
+                        }
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 ${
-                          showErrors && errors.bankDetails ? 'border-rose-500' : 'border-gray-300'
+                          showErrors && errors.bankDetails
+                            ? "border-rose-500"
+                            : "border-gray-300"
                         }`}
                         placeholder="Bank account details"
                       />
@@ -304,9 +493,13 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
                       <input
                         type="number"
                         value={formData.bounceBackAmount}
-                        onChange={(e) => handleChange('bounceBackAmount', e.target.value)}
+                        onChange={(e) =>
+                          handleChange("bounceBackAmount", e.target.value)
+                        }
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 ${
-                          showErrors && errors.bounceBackAmount ? 'border-rose-500' : 'border-gray-300'
+                          showErrors && errors.bounceBackAmount
+                            ? "border-rose-500"
+                            : "border-gray-300"
                         }`}
                         placeholder="₹ 0"
                       />
@@ -318,29 +511,35 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
                   </div>
 
                   {/* Employee Count - Only for OS Department */}
-                  {selectedDetails?.department === 'Operations' && (
+                  {selectedDetails?.department === "Operations" && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
+                      animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       className="mt-4"
                     >
                       <div>
                         <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Enter Employee Count <span className="text-rose-600">*</span>
+                          Enter Employee Count{" "}
+                          <span className="text-rose-600">*</span>
                         </label>
                         <input
                           type="number"
                           value={formData.employeeCount}
-                          onChange={(e) => handleChange('employeeCount', e.target.value)}
+                          onChange={(e) =>
+                            handleChange("employeeCount", e.target.value)
+                          }
                           className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 ${
-                            showErrors && errors.employeeCount ? 'border-rose-500' : 'border-gray-300'
+                            showErrors && errors.employeeCount
+                              ? "border-rose-500"
+                              : "border-gray-300"
                           }`}
                           placeholder="0"
                         />
                         <ErrorMessage error={errors.employeeCount} />
                         <p className="text-xs text-gray-500 mt-1">
-                          This option comes if Department is OS and count of employees would auto add up
+                          This option comes if Department is OS and count of
+                          employees would auto add up
                         </p>
                       </div>
                     </motion.div>
@@ -354,7 +553,7 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
                   </label>
                   <textarea
                     value={formData.remarks}
-                    onChange={(e) => handleChange('remarks', e.target.value)}
+                    onChange={(e) => handleChange("remarks", e.target.value)}
                     rows={3}
                     className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 text-sm"
                     placeholder="Additional remarks..."
@@ -374,41 +573,65 @@ const AddBounceBackModal = ({ isOpen, onClose, invoices = [], paymentReferences 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-3">
                         <div>
-                          <p className="text-xs text-gray-600 uppercase tracking-wider">Current Amount Payable</p>
+                          <p className="text-xs text-gray-600 uppercase tracking-wider">
+                            Current Amount Payable
+                          </p>
                           <p className="text-lg font-bold text-gray-900 mt-1">
-                            ₹ {selectedDetails.amountPayable.toLocaleString('en-IN')}
+                            ₹{" "}
+                            {selectedDetails.amountPayable.toLocaleString(
+                              "en-IN"
+                            )}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-600 uppercase tracking-wider">Bounce Back Amount</p>
+                          <p className="text-xs text-gray-600 uppercase tracking-wider">
+                            Bounce Back Amount
+                          </p>
                           <p className="text-lg font-bold text-rose-600 mt-1">
-                            + ₹ {parseFloat(formData.bounceBackAmount).toLocaleString('en-IN')}
+                            + ₹{" "}
+                            {parseFloat(
+                              formData.bounceBackAmount
+                            ).toLocaleString("en-IN")}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-600 uppercase tracking-wider">New Amount Payable</p>
+                          <p className="text-xs text-gray-600 uppercase tracking-wider">
+                            New Amount Payable
+                          </p>
                           <p className="text-lg font-bold text-amber-600 mt-1">
-                            ₹ {impact.newAmountPayable.toLocaleString('en-IN')}
+                            ₹ {impact.newAmountPayable.toLocaleString("en-IN")}
                           </p>
                         </div>
                       </div>
                       <div className="space-y-3">
                         <div>
-                          <p className="text-xs text-gray-600 uppercase tracking-wider">Current Bank Balance</p>
+                          <p className="text-xs text-gray-600 uppercase tracking-wider">
+                            Current Bank Balance
+                          </p>
                           <p className="text-lg font-bold text-gray-900 mt-1">
-                            ₹ {selectedDetails.bankBalance.toLocaleString('en-IN')}
+                            ₹{" "}
+                            {(selectedDetails.bankBalance || 0).toLocaleString(
+                              "en-IN"
+                            )}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-600 uppercase tracking-wider">Deduction</p>
+                          <p className="text-xs text-gray-600 uppercase tracking-wider">
+                            Deduction
+                          </p>
                           <p className="text-lg font-bold text-rose-600 mt-1">
-                            - ₹ {parseFloat(formData.bounceBackAmount).toLocaleString('en-IN')}
+                            - ₹{" "}
+                            {parseFloat(
+                              formData.bounceBackAmount
+                            ).toLocaleString("en-IN")}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-600 uppercase tracking-wider">New Bank Balance</p>
+                          <p className="text-xs text-gray-600 uppercase tracking-wider">
+                            New Bank Balance
+                          </p>
                           <p className="text-lg font-bold text-blue-600 mt-1">
-                            ₹ {impact.newBankBalance.toLocaleString('en-IN')}
+                            ₹ {impact.newBankBalance.toLocaleString("en-IN")}
                           </p>
                         </div>
                       </div>

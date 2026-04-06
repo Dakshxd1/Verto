@@ -176,49 +176,23 @@ const AddPaymentReceivedModal = ({
         .from("payments_received")
         .insert([
           {
-            invoice_id: invoice?.dbId || null,
+            invoice_id: invoiceDetails?.id || null,
             amount_received: Number(formData.amountReceived),
             payment_date: formData.dateReceived,
             payment_ref:
               formData.invoiceAvailable === "No"
                 ? payInReference
-                : "UI-" + Date.now(), // ✅ FIX
+                : `UI-${new Date()
+                    .toLocaleDateString("en-GB")
+                    .replace(/\//g, "")}-${Math.floor(Math.random() * 100)
+                    .toString()
+                    .padStart(2, "0")}`,
           },
         ]);
 
       if (paymentError) throw paymentError;
 
-      if (paymentError) throw paymentError;
-
       // 🔥🔥 ADD THIS BLOCK HERE (IMPORTANT)
-      if (invoice?.dbId) {
-        const { data: inv, error: fetchError } = await supabase
-          .from("invoices")
-          .select("*")
-          .eq("id", invoice.dbId)
-          .single();
-
-        if (fetchError) throw fetchError;
-
-        const newReceived =
-          (inv.amount_received || 0) + Number(formData.amountReceived);
-
-        const newReceivable =
-          inv.invoice_value - newReceived - (inv.cn_amount || 0); // ✅ FIXED
-
-        let status = "partial";
-        if (newReceivable <= 0) status = "paid";
-        else if (newReceived === 0) status = "unpaid";
-
-        await supabase
-          .from("invoices")
-          .update({
-            amount_received: newReceived,
-            receivable_amount: newReceivable,
-            status,
-          })
-          .eq("id", invoice.dbId);
-      }
 
       // 🔥 BANK ENTRY
       const { error: bankError } = await supabase.from("bank_entries").insert([

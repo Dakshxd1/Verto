@@ -33,18 +33,18 @@ const AddCNBadDebtModal = ({
   useEffect(() => {
     const fetchInvoice = async () => {
       if (!formData.invoiceNumber) return;
-  
+
       const { data, error } = await supabase
         .from("invoices")
         .select("*")
         .eq("invoice_number", formData.invoiceNumber)
         .single();
-  
+
       if (error) {
         console.error(error);
         return;
       }
-  
+
       setSelectedInvoiceDetails({
         client: data.client,
         department: data.department,
@@ -55,7 +55,7 @@ const AddCNBadDebtModal = ({
         id: data.id, // 🔥 IMPORTANT
       });
     };
-  
+
     fetchInvoice();
   }, [formData.invoiceNumber, isOpen]);
   useEffect(() => {
@@ -117,9 +117,9 @@ const AddCNBadDebtModal = ({
   const handleSubmit = async (e) => {
     e.preventDefault();
     setShowErrors(true);
-  
+
     if (!validateForm()) return;
-  
+
     try {
       // 🔥 1. GET INVOICE
       const { data: inv, error: fetchError } = await supabase
@@ -127,36 +127,38 @@ const AddCNBadDebtModal = ({
         .select("*")
         .eq("invoice_number", formData.invoiceNumber)
         .single();
-  
+
       if (fetchError) throw fetchError;
-  
+
       // 🔥 2. INSERT CN / BAD DEBT
-      const { error } = await supabase.from("credit_notes_bad_debt").insert([
+      const formattedDate = new Date(formData.dateIssued)
+        .toISOString()
+        .split("T")[0];
+
+      const { error } = await supabase.from("credit_note_bad_debt").insert([
         {
           invoice_id: inv.id,
-          invoice_number: formData.invoiceNumber,
+          invoice_number: inv.invoice_number,
           type: formData.optionType,
-          date_issued: formData.dateIssued,
+          issue_date: formattedDate, // ✅ FIXED
           amount: Number(formData.cnBadDebtAmount),
-          entity: inv.entity,
-          client: inv.client,
-          employee_count: formData.employeeCount || null,
+
+          entity: inv.entity_name,
+          employee_count: inv.employee_count || null,
           remarks: formData.remarks || "",
         },
       ]);
-  
       if (error) throw error;
-  
+
       // 🔥 3. UPDATE INVOICE (CORE LOGIC)
-      const newCN =
-        (inv.cn_amount || 0) + Number(formData.cnBadDebtAmount);
-  
+      const newCN = (inv.cn_amount || 0) + Number(formData.cnBadDebtAmount);
+
       const newReceivable =
         inv.invoice_value - (inv.amount_received || 0) - newCN;
-  
+
       let status = "partial";
       if (newReceivable <= 0) status = "paid";
-  
+
       await supabase
         .from("invoices")
         .update({
@@ -165,7 +167,7 @@ const AddCNBadDebtModal = ({
           status,
         })
         .eq("id", inv.id);
-  
+
       // 🔥 4. SOFTWARE ENTRY (NEGATIVE)
       await supabase.from("software_entries").insert([
         {
@@ -175,9 +177,10 @@ const AddCNBadDebtModal = ({
           remarks: formData.optionType + " Adjustment",
         },
       ]);
-  
+
       alert("✅ CN / Bad Debt saved");
-  
+      window.refreshDashboard?.(); // 🔥 FORCE REFRESH
+
       resetForm();
       onClose();
     } catch (err) {
