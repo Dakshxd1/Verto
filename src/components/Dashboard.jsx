@@ -301,7 +301,7 @@ const Dashboard = ({
   const source = dbData.length ? dbData : data;
   const departments = [...new Set(source.map((d) => d.dept))];
   const clients = [...new Set(source.map((d) => d.client))];
-  const entities = [...new Set(source.map((d) => d.entity))];
+  const entities = [...new Set(source.map((d) => d.entity).filter(Boolean))];
   const statuses = ["paid", "pending", "overdue", "fresh"];
 
   const filteredData = useMemo(() => {
@@ -1001,7 +1001,7 @@ const Dashboard = ({
                               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                           }`}
                         >
-                          {entity.split(" ")[1]}
+                          {entity ? entity.split(" ")[1] : "Unknown"}
                         </button>
                       ))}
                     </div>
