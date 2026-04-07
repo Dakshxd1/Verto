@@ -8,6 +8,8 @@ import { exportToExcel } from "../utils/exportExcel";
 import { motion, AnimatePresence } from "framer-motion";
 import AddInvoiceModal from "./AddInvoiceModal";
 import AddCNBadDebtModal from "./AddCNBadDebtModal";
+import BounceHistoryDrawer from "./BounceHistoryDrawer";
+import CNHistoryDrawer from "./CNHistoryDrawer";
 import {
   Search,
   Calendar,
@@ -121,6 +123,8 @@ const Dashboard = ({
   const [selectedInvoiceData, setSelectedInvoiceData] = useState(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showCNBadDebtModal, setShowCNBadDebtModal] = useState(false);
+  const [showBounceHistory, setShowBounceHistory] = useState(false);
+  const [showCNHistory, setShowCNHistory] = useState(false);
 
   // Initialize date range to last 12 months on component mount
   React.useEffect(() => {
@@ -700,6 +704,19 @@ const Dashboard = ({
         invoices={dbData.map((d) => d.id)}
         invoicesData={dbData} // ✅ IMPORTANT
       />
+
+      <BounceHistoryDrawer
+        invoice={historyInvoice}
+        isOpen={showBounceHistory}
+        onClose={() => setShowBounceHistory(false)}
+      />
+
+      <CNHistoryDrawer
+        invoice={historyInvoice}
+        isOpen={showCNHistory}
+        onClose={() => setShowCNHistory(false)}
+      />
+
       <AddInvoiceModal
         isOpen={showInvoiceModal}
         onClose={() => {
@@ -1398,7 +1415,8 @@ const Dashboard = ({
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleView("Bounce Back", row);
+                                      setHistoryInvoice(row);
+                                      setShowBounceHistory(true);
                                     }}
                                     className="w-full px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium"
                                   >
@@ -1425,7 +1443,8 @@ const Dashboard = ({
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleView("CN / Bad Debt", row);
+                                      setHistoryInvoice(row);
+                                      setShowCNHistory(true);
                                     }}
                                     className="w-full px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium"
                                   >
