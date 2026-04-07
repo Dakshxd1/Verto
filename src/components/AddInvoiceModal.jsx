@@ -57,7 +57,7 @@ const AddInvoiceModal = ({
       const { data } = await supabase
         .from("clients_master")
         .select("ledger_name")
-        .eq("client_name", formData.client)
+        .ilike("client_name", `%${formData.client}%`)
         .maybeSingle();
 
       if (data) {
@@ -94,7 +94,7 @@ const AddInvoiceModal = ({
         vertoFee: selectedInvoice.vertoFee || "",
         gst: selectedInvoice.gst || "",
         tds: selectedInvoice.tds || "",
-        receivableRs: selectedInvoice.notRecvd || "",
+        receivableRs: selectedInvoice.receivable_amount || "",
 
         // 🧾 OS (🔥 UNIFIED)
         employeeCount: selectedInvoice.employee_count || "",
@@ -438,14 +438,23 @@ const AddInvoiceModal = ({
       const { data: deptRow } = await supabase
         .from("departments_master")
         .select("id")
-        .eq("dept_code", formData.department)
+        .eq("dept_code", formData.department?.trim())
         .maybeSingle();
 
       const { data: entityRow } = await supabase
         .from("entity_master")
         .select("id")
-        .eq("entity_name", formData.invoiceEntity)
+        .ilike("entity_name", `%${formData.invoiceEntity}%`)
         .maybeSingle();
+
+        console.log("DEBUG CHECK 👉");
+        console.log("CLIENT INPUT:", formData.client);
+        console.log("DEPT INPUT:", formData.department);
+        console.log("ENTITY INPUT:", formData.invoiceEntity);
+        
+        console.log("CLIENT ROW:", clientRow);
+        console.log("DEPT ROW:", deptRow);
+        console.log("ENTITY ROW:", entityRow);
 
       // 🚨 Validate master data
       if (!clientRow || !deptRow || !entityRow) {

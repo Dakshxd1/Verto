@@ -153,9 +153,6 @@ const AddCNBadDebtModal = ({
       // 🔥 3. UPDATE INVOICE (CORE LOGIC)
       const newCN = (inv.cn_amount || 0) + Number(formData.cnBadDebtAmount);
 
-      const newReceivable =
-        inv.invoice_value - (inv.amount_received || 0) - newCN;
-
       let status = "partial";
       if (newReceivable <= 0) status = "paid";
 
@@ -163,8 +160,8 @@ const AddCNBadDebtModal = ({
         .from("invoices")
         .update({
           cn_amount: newCN,
-          receivable_amount: newReceivable,
           status,
+          // ❌ DO NOT UPDATE receivable_amount
         })
         .eq("id", inv.id);
 

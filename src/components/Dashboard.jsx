@@ -178,16 +178,32 @@ const Dashboard = ({
         client: row.client_name,
         entity: row.entity_name,
 
-        // 💰 FINANCIAL (REC + COMMON)
+        // 💰 CORE VALUES
         invValue: Number(row.invoice_value || 0),
         vertoFee: Number(row.verto_fee || 0),
         gst: Number(row.gst || 0),
         tds: Number(row.tds || 0),
-        notRecvd: Number(row.outstanding || 0),
-        delayDays: Number(row.delay_days || 0),
-        cnBadDebt: Number(row.total_cn || 0),
-        osDiff: Number(row.os_diff || 0),
 
+        // ✅ NEW FIELDS (IMPORTANT ADD)
+        totalReceived: Number(row.amount_received || 0),
+        bounce: Number(row.total_bounce || 0), // keep but will be 0 for now
+        cnBadDebt: Number(row.total_cn || 0),
+
+        // ✅ DERIVED (OPTIONAL BUT GOOD)
+        netReceived:
+          Number(row.amount_received || 0) - Number(row.total_bounce || 0),
+
+        // ✅ FINAL (DO NOT CHANGE THIS)
+        notRecvd: Number(row.outstanding || 0),
+
+        delayDays: Number(row.delay_days || 0),
+
+        // ❗ FIX THIS LINE
+        osDiff:
+          row.dept_name === "Outsourcing"
+            ? Number(row.invoice_value || 0) -
+              Number(row.receivable_amount || 0)
+            : 0,
         // 🧾 OS DATA (🔥 THIS WAS MISSING BEFORE)
         employee_count: row.employee_count,
         gross_value: row.gross_value,
@@ -568,7 +584,6 @@ const Dashboard = ({
               : 0,
           cnBadDebt: Number(row.total_cn || 0),
           bounce: Number(row.total_bounce || 0), // ✅ ADD THIS
-          osDiff: Number(row.os_diff || 0),
           entity: row.entity_name,
           status:
             row.outstanding === 0

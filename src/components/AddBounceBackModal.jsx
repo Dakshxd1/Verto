@@ -39,18 +39,18 @@ const AddBounceBackModal = ({
         setSelectedDetails(null);
         return;
       }
-  
+
       console.log("INPUT:", formData.invoiceOrPaymentRef);
-  
+
       let invoiceId = null;
-  
+
       // 🔥 STEP 1: PAYMENT REF
       const { data: payment } = await supabase
         .from("payments_received")
         .select("invoice_id")
         .eq("payment_ref", formData.invoiceOrPaymentRef)
         .maybeSingle();
-  
+
       if (payment?.invoice_id) {
         invoiceId = payment.invoice_id;
         console.log("FOUND VIA PAYMENT:", invoiceId);
@@ -61,31 +61,31 @@ const AddBounceBackModal = ({
           .select("id")
           .eq("invoice_number", formData.invoiceOrPaymentRef)
           .maybeSingle();
-  
+
         invoiceId = inv?.id;
         console.log("FOUND VIA INVOICE:", invoiceId);
       }
-  
+
       if (!invoiceId) {
         console.log("❌ NO INVOICE FOUND");
         setSelectedDetails(null);
         return;
       }
-  
+
       // 🔥 STEP 3: VIEW FETCH
       const { data } = await supabase
         .from("outstanding_invoice_view")
         .select("*")
         .eq("id", invoiceId)
         .maybeSingle();
-  
+
       console.log("VIEW DATA:", data);
-  
+
       if (!data) {
         setSelectedDetails(null);
         return;
       }
-  
+
       setSelectedDetails({
         invoice_id: data.id,
         invoiceNumber: data.invoice_number,
@@ -98,10 +98,10 @@ const AddBounceBackModal = ({
         bankBalance: 0,
       });
     };
-  
+
     fetchDetails();
   }, [formData.invoiceOrPaymentRef]);
-  
+
   // Calculate new amounts after bounce back
   const calculateImpact = () => {
     if (!selectedDetails || !formData.bounceBackAmount) return null;
@@ -185,7 +185,6 @@ const AddBounceBackModal = ({
         },
       ]);
 
-
       if (error) throw error;
 
       // 🔥 3. REVERSE BANK ENTRY (NEGATIVE)
@@ -217,21 +216,17 @@ const AddBounceBackModal = ({
           .eq("id", payment.invoice_id)
           .single();
 
+        // ✅ ONLY UPDATE RECEIVED (optional)
         const newReceived = Math.max(
           0,
           (inv.amount_received || 0) - Number(formData.bounceBackAmount)
         );
 
-        const newReceivable =
-        inv.invoice_value -
-        newReceived -
-        (inv.cn_amount || 0);// ✅ ADD BACK
-
         await supabase
           .from("invoices")
           .update({
             amount_received: newReceived,
-            receivable_amount: newReceivable,
+            // ❌ DO NOT TOUCH receivable_amount
           })
           .eq("id", inv.id);
       }
