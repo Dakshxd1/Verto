@@ -22,6 +22,7 @@ import {
   Filter,
   Edit3,
   History,
+  Eye,
 } from "lucide-react";
 import Button from "./ui/button";
 import Card from "./ui/Card";
@@ -1284,13 +1285,29 @@ const Dashboard = ({
                       )}
                     </td>
                     <td className="p-4 text-center">
-                      <button className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-                        {expandedRow === row.id ? (
-                          <ChevronUp className="w-4 h-4 text-blue-600" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-                        )}
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        {/* 🔥 Ledger Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.ledgerInvoice = row; // store invoice
+                            window.setActiveTab("ledger"); // open ledger page
+                          }}
+                          className="p-1.5 hover:bg-blue-50 rounded-lg transition"
+                          title="View Ledger"
+                        >
+                          <Eye className="w-4 h-4 text-gray-500 hover:text-blue-600" />
+                        </button>
+
+                        {/* Existing Expand Button */}
+                        <button className="p-1.5 hover:bg-gray-100 rounded-lg transition">
+                          {expandedRow === row.id ? (
+                            <ChevronUp className="w-4 h-4 text-blue-600" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </motion.tr>
 

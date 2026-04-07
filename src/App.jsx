@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -29,6 +29,7 @@ import AddInternalTeamModal from "./components/AddInternalTeamModal";
 import InternalTeamDetails from "./components/InternalTeamDetails";
 import AddExpenseDetailsModal from "./components/AddExpenseDetailsModal";
 import AddExpenseDetailsManModal from "./components/AddExpenseDetailsManModal";
+import LedgerPage from "./components/LedgerPage";
 
 const App = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -59,6 +60,10 @@ const App = () => {
     "Stark Ind",
     "Wayne Ent",
   ];
+
+useEffect(() => {
+  window.setActiveTab = setActiveTab;   // ✅ THIS FIXES YOUR ERROR
+}, []);
 
   // Mock entities list
   const entities = ["Verto India Pvt Ltd", "Verto Global LLC", "Verto UK Ltd"];
@@ -149,7 +154,7 @@ const App = () => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 text-gray-900 font-sans overflow-hidden selection:bg-blue-500/30">
+    <div className="flex h-screen md:h-screen flex-col md:flex-row bg-slate-50  bg-slate-50 text-gray-900 font-sans overflow-hidden selection:bg-blue-500/30">
       {/* --- SIDEBAR --- */}
       <motion.aside
         initial={false}
@@ -157,7 +162,7 @@ const App = () => {
         transition={{ duration: 0.3, ease: "easeInOut" }}
         onMouseEnter={() => setIsSidebarOpen(true)}
         onMouseLeave={() => setIsSidebarOpen(false)}
-        className="bg-white border-r border-gray-200 flex flex-col z-20 relative shadow-sm"
+        className=" hidden md:flex ... bg-white border-r border-gray-200 flex flex-col z-20 relative shadow-sm"
       >
         {/* Logo Area */}
         <div className="h-16 flex items-center px-4 border-b border-gray-200 overflow-hidden">
@@ -344,7 +349,7 @@ const App = () => {
         </div>
 
         {/* Header */}
-        <header className="h-16 bg-white/80 backdrop-blur-xl border-b border-gray-200 flex items-center justify-between px-8 z-10 sticky top-0 shadow-sm">
+        <header className="h-16 bg-white/80 backdrop-blur-xl border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-8 z-10 sticky top-0 shadow-sm">
           <div>
             <motion.h1
               key={activeTab}
@@ -412,7 +417,7 @@ const App = () => {
         </header>
 
         {/* Dynamic Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 relative z-0">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-4 sm:p-6 lg:p-8 relative z-0">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -433,6 +438,7 @@ const App = () => {
                 />
               )}
               {activeTab === "pl-center" && <ProfitCenterPL />}
+              {activeTab === "ledger" && <LedgerPage />}
               {activeTab === "pl-client" && <ClientPL />}
               {activeTab === "internal-cost" && <InternalCost />}
               {activeTab === "internal-team" && <InternalTeamDetails />}
