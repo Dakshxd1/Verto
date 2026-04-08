@@ -1,26 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowRight, AlertCircle, FileCheck } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import supabase from "../lib/supabaseClient";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, ArrowRight, AlertCircle, FileCheck } from "lucide-react";
 
 const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
   // Local form state
   const [formData, setFormData] = useState({
-    entity: '',
-    statutoryPayoutType: 'GST',
-    forTheMonth: '',
-    totalDue: '',
-    totalPaid: '',
-    pendingDue: '',
-    anyInterestPenalties: 'No',
-    penaltyAmount: '',
-    penaltyPercentage: '',
-    remarks: '',
+    entity: "",
+    statutoryPayoutType: "GST",
+    forTheMonth: "",
+    totalDue: "",
+    totalPaid: "",
+    pendingDue: "",
+    anyInterestPenalties: "No",
+    penaltyAmount: "",
+    penaltyPercentage: "",
+    remarks: "",
     // Cost head breakdown for penalties
-    ops: '100',
-    temp: '',
-    recruitment: '',
-    projects: '',
-    others: ''
+    ops: "100",
+    temp: "",
+    recruitment: "",
+    projects: "",
+    others: "",
   });
 
   const [errors, setErrors] = useState({});
@@ -28,21 +29,86 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
 
   // Statutory payout types
   const statutoryTypes = [
-    { value: 'GST', label: 'GST' },
-    { value: 'TDS', label: 'TDS' },
-    { value: 'EPF', label: 'EPF' },
-    { value: 'ESI', label: 'ESI' },
-    { value: 'LWF', label: 'LWF' },
-    { value: 'PF', label: 'PF' },
-    { value: 'Income Tax', label: 'Income Tax' },
-    { value: 'Others', label: 'Others' }
+    { value: "GST", label: "GST" },
+    { value: "TDS", label: "TDS" },
+    { value: "EPF", label: "EPF" },
+    { value: "ESI", label: "ESI" },
+    { value: "LWF", label: "LWF" },
+    { value: "PF", label: "PF" },
+    { value: "Income Tax", label: "Income Tax" },
+    { value: "Others", label: "Others" },
   ];
+
+  const fetchAutoDue = async (entity, month, type) => {
+    if (!entity || !month) return;
+
+    // convert "Apr 2026" → "2026-04-01"
+    const formattedMonth = `${month}-01`; // keep same BUT ensure month format is YYYY-MM
+    console.log("DEBUG →", entity, formattedMonth, type);
+
+    const { data, error } = await supabase.rpc("get_statutory_due", {
+      selected_entity: entity,
+      selected_month: formattedMonth,
+      selected_type: type, // 🔥 THIS WAS MISSING
+    });
+    console.log("RPC RESULT:", data);
+
+    if (error) {
+      console.error("Auto due error:", error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const total = Number(data[0].total_due) || 0;
+
+      setFormData((prev) => ({
+        ...prev,
+        totalDue: total.toFixed(2),
+      }));
+
+      return total; // ✅ ADD THIS
+    }
+  };
 
   // Single handleChange function
   const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      let updated = { ...prev, [field]: value };
+
+      // 🔥 BLOCK OVERPAYMENT
+      if (field === "totalPaid") {
+        const totalDue = parseFloat(prev.totalDue) || 0;
+        let entered = parseFloat(value) || 0;
+
+        if (entered > totalDue) {
+          alert("❌ Cannot pay more than remaining due");
+          return prev; // ❌ stop update
+        }
+
+        updated.totalPaid = value; // ✅ NO formatting here
+      }
+
+      // 🔥 AUTO FETCH WHEN BOTH AVAILABLE
+      if (
+        (field === "entity" ||
+          field === "forTheMonth" ||
+          field === "statutoryPayoutType") &&
+        updated.entity &&
+        updated.forTheMonth &&
+        updated.statutoryPayoutType
+      ) {
+        fetchAutoDue(
+          updated.entity,
+          updated.forTheMonth,
+          updated.statutoryPayoutType
+        );
+      }
+
+      return updated;
+    });
+
     if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
+      setErrors((prev) => ({ ...prev, [field]: "" }));
     }
   };
 
@@ -51,10 +117,10 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
     const totalDue = parseFloat(formData.totalDue) || 0;
     const totalPaid = parseFloat(formData.totalPaid) || 0;
     const pendingDue = totalDue - totalPaid;
-    
-    setFormData(prev => ({ 
-      ...prev, 
-      pendingDue: pendingDue >= 0 ? pendingDue.toFixed(2) : '0.00'
+
+    setFormData((prev) => ({
+      ...prev,
+      pendingDue: pendingDue >= 0 ? pendingDue.toFixed(2) : "0.00",
     }));
   }, [formData.totalDue, formData.totalPaid]);
 
@@ -65,7 +131,7 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
     const recruitment = parseFloat(formData.recruitment) || 0;
     const projects = parseFloat(formData.projects) || 0;
     const others = parseFloat(formData.others) || 0;
-    
+
     return ops + temp + recruitment + projects + others;
   };
 
@@ -73,21 +139,25 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.entity) newErrors.entity = 'Entity is required';
-    if (!formData.statutoryPayoutType) newErrors.statutoryPayoutType = 'Statutory payout type is required';
-    if (!formData.forTheMonth.trim()) newErrors.forTheMonth = 'Month is required';
-    if (!formData.totalDue) newErrors.totalDue = 'Total due is required';
-    if (!formData.totalPaid) newErrors.totalPaid = 'Total paid is required';
+    if (!formData.entity) newErrors.entity = "Entity is required";
+    if (!formData.statutoryPayoutType)
+      newErrors.statutoryPayoutType = "Statutory payout type is required";
+    if (!formData.forTheMonth.trim())
+      newErrors.forTheMonth = "Month is required";
+    if (!formData.totalDue) newErrors.totalDue = "Total due is required";
+    if (!formData.totalPaid) newErrors.totalPaid = "Total paid is required";
 
     // Validate penalty fields if penalties exist
-    if (formData.anyInterestPenalties === 'Yes') {
-      if (!formData.penaltyAmount) newErrors.penaltyAmount = 'Penalty amount is required';
-      if (!formData.penaltyPercentage) newErrors.penaltyPercentage = 'Penalty percentage is required';
-      
+    if (formData.anyInterestPenalties === "Yes") {
+      if (!formData.penaltyAmount)
+        newErrors.penaltyAmount = "Penalty amount is required";
+      if (!formData.penaltyPercentage)
+        newErrors.penaltyPercentage = "Penalty percentage is required";
+
       // Validate cost head breakdown totals to 100%
       const totalPercentage = calculateTotalPercentage();
       if (Math.abs(totalPercentage - 100) > 0.01) {
-        newErrors.costHeadBreakdown = 'Cost head breakdown must total 100%';
+        newErrors.costHeadBreakdown = "Cost head breakdown must total 100%";
       }
     }
 
@@ -96,33 +166,41 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
   };
 
   // Handle form submission
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setShowErrors(true);
 
-    if (!validateForm()) {
+    if (!validateForm()) return;
+    // ❌ Prevent overpayment at backend level
+    if (Number(formData.totalPaid) > Number(formData.totalDue)) {
+      alert("❌ Payment exceeds remaining due");
       return;
     }
 
-    // Prepare submission data
-    const submissionData = {
-      ...formData,
-      costHeadBreakdown: formData.anyInterestPenalties === 'Yes' ? {
-        ops: parseFloat(formData.ops) || 0,
-        temp: parseFloat(formData.temp) || 0,
-        recruitment: parseFloat(formData.recruitment) || 0,
-        projects: parseFloat(formData.projects) || 0,
-        others: parseFloat(formData.others) || 0
-      } : null,
-      submittedAt: new Date().toISOString()
+    const payload = {
+      entity: formData.entity,
+      month: `${formData.forTheMonth}-01`,
+      type: formData.statutoryPayoutType,
+      total_due: Number(formData.totalDue),
+      total_paid: Number(formData.totalPaid),
+      pending_due: Number(formData.pendingDue),
+      penalty: formData.anyInterestPenalties === "Yes",
+      penalty_amount: Number(formData.penaltyAmount || 0),
+      remarks: formData.remarks,
     };
 
-    console.log('Statutory Payout Submitted:', submissionData);
-    
-    // TODO: Send to backend API when available
-    // await api.saveStatutoryPayout(submissionData);
+    const { error } = await supabase
+      .from("statutory_payments")
+      .insert([payload]);
 
-    // Reset form and close modal
+    if (error) {
+      console.error("Insert Error:", error);
+      alert("Error saving data");
+      return;
+    }
+
+    alert("✅ Statutory Payment Saved");
+
     resetForm();
     onClose();
   };
@@ -130,21 +208,21 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
   // Reset form to initial state
   const resetForm = () => {
     setFormData({
-      entity: '',
-      statutoryPayoutType: 'GST',
-      forTheMonth: '',
-      totalDue: '',
-      totalPaid: '',
-      pendingDue: '',
-      anyInterestPenalties: 'No',
-      penaltyAmount: '',
-      penaltyPercentage: '',
-      remarks: '',
-      ops: '100',
-      temp: '',
-      recruitment: '',
-      projects: '',
-      others: ''
+      entity: "",
+      statutoryPayoutType: "GST",
+      forTheMonth: "",
+      totalDue: "",
+      totalPaid: "",
+      pendingDue: "",
+      anyInterestPenalties: "No",
+      penaltyAmount: "",
+      penaltyPercentage: "",
+      remarks: "",
+      ops: "100",
+      temp: "",
+      recruitment: "",
+      projects: "",
+      others: "",
     });
     setErrors({});
     setShowErrors(false);
@@ -191,7 +269,9 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold">+ ADD STATUTORY PAYOUT</h2>
-                  <p className="text-cyan-100 text-sm mt-1">Record statutory compliance payments</p>
+                  <p className="text-cyan-100 text-sm mt-1">
+                    Record statutory compliance payments
+                  </p>
                 </div>
                 <button
                   onClick={handleClose}
@@ -205,14 +285,13 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
             {/* Form Content */}
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
               <form onSubmit={handleSubmit} className="space-y-6">
-                
                 {/* Basic Details */}
                 <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
                   <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wider mb-4 flex items-center">
                     <FileCheck className="w-4 h-4 mr-2" />
                     Statutory Details
                   </h3>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
@@ -220,14 +299,18 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                       </label>
                       <select
                         value={formData.entity}
-                        onChange={(e) => handleChange('entity', e.target.value)}
+                        onChange={(e) => handleChange("entity", e.target.value)}
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
-                          showErrors && errors.entity ? 'border-rose-500' : 'border-gray-300'
+                          showErrors && errors.entity
+                            ? "border-rose-500"
+                            : "border-gray-300"
                         }`}
                       >
                         <option value="">Select Entity</option>
                         {entities.map((entity, idx) => (
-                          <option key={idx} value={entity}>{entity}</option>
+                          <option key={idx} value={entity}>
+                            {entity}
+                          </option>
                         ))}
                       </select>
                       <ErrorMessage error={errors.entity} />
@@ -235,21 +318,30 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
 
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Statutory Payout <span className="text-rose-600">*</span>
+                        Statutory Payout{" "}
+                        <span className="text-rose-600">*</span>
                       </label>
                       <select
                         value={formData.statutoryPayoutType}
-                        onChange={(e) => handleChange('statutoryPayoutType', e.target.value)}
+                        onChange={(e) =>
+                          handleChange("statutoryPayoutType", e.target.value)
+                        }
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
-                          showErrors && errors.statutoryPayoutType ? 'border-rose-500' : 'border-gray-300'
+                          showErrors && errors.statutoryPayoutType
+                            ? "border-rose-500"
+                            : "border-gray-300"
                         }`}
                       >
                         {statutoryTypes.map((type) => (
-                          <option key={type.value} value={type.value}>{type.label}</option>
+                          <option key={type.value} value={type.value}>
+                            {type.label}
+                          </option>
                         ))}
                       </select>
                       <ErrorMessage error={errors.statutoryPayoutType} />
-                      <p className="text-xs text-gray-500 mt-1">GST/TDS/EPF/ESI/LWF/PF/Income Tax/Others</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        GST/TDS/EPF/ESI/LWF/PF/Income Tax/Others
+                      </p>
                     </div>
                   </div>
 
@@ -259,11 +351,15 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                         For The Month <span className="text-rose-600">*</span>
                       </label>
                       <input
-                        type="text"
+                        type="month"
                         value={formData.forTheMonth}
-                        onChange={(e) => handleChange('forTheMonth', e.target.value)}
+                        onChange={(e) =>
+                          handleChange("forTheMonth", e.target.value)
+                        }
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
-                          showErrors && errors.forTheMonth ? 'border-rose-500' : 'border-gray-300'
+                          showErrors && errors.forTheMonth
+                            ? "border-rose-500"
+                            : "border-gray-300"
                         }`}
                         placeholder="e.g., Jan 2023"
                       />
@@ -277,7 +373,7 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                   <h3 className="text-sm font-bold text-emerald-900 uppercase tracking-wider mb-4">
                     Payment Information
                   </h3>
-                  
+
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
@@ -286,9 +382,13 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                       <input
                         type="number"
                         value={formData.totalDue}
-                        onChange={(e) => handleChange('totalDue', e.target.value)}
+                        onChange={(e) =>
+                          handleChange("totalDue", e.target.value)
+                        }
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${
-                          showErrors && errors.totalDue ? 'border-rose-500' : 'border-gray-300'
+                          showErrors && errors.totalDue
+                            ? "border-rose-500"
+                            : "border-gray-300"
                         }`}
                         placeholder="₹ 0"
                       />
@@ -303,9 +403,20 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                       <input
                         type="number"
                         value={formData.totalPaid}
-                        onChange={(e) => handleChange('totalPaid', e.target.value)}
+                        onChange={(e) =>
+                          handleChange("totalPaid", e.target.value)
+                        }
+                        onBlur={() => {
+                          const val = parseFloat(formData.totalPaid) || 0;
+                          setFormData((prev) => ({
+                            ...prev,
+                            totalPaid: val.toFixed(2),
+                          }));
+                        }}
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${
-                          showErrors && errors.totalPaid ? 'border-rose-500' : 'border-gray-300'
+                          showErrors && errors.totalPaid
+                            ? "border-rose-500"
+                            : "border-gray-300"
                         }`}
                         placeholder="₹ 0"
                       />
@@ -323,7 +434,9 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                         className="w-full bg-gray-100 border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg font-mono font-bold"
                         placeholder="Auto-calculated"
                       />
-                      <p className="text-xs text-rose-600 mt-1">Auto-calculated</p>
+                      <p className="text-xs text-rose-600 mt-1">
+                        Auto-calculated
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -333,7 +446,7 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                   <h3 className="text-sm font-bold text-amber-900 uppercase tracking-wider mb-4">
                     Interest / Penalties
                   </h3>
-                  
+
                   <div className="mb-4">
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
                       Any Interest / Penalties
@@ -341,22 +454,26 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                     <div className="flex space-x-3">
                       <button
                         type="button"
-                        onClick={() => handleChange('anyInterestPenalties', 'Yes')}
+                        onClick={() =>
+                          handleChange("anyInterestPenalties", "Yes")
+                        }
                         className={`flex-1 px-4 py-2.5 rounded-lg font-medium transition-all ${
-                          formData.anyInterestPenalties === 'Yes'
-                            ? 'bg-amber-600 text-white shadow-md'
-                            : 'bg-white text-gray-600 border border-gray-300'
+                          formData.anyInterestPenalties === "Yes"
+                            ? "bg-amber-600 text-white shadow-md"
+                            : "bg-white text-gray-600 border border-gray-300"
                         }`}
                       >
                         Yes
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleChange('anyInterestPenalties', 'No')}
+                        onClick={() =>
+                          handleChange("anyInterestPenalties", "No")
+                        }
                         className={`flex-1 px-4 py-2.5 rounded-lg font-medium transition-all ${
-                          formData.anyInterestPenalties === 'No'
-                            ? 'bg-emerald-600 text-white shadow-md'
-                            : 'bg-white text-gray-600 border border-gray-300'
+                          formData.anyInterestPenalties === "No"
+                            ? "bg-emerald-600 text-white shadow-md"
+                            : "bg-white text-gray-600 border border-gray-300"
                         }`}
                       >
                         No
@@ -365,24 +482,29 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                   </div>
 
                   {/* If Yes - Show Penalty Details */}
-                  {formData.anyInterestPenalties === 'Yes' && (
+                  {formData.anyInterestPenalties === "Yes" && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
+                      animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       className="space-y-4"
                     >
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                            Amount of Penalty <span className="text-rose-600">*</span>
+                            Amount of Penalty{" "}
+                            <span className="text-rose-600">*</span>
                           </label>
                           <input
                             type="number"
                             value={formData.penaltyAmount}
-                            onChange={(e) => handleChange('penaltyAmount', e.target.value)}
+                            onChange={(e) =>
+                              handleChange("penaltyAmount", e.target.value)
+                            }
                             className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 ${
-                              showErrors && errors.penaltyAmount ? 'border-rose-500' : 'border-gray-300'
+                              showErrors && errors.penaltyAmount
+                                ? "border-rose-500"
+                                : "border-gray-300"
                             }`}
                             placeholder="₹ 0"
                           />
@@ -391,14 +513,19 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
 
                         <div>
                           <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                            Penalty Percentage <span className="text-rose-600">*</span>
+                            Penalty Percentage{" "}
+                            <span className="text-rose-600">*</span>
                           </label>
                           <input
                             type="number"
                             value={formData.penaltyPercentage}
-                            onChange={(e) => handleChange('penaltyPercentage', e.target.value)}
+                            onChange={(e) =>
+                              handleChange("penaltyPercentage", e.target.value)
+                            }
                             className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 ${
-                              showErrors && errors.penaltyPercentage ? 'border-rose-500' : 'border-gray-300'
+                              showErrors && errors.penaltyPercentage
+                                ? "border-rose-500"
+                                : "border-gray-300"
                             }`}
                             placeholder="0 %"
                           />
@@ -411,7 +538,7 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                         <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider mb-3">
                           Cost Head Break Up for Penalties
                         </h4>
-                        
+
                         <div className="grid grid-cols-5 gap-3">
                           <div>
                             <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
@@ -420,7 +547,9 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                             <input
                               type="number"
                               value={formData.ops}
-                              onChange={(e) => handleChange('ops', e.target.value)}
+                              onChange={(e) =>
+                                handleChange("ops", e.target.value)
+                              }
                               className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                               placeholder="100"
                             />
@@ -434,7 +563,9 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                             <input
                               type="number"
                               value={formData.temp}
-                              onChange={(e) => handleChange('temp', e.target.value)}
+                              onChange={(e) =>
+                                handleChange("temp", e.target.value)
+                              }
                               className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                               placeholder="0"
                             />
@@ -447,7 +578,9 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                             <input
                               type="number"
                               value={formData.recruitment}
-                              onChange={(e) => handleChange('recruitment', e.target.value)}
+                              onChange={(e) =>
+                                handleChange("recruitment", e.target.value)
+                              }
                               className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                               placeholder="0"
                             />
@@ -460,7 +593,9 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                             <input
                               type="number"
                               value={formData.projects}
-                              onChange={(e) => handleChange('projects', e.target.value)}
+                              onChange={(e) =>
+                                handleChange("projects", e.target.value)
+                              }
                               className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                               placeholder="0"
                             />
@@ -473,7 +608,9 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                             <input
                               type="number"
                               value={formData.others}
-                              onChange={(e) => handleChange('others', e.target.value)}
+                              onChange={(e) =>
+                                handleChange("others", e.target.value)
+                              }
                               className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                               placeholder="0"
                             />
@@ -483,10 +620,16 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                         {/* Total Percentage Display */}
                         <div className="mt-3 p-3 bg-white rounded-lg border-2 border-amber-300">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold text-gray-900 uppercase tracking-wider">Total</span>
-                            <span className={`text-lg font-bold ${
-                              Math.abs(totalPercentage - 100) < 0.01 ? 'text-emerald-600' : 'text-rose-600'
-                            }`}>
+                            <span className="text-sm font-bold text-gray-900 uppercase tracking-wider">
+                              Total
+                            </span>
+                            <span
+                              className={`text-lg font-bold ${
+                                Math.abs(totalPercentage - 100) < 0.01
+                                  ? "text-emerald-600"
+                                  : "text-rose-600"
+                              }`}
+                            >
                               {totalPercentage.toFixed(2)}%
                             </span>
                           </div>
@@ -506,7 +649,7 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                   </label>
                   <textarea
                     value={formData.remarks}
-                    onChange={(e) => handleChange('remarks', e.target.value)}
+                    onChange={(e) => handleChange("remarks", e.target.value)}
                     rows={3}
                     className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 text-sm"
                     placeholder="Additional remarks..."
