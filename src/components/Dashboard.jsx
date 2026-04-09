@@ -114,6 +114,7 @@ const Dashboard = ({
   const [dateTo, setDateTo] = useState("");
   const [data] = useState(() => generateData(12));
   const [dbData, setDbData] = useState([]);
+  const [banks, setBanks] = useState([]);
   const [showPaymentHistory, setShowPaymentHistory] = useState(false);
   const [historyInvoice, setHistoryInvoice] = useState(null);
   const [showInvoiceDetails, setShowInvoiceDetails] = useState(false);
@@ -126,6 +127,13 @@ const Dashboard = ({
   const [showCNBadDebtModal, setShowCNBadDebtModal] = useState(false);
   const [showBounceHistory, setShowBounceHistory] = useState(false);
   const [showCNHistory, setShowCNHistory] = useState(false);
+  const fetchBanks = async () => {
+    const { data, error } = await supabase
+      .from("bank_master")
+      .select("*");
+  
+    if (!error) setBanks(data);
+  };
 
   // Initialize date range to last 12 months on component mount
   React.useEffect(() => {
@@ -237,9 +245,11 @@ const Dashboard = ({
 
     // 🔥 Initial Fetch
     fetchInvoices();
+    fetchBanks();
 
     // 🔥 Make global refresh available
     window.refreshDashboard = fetchInvoices;
+    window.refreshBanks = fetchBanks;  // ✅ ADD THIS LINE
 
     // 🔥 Realtime listener
     channel = supabase

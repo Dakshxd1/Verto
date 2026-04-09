@@ -23,6 +23,8 @@ const AddBounceBackModal = ({
   const [showErrors, setShowErrors] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [banks, setBanks] = useState([]);
+  const [selectedBank, setSelectedBank] = useState("");
 
   // Single handleChange function
   const handleChange = (field, value) => {
@@ -102,6 +104,18 @@ const AddBounceBackModal = ({
     fetchDetails();
   }, [formData.invoiceOrPaymentRef]);
 
+  useEffect(() => {
+    const fetchBanks = async () => {
+      const { data } = await supabase
+        .from("bank_master")
+        .select("id, bank_name");
+
+      setBanks(data || []);
+    };
+
+    fetchBanks();
+  }, []);
+
   // Calculate new amounts after bounce back
   const calculateImpact = () => {
     if (!selectedDetails || !formData.bounceBackAmount) return null;
@@ -177,7 +191,7 @@ const AddBounceBackModal = ({
           invoice_id:
             selectedDetails?.invoice_id || payment?.invoice_id || null, // ✅ already correct
           payment_ref: formData.invoiceOrPaymentRef,
-
+          bank_id: selectedBank || null,
           amount: Number(formData.bounceBackAmount), // ✅ FIXED
           bounce_date: formData.dateOfBounceBack, // ✅ FIXED
           bank_details: formData.bankDetails, // ✅ FIXED
@@ -190,21 +204,25 @@ const AddBounceBackModal = ({
       // 🔥 3. REVERSE BANK ENTRY (NEGATIVE)
       await supabase.from("bank_entries").insert([
         {
-          bank_id: payment?.bank_id || null,
+          bank_id: selectedBank || payment?.bank_id || null,
           amount: -Number(formData.bounceBackAmount),
           date: formData.dateOfBounceBack,
           type: "debit",
           remarks: "Bounce Back",
+
+          // 🔥 ADD THIS
+          invoice_id: selectedDetails?.invoice_id || payment?.invoice_id,
         },
       ]);
 
       // 🔥 4. REVERSE SOFTWARE ENTRY
       await supabase.from("software_entries").insert([
         {
-          bank_id: payment?.bank_id || null,
+          bank_id: selectedBank || payment?.bank_id || null,
           amount: -Number(formData.bounceBackAmount),
           date: formData.dateOfBounceBack,
           remarks: "Bounce Back",
+          invoice_id: selectedDetails?.invoice_id || payment?.invoice_id,
         },
       ]);
 
@@ -463,19 +481,21 @@ const AddBounceBackModal = ({
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
                         Bank Details <span className="text-rose-600">*</span>
                       </label>
-                      <input
-                        type="text"
-                        value={formData.bankDetails}
-                        onChange={(e) =>
-                          handleChange("bankDetails", e.target.value)
-                        }
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 ${
-                          showErrors && errors.bankDetails
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
-                        placeholder="Bank account details"
-                      />
+                      <select
+                        className="w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg"
+                        value={selectedBank}
+                        onChange={(e) => {
+                          setSelectedBank(e.target.value);
+                          handleChange("bankDetails", e.target.value); // optional
+                        }}
+                      >
+                        <option value="">Select Bank</option>
+                        {banks.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.bank_name}
+                          </option>
+                        ))}
+                      </select>
                       <ErrorMessage error={errors.bankDetails} />
                     </div>
                   </div>

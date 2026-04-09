@@ -42,32 +42,49 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
   const fetchAutoDue = async (entity, month, type) => {
     if (!entity || !month) return;
 
-    // convert "Apr 2026" → "2026-04-01"
-    const formattedMonth = `${month}-01`; // keep same BUT ensure month format is YYYY-MM
-    console.log("DEBUG →", entity, formattedMonth, type);
+    const formattedMonth = `${month}-01`;
 
-    const { data, error } = await supabase.rpc("get_statutory_due", {
-      selected_entity: entity,
-      selected_month: formattedMonth,
-      selected_type: type, // 🔥 THIS WAS MISSING
-    });
-    console.log("RPC RESULT:", data);
+    // ✅ 1. GET TOTAL DUE (FROM FUNCTION)
+    const { data: dueData, error: dueError } = await supabase.rpc(
+      "get_statutory_due",
+      {
+        selected_entity: entity,
+        selected_month: formattedMonth,
+        selected_type: type,
+      }
+    );
 
-    if (error) {
-      console.error("Auto due error:", error);
+    if (dueError) {
+      console.error("Due Error:", dueError);
       return;
     }
 
-    if (data && data.length > 0) {
-      const total = Number(data[0].total_due) || 0;
+    const totalDue = Number(dueData?.[0]?.total_due || 0);
 
-      setFormData((prev) => ({
-        ...prev,
-        totalDue: total.toFixed(2),
-      }));
+    // ✅ 2. GET ALREADY PAID (FROM statutory_payments TABLE)
+    const { data: paidData, error: paidError } = await supabase
+      .from("statutory_payments")
+      .select("total_paid")
+      .eq("entity", entity)
+      .eq("type", type)
+      .eq("month", formattedMonth);
 
-      return total; // ✅ ADD THIS
+    if (paidError) {
+      console.error("Paid Error:", paidError);
+      return;
     }
+
+    const alreadyPaid =
+      paidData?.reduce((sum, row) => sum + Number(row.total_paid || 0), 0) || 0;
+
+    // ✅ 3. REMAINING DUE
+    // ✅ FIX: DB already gives remaining
+    const remaining = totalDue;
+
+    setFormData((prev) => ({
+      ...prev,
+      totalDue: remaining > 0 ? remaining.toFixed(2) : "0.00",
+    }));
   };
 
   // Single handleChange function
@@ -77,15 +94,19 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
 
       // 🔥 BLOCK OVERPAYMENT
       if (field === "totalPaid") {
-        const totalDue = parseFloat(prev.totalDue) || 0;
-        let entered = parseFloat(value) || 0;
+        const remaining = parseFloat(prev.totalDue) || 0;
+        const entered = parseFloat(value) || 0;
 
-        if (entered > totalDue) {
-          alert("❌ Cannot pay more than remaining due");
-          return prev; // ❌ stop update
+        // ✅ FIX: allow typing freely, block only when really exceeded
+        if (entered > remaining) {
+          // ❌ DO NOT ALERT HERE
+          return {
+            ...prev,
+            totalPaid: remaining.toString(), // auto cap value
+          };
         }
 
-        updated.totalPaid = value; // ✅ NO formatting here
+        updated.totalPaid = value;
       }
 
       // 🔥 AUTO FETCH WHEN BOTH AVAILABLE
@@ -172,8 +193,11 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
 
     if (!validateForm()) return;
     // ❌ Prevent overpayment at backend level
-    if (Number(formData.totalPaid) > Number(formData.totalDue)) {
-      alert("❌ Payment exceeds remaining due");
+    const remaining = Number(formData.totalDue || 0);
+    const paying = Number(formData.totalPaid || 0);
+    
+    if (paying > remaining) {
+      alert("❌ Cannot pay more than remaining due");
       return;
     }
 
@@ -181,8 +205,8 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
       entity: formData.entity,
       month: `${formData.forTheMonth}-01`,
       type: formData.statutoryPayoutType,
-      total_due: Number(formData.totalDue),
-      total_paid: Number(formData.totalPaid),
+      total_due: Number(formData.totalDue), // keep for record
+      total_paid: Number(formData.totalPaid), // current payment only
       pending_due: Number(formData.pendingDue),
       penalty: formData.anyInterestPenalties === "Yes",
       penalty_amount: Number(formData.penaltyAmount || 0),
@@ -380,7 +404,7 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                         Total Due <span className="text-rose-600">*</span>
                       </label>
                       <input
-                        type="number"
+                        type="text"
                         value={formData.totalDue}
                         onChange={(e) =>
                           handleChange("totalDue", e.target.value)
@@ -401,18 +425,11 @@ const AddStatutoryPayoutModal = ({ isOpen, onClose, entities = [] }) => {
                         Total Paid <span className="text-rose-600">*</span>
                       </label>
                       <input
-                        type="number"
+                        type="text"
                         value={formData.totalPaid}
                         onChange={(e) =>
                           handleChange("totalPaid", e.target.value)
                         }
-                        onBlur={() => {
-                          const val = parseFloat(formData.totalPaid) || 0;
-                          setFormData((prev) => ({
-                            ...prev,
-                            totalPaid: val.toFixed(2),
-                          }));
-                        }}
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${
                           showErrors && errors.totalPaid
                             ? "border-rose-500"

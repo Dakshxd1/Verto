@@ -127,11 +127,11 @@ const AddInvoiceModal = ({
 
   useEffect(() => {
     const fetchBanks = async () => {
-      const { data } = await supabase.from("bank_master").select("bank_name");
+      const { data } = await supabase
+        .from("bank_master")
+        .select("id, bank_name");
 
-      if (data) {
-        setBanks(data.map((b) => b.bank_name));
-      }
+      setBanks(data || []);
     };
 
     fetchBanks();
@@ -447,14 +447,14 @@ const AddInvoiceModal = ({
         .ilike("entity_name", `%${formData.invoiceEntity}%`)
         .maybeSingle();
 
-        console.log("DEBUG CHECK 👉");
-        console.log("CLIENT INPUT:", formData.client);
-        console.log("DEPT INPUT:", formData.department);
-        console.log("ENTITY INPUT:", formData.invoiceEntity);
-        
-        console.log("CLIENT ROW:", clientRow);
-        console.log("DEPT ROW:", deptRow);
-        console.log("ENTITY ROW:", entityRow);
+      console.log("DEBUG CHECK 👉");
+      console.log("CLIENT INPUT:", formData.client);
+      console.log("DEPT INPUT:", formData.department);
+      console.log("ENTITY INPUT:", formData.invoiceEntity);
+
+      console.log("CLIENT ROW:", clientRow);
+      console.log("DEPT ROW:", deptRow);
+      console.log("ENTITY ROW:", entityRow);
 
       // 🚨 Validate master data
       if (!clientRow || !deptRow || !entityRow) {
@@ -489,6 +489,15 @@ const AddInvoiceModal = ({
         if (!confirmSave) return;
       }
 
+      const selectedBank = banks.find(
+        (b) => b.bank_name === formData.bankName
+      );
+      
+      if (!selectedBank) {
+        alert("❌ Invalid Bank Selected");
+        return;
+      }
+
       // 📦 Common data
       const payload = {
         invoice_number: formData.invoiceNo,
@@ -498,6 +507,8 @@ const AddInvoiceModal = ({
         invoice_date: formData.invoiceDate,
         impact_month: formatImpactMonth(formData.impactMonth),
         pay_head: formData.payHead,
+        bank_id: selectedBank.id,
+        bank_name: selectedBank.bank_name,
 
         verto_fee: Number(formData.vertoFee),
         gst: Number(formData.gst),
@@ -1011,8 +1022,8 @@ const AddInvoiceModal = ({
                         placeholder="Type or select"
                       />
                       <datalist id="banks-list">
-                        {banks.map((bank, idx) => (
-                          <option key={idx} value={bank} />
+                        {banks.map((bank) => (
+                          <option key={bank.id} value={bank.bank_name} />
                         ))}
                       </datalist>
                       <ErrorMessage error={errors.bankName} />

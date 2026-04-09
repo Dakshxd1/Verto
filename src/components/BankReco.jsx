@@ -140,12 +140,13 @@ const BankReco = () => {
   const [banks, setBanks] = useState([]);
   const [entries, setEntries] = useState([]);
   const [selectedBank, setSelectedBank] = useState(null);
+  const [remainingBalance, setRemainingBalance] = useState(0);
 
   const [showEntryModal, setShowEntryModal] = useState(false);
 
   const [newEntry, setNewEntry] = useState({
     entity: "",
-    bank_id: "",   // ✅ ADD THIS
+    bank_id: "", // ✅ ADD THIS
     dateOfBankBal: "",
     amount: "",
     remarks: "",
@@ -180,15 +181,18 @@ const BankReco = () => {
     const grouped = {};
 
     entries.forEach((entry) => {
-      const month = new Date(entry.date).toLocaleString("en-IN", {
-        month: "short",
-        year: "numeric",
-      });
+      // ❌ SKIP NULL BANK (VERY IMPORTANT FIX)
+      if (!entry.bank_id) return;
 
-      if (!grouped[month]) {
-        grouped[month] = {
-          id: month,
+      const month = new Date(entry.date).toISOString().slice(0, 7);
+      const key = `${month}-${entry.bank_id}`;
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          id: key,
           month,
+          bank_id: entry.bank_id,
+          bank_name: entry.bank_master?.bank_name || "N/A",
           date: entry.date,
           asPerBankTotalBal: 0,
           asPerSwTotalBal: 0,
@@ -198,24 +202,23 @@ const BankReco = () => {
         };
       }
 
-      grouped[month].asPerBankTotalBal += Number(entry.amount);
-      grouped[month].manualEntries.push({
+      grouped[key].asPerBankTotalBal += Number(entry.amount);
+
+      grouped[key].manualEntries.push({
         entity: entry.entity || "Pvt Ltd",
         bankCode: entry.bank_master?.bank_name || "N/A",
         amount: entry.amount,
         remarks: entry.remarks,
       });
     });
-
     const finalData = Object.values(grouped).map((row) => {
       // ✅ calculate software balance for same month
       const swTotal = softwareEntries
         .filter((s) => {
-          const swMonth = new Date(s.date).toLocaleString("en-IN", {
-            month: "short",
-            year: "numeric",
-          });
-          return swMonth === row.month;
+          const swMonth = new Date(s.date).toISOString().slice(0, 7);
+          return (
+            swMonth === row.month && s.bank_id === row.bank_id // 🔥 IMPORTANT
+          );
         })
         .reduce((sum, s) => sum + Number(s.amount), 0);
 
@@ -224,6 +227,8 @@ const BankReco = () => {
 
       // ✅ real difference
       row.difference = row.asPerBankTotalBal - row.asPerSwTotalBal;
+      // ✅ Remaining balance = difference
+      row.remainingBalance = Math.abs(row.difference);
 
       // ✅ real status
       row.status = Math.abs(row.difference) < 50000 ? "reconciled" : "pending";
@@ -232,6 +237,12 @@ const BankReco = () => {
     });
     setBankData(finalData);
   };
+
+  useEffect(() => {
+    if (bankData.length > 0 && !selectedRow) {
+      setSelectedRow(bankData[0]);
+    }
+  }, [bankData]);
 
   useEffect(() => {
     fetchBanks();
@@ -297,6 +308,18 @@ const BankReco = () => {
       setFundFlowData(generateFundFlowData(bankData));
     }
   }, [bankData]);
+
+  useEffect(() => {
+    if (bankData.length > 0 && !selectedRow) {
+      setSelectedRow(bankData[0]); // ✅ AUTO SELECT FIRST ROW
+      console.log("AUTO SELECT RUNNING", bankData[0]);
+      setRemainingBalance(
+        (bankData[0]?.asPerBankTotalBal || 0) -
+          (bankData[0]?.asPerSwTotalBal || 0)
+      );
+    }
+  }, [bankData]);
+
   const filteredData = bankData
     .filter((row) => {
       const matchesSearch = row.month
@@ -315,19 +338,67 @@ const BankReco = () => {
 
   const formatCurrency = (val) => `₹ ${(val / 100000).toFixed(2)}L`;
   const formatCurrencyFull = (val) => `₹ ${val.toLocaleString("en-IN")}`;
+
+  const latestDate = bankData.length
+    ? Math.max(...bankData.map((r) => new Date(r.date).getTime()))
+    : 0;
+
+  const lastBalance = bankData
+    .filter((r) => new Date(r.date).getTime() === latestDate)
+    .reduce((sum, r) => sum + (r.asPerBankTotalBal || 0), 0);
+
   const handleAddEntry = async () => {
     if (!newEntry.bank_id || !newEntry.amount || !newEntry.dateOfBankBal) {
       alert("Fill all fields");
       return;
     }
+    if (!newEntry.bank_id) {
+      alert("Please select bank");
+      return;
+    }
 
-    const { error } = await supabase.from("software_entries").insert([
+    if (Number(newEntry.amount) <= 0) {
+      alert("Amount must be greater than 0");
+      return;
+    }
+    const enteredAmount = parseFloat(newEntry.amount || 0);
+
+    // ❌ Prevent invalid
+    if (enteredAmount <= 0) {
+      alert("Amount must be greater than 0");
+      return;
+    }
+    if (!remainingBalance || remainingBalance <= 0) {
+      alert("No remaining balance available");
+      return;
+    }
+    if (!selectedRow) {
+      alert("No month selected. Please refresh.");
+      return;
+    }
+
+    const currentRemaining =
+      (selectedRow?.asPerBankTotalBal || 0) -
+      (selectedRow?.asPerSwTotalBal || 0);
+
+    if (enteredAmount > Math.abs(currentRemaining)) {
+      alert(
+        `Cannot enter more than remaining balance ₹${Math.abs(
+          currentRemaining
+        )}`
+      );
+      return;
+    }
+
+    const { error } = await supabase.from("bank_entries").insert([
       {
         bank_id: newEntry.bank_id,
         entity: newEntry.entity || "Pvt Ltd",
-        amount: Number(newEntry.amount),
+        amount: enteredAmount,
         date: newEntry.dateOfBankBal,
         remarks: newEntry.remarks || "",
+        type: enteredAmount >= 0 ? "credit" : "debit", // ✅ FIX
+        reference_no: "BNK-" + Date.now(), // ✅ ADD THIS
       },
     ]);
 
@@ -340,13 +411,30 @@ const BankReco = () => {
 
     setNewEntry({
       entity: "",
-      bank_id: "",   // ✅ ADD THIS
+      bank_id: "", // ✅ ADD THIS
       dateOfBankBal: "",
       amount: "",
       remarks: "",
     });
+    console.log("Remaining:", selectedRow?.remainingBalance);
+    console.log("Entered:", newEntry.amount);
 
-    fetchEntries();
+    await fetchEntries();
+    await fetchSoftwareEntries();
+
+    setTimeout(() => {
+      const updated = bankData.find((r) => r.id === selectedRow?.id);
+
+      if (updated) {
+        const newRemaining =
+          (updated.asPerBankTotalBal || 0) - (updated.asPerSwTotalBal || 0);
+
+        setSelectedRow(updated);
+        setRemainingBalance(newRemaining);
+      }
+    }, 300);
+
+    window.refreshDashboard?.();
   };
 
   return (
@@ -470,6 +558,7 @@ const BankReco = () => {
                       <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
                         <th className="p-4 w-24">Month</th>
                         <th className="p-4 w-28">Date</th>
+                        <th className="p-4 w-32">Bank</th>
                         <th className="p-4 text-right w-36 text-blue-700">
                           As Per Bank Total Bal
                         </th>
@@ -491,11 +580,15 @@ const BankReco = () => {
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             transition={{ delay: index * 0.01 }}
-                            onClick={() =>
-                              setSelectedRow(
-                                selectedRow?.id === row.id ? null : row
-                              )
-                            }
+                            onClick={() => {
+                              setSelectedRow(row);
+
+                              const remaining =
+                                (row.asPerBankTotalBal || 0) -
+                                (row.asPerSwTotalBal || 0);
+
+                              setRemainingBalance(remaining);
+                            }}
                             className={`hover:bg-blue-50 cursor-pointer transition-colors ${
                               selectedRow?.id === row.id ? "bg-blue-50" : ""
                             }`}
@@ -505,6 +598,9 @@ const BankReco = () => {
                               {row.month}
                             </td>
                             <td className="p-4 text-gray-600">{row.date}</td>
+                            <td className="p-4 font-medium text-gray-700">
+                              {row.bank_name}
+                            </td>
 
                             <td className="p-4 text-right font-mono text-blue-700">
                               {formatCurrency(row.asPerBankTotalBal)}
@@ -893,12 +989,13 @@ const BankReco = () => {
                             Last Bank Balance
                           </span>
                           <span className="font-mono font-medium text-blue-600">
-                            {bankData.length > 0
-                              ? formatCurrency(
-                                  bankData[bankData.length - 1]
-                                    .asPerBankTotalBal
-                                )
-                              : "₹ 0"}
+                            {formatCurrency(
+                              bankData.reduce(
+                                (sum, row) =>
+                                  sum + (row.asPerBankTotalBal || 0),
+                                0
+                              )
+                            )}
                           </span>
                         </div>
                       </div>
@@ -925,11 +1022,26 @@ const BankReco = () => {
                             </option>
                           ))}
                         </select>
+                        <p className="text-xs text-gray-500 mb-2">
+                          Select a row to enable entry
+                        </p>
                         <Button
                           className="w-full justify-start"
                           variant="outline"
                           size="sm"
-                          onClick={() => setShowEntryModal(true)}
+                          onClick={() => {
+                            console.log("SELECTED ROW:", selectedRow);
+                            if (!selectedRow && bankData.length > 0) {
+                              const firstRow = bankData[0];
+
+                              setSelectedRow(firstRow);
+                              setRemainingBalance(
+                                firstRow.remainingBalance || 0
+                              );
+                            }
+
+                            setShowEntryModal(true);
+                          }}
                         >
                           <Plus className="w-4 h-4 mr-2" />
                           Add Bank Entry
@@ -960,11 +1072,12 @@ const BankReco = () => {
                           Starting Balance
                         </span>
                         <span className="font-mono font-medium">
-                          {bankData.length > 0
-                            ? formatCurrency(
-                                bankData[bankData.length - 1].asPerBankTotalBal
-                              )
-                            : "₹ 0"}
+                          {formatCurrency(
+                            bankData.reduce(
+                              (sum, row) => sum + (row.asPerBankTotalBal || 0),
+                              0
+                            )
+                          )}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -996,7 +1109,12 @@ const BankReco = () => {
         newEntry={newEntry}
         setNewEntry={setNewEntry}
         onSave={handleAddEntry}
-        banks={banks} // ✅ ADD THIS
+        banks={banks}
+        remainingBalance={
+          selectedRow
+            ? selectedRow.asPerBankTotalBal - selectedRow.asPerSwTotalBal
+            : 0
+        }
       />
     </div>
   );

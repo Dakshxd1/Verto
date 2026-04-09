@@ -23,26 +23,63 @@ const AddPaymentMadeModal = ({ isOpen, onClose, invoice, onSaved }) => {
       alert("❌ Amount and Date required");
       return;
     }
-
-    const { error } = await supabase.from("payments_made").insert([
-      {
-        invoice_id: invoice.dbId,
-        amount: Number(amount),
-        payment_date: date,
-        remarks,
-      },
-    ]);
-
-    if (error) {
-      console.error(error);
-      alert("❌ Failed to save payment made");
-      return;
+  
+    try {
+      // 🔥 1. SAVE PAYMENT MADE
+      const { error: payError } = await supabase
+        .from("payments_made")
+        .insert([
+          {
+            invoice_id: invoice.dbId,
+            amount: Number(amount),
+            payment_date: date,
+            remarks,
+          },
+        ]);
+  
+      if (payError) throw payError;
+  
+      // 🔥 2. BANK ENTRY (VERY IMPORTANT 🔥)
+      const { error: bankError } = await supabase
+        .from("bank_entries")
+        .insert([
+          {
+            bank_id: invoice.bank_id || "70248411-60da-4117-ab86-4f6d262ad7e3", // fallback HDFC
+            entity: invoice.entity || "Pvt Ltd",
+            amount: -Number(amount), // 🔥 NEGATIVE
+            date: date,
+            type: "debit",
+            remarks: "Payment Made",
+            reference_no: "BNK-" + Date.now(),
+            invoice_id: invoice.dbId, // 🔥 LINK
+          },
+        ]);
+  
+      if (bankError) throw bankError;
+  
+      // 🔥 3. SOFTWARE ENTRY
+      const { error: softwareError } = await supabase
+        .from("software_entries")
+        .insert([
+          {
+            bank_id: invoice.bank_id || null,
+            entity: invoice.entity || "Pvt Ltd",
+            amount: -Number(amount),
+            date: date,
+            remarks: "Payment Made",
+          },
+        ]);
+  
+      if (softwareError) throw softwareError;
+  
+      alert("✅ Payment Made saved");
+  
+      if (onSaved) onSaved();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      alert("❌ " + err.message);
     }
-
-    alert("✅ Payment Made saved");
-
-    if (onSaved) onSaved();
-    onClose();
   };
 
   return (

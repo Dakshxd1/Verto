@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import supabase from "../lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowRight, AlertCircle } from "lucide-react";
@@ -40,6 +40,21 @@ const AddPaymentReceivedModal = ({
   const [errors, setErrors] = useState({});
   const [invoiceDetails, setInvoiceDetails] = useState(null);
   const [showErrors, setShowErrors] = useState(false);
+  const [banks, setBanks] = useState([]);
+
+  useEffect(() => {
+    const fetchBanks = async () => {
+      const { data } = await supabase
+        .from("bank_master")
+        .select("id, bank_name");
+
+      console.log("BANKS:", data); // 🔥 DEBUG
+
+      setBanks(data || []);
+    };
+
+    fetchBanks();
+  }, []);
 
   React.useEffect(() => {
     const fetchInvoiceDetails = async () => {
@@ -202,7 +217,11 @@ const AddPaymentReceivedModal = ({
           amount: Number(formData.amountReceived),
           date: formData.dateReceived,
           type: "credit",
-          remarks: formData.bankDetails || "Payment Received", // ✅ FIX
+          remarks: formData.bankDetails || "Payment Received",
+          reference_no: "BNK-" + Date.now(),
+
+          // 🔥 ADD THIS (VERY IMPORTANT)
+          invoice_id: invoiceDetails?.id || null,
         },
       ]);
       const { data: existing } = await supabase
@@ -210,6 +229,7 @@ const AddPaymentReceivedModal = ({
         .select("id")
         .eq("date", formData.dateReceived)
         .eq("amount", Number(formData.amountReceived))
+        .eq("invoice_id", invoiceDetails?.id || null)
         .maybeSingle();
 
       if (!existing) {
@@ -286,15 +306,6 @@ const AddPaymentReceivedModal = ({
       </div>
     );
   };
-
-  <select
-    value={formData.bankId}
-    onChange={(e) => handleChange("bankId", e.target.value)}
-  >
-    <option value="">Select Bank</option>
-    <option value="64f33027-2ad9-46ca-a8b3-e872d234e193">HDFC</option>
-    <option value="70248411-60da-4117-ab86-4f6d262ad7e3">IDFC</option>
-  </select>;
 
   return (
     <AnimatePresence>
@@ -421,12 +432,12 @@ const AddPaymentReceivedModal = ({
                             className="w-full border px-3 py-2 rounded"
                           >
                             <option value="">Select Bank</option>
-                            <option value="70248411-60da-4117-ab86-4f6d262ad7e3">
-                              HDFC Bank
-                            </option>
-                            <option value="64f33027-2ad9-46ca-a8b3-e872d234e193">
-                              IDFC Bank
-                            </option>
+
+                            {banks.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.bank_name}
+                              </option>
+                            ))}
                           </select>
                         </div>
                         <div>
