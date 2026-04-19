@@ -20,6 +20,7 @@ const AddInvoiceModal = ({
     invoiceDate: "",
     impactMonth: "",
     invoiceNo: "",
+    pay: "",
     vertoFee: "",
     gst: "",
     invoiceValue: "",
@@ -71,44 +72,60 @@ const AddInvoiceModal = ({
     fetchLedger();
   }, [formData.client, selectedInvoice]);
 
+  const [banks, setBanks] = useState([]);
+
   useEffect(() => {
-    if (selectedInvoice) {
-      console.log("🔥 EDIT DATA:", selectedInvoice);
+    if (!selectedInvoice || banks.length === 0) return;
 
-      setFormData({
-        // 🏢 MASTER
-        payHead: selectedInvoice.pay_head || "",
-        ledgerName: selectedInvoice?.ledger_name || "",
-        invoiceEntity: selectedInvoice.entity || "",
-        department: selectedInvoice?.department === "OS" ? "OS" : "REC",
-        client: selectedInvoice.client || "",
+    console.log("🔥 EDIT DATA FULL:", selectedInvoice);
 
-        // 📅 DATES
-        invoiceDate: selectedInvoice.invDate || "",
-        impactMonth: selectedInvoice.impactMonth || "",
-        expectedCollectionDate: selectedInvoice.expected_collection_date || "",
+    const selectedBank = banks.find((b) => b.id === selectedInvoice.bank_id);
 
-        // 💰 COMMON
-        invoiceNo: selectedInvoice.id || "",
-        invoiceValue: selectedInvoice.invValue || "",
-        vertoFee: selectedInvoice.vertoFee || "",
-        gst: selectedInvoice.gst || "",
-        tds: selectedInvoice.tds || "",
-        receivableRs: selectedInvoice.receivable_amount || "",
+    setFormData((prev) => ({
+      ...prev,
 
-        // 🧾 OS (🔥 UNIFIED)
-        employeeCount: selectedInvoice.employee_count || "",
-        grossValue: selectedInvoice.gross_value || "",
-        netInHand: selectedInvoice.net_in_hand || "",
-        coPF: selectedInvoice.co_pf || "",
-        coESI: selectedInvoice.co_esi || "",
-        lwfTax: selectedInvoice.lwf_tax || "",
-        ptTax: selectedInvoice.pt_tax || "",
-        otherDed: selectedInvoice.other_ded || "",
-        ctc: selectedInvoice.ctc || "",
-      });
-    }
-  }, [selectedInvoice]);
+      // ✅ SIMPLE DIRECT VALUES (NO FIND)
+      invoiceEntity: selectedInvoice?.entity_name ?? "",
+      department: selectedInvoice?.dept_code ?? "",
+      client: selectedInvoice?.client_name ?? "",
+      ledgerName: selectedInvoice?.ledger_name ?? "",
+      payHead: selectedInvoice?.pay_head ?? "",
+
+      // ✅ BANK FIX
+      bankName: selectedBank?.bank_name ?? "",
+
+      invoiceDate: selectedInvoice?.invoice_date ?? "",
+
+      impactMonth: selectedInvoice?.impact_month
+        ? selectedInvoice.impact_month.slice(5, 7) +
+          "/" +
+          selectedInvoice.impact_month.slice(2, 4)
+        : "",
+
+      expectedCollectionDate: selectedInvoice?.expected_collection_date ?? "",
+
+      invoiceNo: selectedInvoice?.invoice_number ?? "",
+
+      pay: selectedInvoice?.pay ?? "",
+      vertoFee: selectedInvoice?.verto_fee ?? "",
+
+      gst: selectedInvoice?.gst ?? "",
+      tds: selectedInvoice?.tds ?? "",
+      invoiceValue: selectedInvoice?.invoice_value ?? "",
+      receivableRs: selectedInvoice?.receivable_amount ?? "",
+
+      // OS fields
+      employeeCount: selectedInvoice?.employee_count ?? "",
+      grossValue: selectedInvoice?.gross_value ?? "",
+      netInHand: selectedInvoice?.net_in_hand ?? "",
+      coPF: selectedInvoice?.co_pf ?? "",
+      coESI: selectedInvoice?.co_esi ?? "",
+      lwfTax: selectedInvoice?.lwf_tax ?? "",
+      ptTax: selectedInvoice?.pt_tax ?? "",
+      otherDed: selectedInvoice?.other_ded ?? "",
+      ctc: selectedInvoice?.ctc ?? "",
+    }));
+  }, [selectedInvoice, banks]);
 
   const [errors, setErrors] = useState({});
   const [showErrors, setShowErrors] = useState(false);
@@ -121,9 +138,6 @@ const AddInvoiceModal = ({
     { value: "PROJ", label: "PROJ (Projects)" },
     { value: "OTH", label: "OTH (Others)" },
   ];
-
-  // Bank options
-  const [banks, setBanks] = useState([]);
 
   useEffect(() => {
     const fetchBanks = async () => {
@@ -145,100 +159,59 @@ const AddInvoiceModal = ({
     }
   };
 
-  // Auto-calculate Impact Month from Invoice Date
-  useEffect(() => {
-    if (formData.invoiceDate) {
-      const date = new Date(formData.invoiceDate);
-      const monthNames = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
-      ];
-      const impactMonth = `${
-        monthNames[date.getMonth()]
-      } ${date.getFullYear()}`;
-      setFormData((prev) => ({ ...prev, impactMonth }));
-    }
-  }, [formData.invoiceDate]);
   // 🔥 AUTO FETCH LEDGER NAME BASED ON CLIENT
-  useEffect(() => {
-    const fetchLedger = async () => {
-      // ❌ DO NOT AUTO-FETCH IN ADD MODE
-      if (!selectedInvoice || !formData.client) return;
-
-      const { data } = await supabase
-        .from("clients_master")
-        .select("ledger_name")
-        .eq("client_name", formData.client)
-        .maybeSingle();
-
-      if (data) {
-        setFormData((prev) => ({
-          ...prev,
-          ledgerName: data.ledger_name || "",
-        }));
-      }
-    };
-
-    fetchLedger();
-  }, [formData.client, selectedInvoice]);
 
   // Auto-calculate GST, Invoice Value, TDS, Verto Fee Post TDS
   useEffect(() => {
-    const vertoFee = Number(formData.vertoFee) || 0;
-    const grossValue = Number(formData.grossValue) || 0;
-    const gst = Number(formData.gst) || 0;
-    const tds = Number(formData.tds) || 0;
+
+    const pay = parseFloat(formData.pay);
+    const vertoFee = parseFloat(formData.vertoFee);
+    const grossValue = parseFloat(formData.grossValue);
+    
+    if (isNaN(pay) || isNaN(vertoFee)) return; // 🚨 STOP if invalid
     const dept = formData.department;
 
-    let calculatedGST = gst;
-    let calculatedTDS = tds;
-    let invoiceValue = 0;
-    let vertoFeePostTds = 0;
+    // ✅ TOTAL BASE
+    const baseAmount = vertoFee + pay + (dept === "OS" ? grossValue : 0);
 
-    // 🔥 AUTO CALCULATE ONLY IF EMPTY
-    if (!gst) {
-      calculatedGST =
-        dept === "OS" ? (vertoFee + grossValue) * 0.18 : vertoFee * 0.18;
-    }
+    // ✅ GST
+    const gst = baseAmount * 0.18;
 
-    if (!tds) {
-      calculatedTDS =
-        dept === "OS" ? (vertoFee + grossValue) * 0.02 : vertoFee * 0.1;
-    }
+    // ✅ TDS BASE (FIXED)
+    const tdsBase = pay + vertoFee + (dept === "OS" ? grossValue : 0);
 
-    // ✅ INVOICE VALUE ALWAYS BASED ON CURRENT VALUES
-    invoiceValue =
-      dept === "OS"
-        ? vertoFee + grossValue + calculatedGST
-        : vertoFee + calculatedGST;
+    // ✅ RATE
+    const tdsRate = dept === "OS" ? 0.02 : 0.1;
 
-    // ✅ POST TDS
-    vertoFeePostTds = Math.max(0, vertoFee - calculatedTDS);
+    // ✅ INVOICE VALUE
+    const invoiceValue = baseAmount + gst;
+
+    // ✅ POST TDS (ONLY PAY)
+    // ✅ TOTAL BASE
+    const totalBase = pay + vertoFee + (dept === "OS" ? grossValue : 0);
+
+    // ✅ TDS
+    const tds = totalBase * tdsRate;
 
     // ✅ RECEIVABLE
-    const receivable = invoiceValue - calculatedTDS;
+    const receivable = invoiceValue - tds;
+
+    // ✅ PROPORTIONAL VERT0 SHARE
+    const vertoFeePostTds =
+      totalBase > 0 ? vertoFee - tds * (vertoFee / totalBase) : 0;
 
     setFormData((prev) => ({
       ...prev,
+      gst: gst.toFixed(2),
+      tds: tds.toFixed(2),
       invoiceValue: invoiceValue.toFixed(2),
-      vertoFeePostTds: vertoFeePostTds.toFixed(2),
       receivableRs: receivable.toFixed(2),
+      vertoFeePostTds: vertoFeePostTds.toFixed(2),
     }));
   }, [
+    formData.pay,
     formData.vertoFee,
     formData.grossValue,
-    formData.gst, // 🔥 IMPORTANT
-    formData.tds, // 🔥 IMPORTANT
     formData.department,
   ]);
   // Auto-calculate CTC for OS department
@@ -279,6 +252,7 @@ const AddInvoiceModal = ({
     if (!formData.invoiceNo.trim())
       newErrors.invoiceNo = "Invoice number is required";
     if (!formData.vertoFee) newErrors.vertoFee = "Verto fee is required";
+    if (!formData.pay) newErrors.pay = "Pay is required";
     if (!formData.expectedCollectionDate)
       newErrors.expectedCollectionDate = "Expected collection date is required";
     if (!formData.bankName.trim()) newErrors.bankName = "Bank name is required";
@@ -296,21 +270,20 @@ const AddInvoiceModal = ({
     const tolerance = 50;
 
     const vertoFeeNum = Number(formData.vertoFee) || 0;
+    const payNum = Number(formData.pay) || 0;
     const grossValueNum = Number(formData.grossValue) || 0;
 
-    let expectedGST = 0;
-    let expectedTDS = 0;
-    let expectedInvoice = 0;
+    const base =
+      vertoFeeNum + payNum + (formData.department === "OS" ? grossValueNum : 0);
 
-    if (formData.department === "OS") {
-      expectedGST = 0.18 * (vertoFeeNum + grossValueNum);
-      expectedTDS = 0.02 * (vertoFeeNum + grossValueNum); // ✅ FIXED
-      expectedInvoice = vertoFeeNum + grossValueNum + expectedGST;
-    } else {
-      expectedGST = 0.18 * vertoFeeNum;
-      expectedTDS = 0.1 * vertoFeeNum;
-      expectedInvoice = vertoFeeNum + expectedGST;
-    }
+    const expectedGST = 0.18 * base;
+
+    const tdsBase =
+      payNum + vertoFeeNum + (formData.department === "OS" ? grossValueNum : 0);
+
+    const expectedTDS = tdsBase * (formData.department === "OS" ? 0.02 : 0.1);
+
+    const expectedInvoice = base + expectedGST;
 
     const gstMismatch =
       Math.abs(Number(formData.gst) - expectedGST) > tolerance;
@@ -322,28 +295,38 @@ const AddInvoiceModal = ({
       Math.abs(Number(formData.invoiceValue) - expectedInvoice) > tolerance;
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+
+    if (Object.keys(newErrors).length > 0) return false;
+
+    // 🔥 ALSO CHECK MISMATCH HERE
+    if (gstMismatch || tdsMismatch || invoiceMismatch) {
+      const confirmSave = window.confirm(
+        "⚠️ Values mismatch detected.\nDo you still want to continue?"
+      );
+      return confirmSave;
+    }
+
+    return true;
   };
   // 🔥 ADD THIS ABOVE COMPONENT (GLOBAL CALCULATION)
   const getMismatchData = (formData) => {
     const tolerance = 50;
 
     const vertoFeeNum = Number(formData.vertoFee) || 0;
+    const payNum = Number(formData.pay) || 0;
     const grossValueNum = Number(formData.grossValue) || 0;
 
-    let expectedGST = 0;
-    let expectedTDS = 0;
-    let expectedInvoice = 0;
+    const base =
+      vertoFeeNum + payNum + (formData.department === "OS" ? grossValueNum : 0);
 
-    if (formData.department === "OS") {
-      expectedGST = 0.18 * (vertoFeeNum + grossValueNum);
-      expectedTDS = 0.02 * (vertoFeeNum + grossValueNum);
-      expectedInvoice = vertoFeeNum + grossValueNum + expectedGST;
-    } else {
-      expectedGST = 0.18 * vertoFeeNum;
-      expectedTDS = 0.1 * vertoFeeNum;
-      expectedInvoice = vertoFeeNum + expectedGST;
-    }
+    const expectedGST = 0.18 * base;
+
+    const tdsBase =
+      payNum + vertoFeeNum + (formData.department === "OS" ? grossValueNum : 0);
+
+    const expectedTDS = tdsBase * (formData.department === "OS" ? 0.02 : 0.1);
+
+    const expectedInvoice = base + expectedGST;
 
     const gstMismatch =
       Math.abs(Number(formData.gst) - expectedGST) > tolerance;
@@ -373,28 +356,38 @@ const AddInvoiceModal = ({
     expectedInvoice,
   } = getMismatchData(formData);
 
-  const formatImpactMonth = (monthStr) => {
-    if (!monthStr) return null;
+  const formatImpactMonth = (val) => {
+    if (!val) return null;
 
-    const [month, year] = monthStr.split(" ");
+    const [mm, yy] = val.split("/");
 
-    const months = {
-      Jan: "01",
-      Feb: "02",
-      Mar: "03",
-      Apr: "04",
-      May: "05",
-      Jun: "06",
-      Jul: "07",
-      Aug: "08",
-      Sep: "09",
-      Oct: "10",
-      Nov: "11",
-      Dec: "12",
-    };
-
-    return `${year}-${months[month]}-01`; // ✅ 2026-03-01
+    return `20${yy}-${mm}-01`; // correct format
   };
+
+  useEffect(() => {
+    if (!formData.invoiceDate || formData.department !== "OS") return;
+
+    const invDate = new Date(formData.invoiceDate);
+
+    // Next month
+    const nextMonth = new Date(invDate);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+    const year = nextMonth.getFullYear();
+    const month = nextMonth.getMonth();
+
+    const pfDate = new Date(year, month, 15);
+    const gstDate = new Date(year, month, 21);
+    const taxDate = new Date(year, month, 7);
+
+    setFormData((prev) => ({
+      ...prev,
+      expectedOutflowPF: pfDate.toISOString().split("T")[0],
+      expectedOutflowESI: pfDate.toISOString().split("T")[0],
+      expectedOutflowGST: gstDate.toISOString().split("T")[0],
+      expectedOutflowTax: taxDate.toISOString().split("T")[0],
+    }));
+  }, [formData.invoiceDate, formData.department]);
 
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -402,7 +395,10 @@ const AddInvoiceModal = ({
     setShowErrors(true);
 
     if (!validateForm()) return;
-    if (!formData.payHead.trim()) newErrors.payHead = "Pay Head is required";
+    if (!formData.payHead.trim()) {
+      alert("❌ Pay Head is required");
+      return;
+    }
 
     try {
       console.log("🔥 FORM DATA:", formData);
@@ -455,6 +451,8 @@ const AddInvoiceModal = ({
       console.log("CLIENT ROW:", clientRow);
       console.log("DEPT ROW:", deptRow);
       console.log("ENTITY ROW:", entityRow);
+      console.log("ENTITY:", selectedInvoice.entity_name);
+      console.log("ENTITY LIST:", entities);
 
       // 🚨 Validate master data
       if (!clientRow || !deptRow || !entityRow) {
@@ -476,10 +474,6 @@ const AddInvoiceModal = ({
         }
       }
 
-      if (gstMismatch || tdsMismatch || invoiceMismatch) {
-        console.warn("⚠️ Mismatch detected but saving allowed");
-      }
-
       // 🚨 Mismatch validation
       if (gstMismatch || tdsMismatch || invoiceMismatch) {
         const confirmSave = window.confirm(
@@ -489,11 +483,9 @@ const AddInvoiceModal = ({
         if (!confirmSave) return;
       }
 
-      const selectedBank = banks.find(
-        (b) => b.bank_name === formData.bankName
-      );
-      
-      if (!selectedBank) {
+      const selectedBank = banks.find((b) => b.bank_name === formData.bankName);
+
+      if (!selectedBank || !selectedBank.id) {
         alert("❌ Invalid Bank Selected");
         return;
       }
@@ -508,7 +500,7 @@ const AddInvoiceModal = ({
         impact_month: formatImpactMonth(formData.impactMonth),
         pay_head: formData.payHead,
         bank_id: selectedBank.id,
-        bank_name: selectedBank.bank_name,
+        pay: Number(formData.pay),
 
         verto_fee: Number(formData.vertoFee),
         gst: Number(formData.gst),
@@ -583,7 +575,7 @@ const AddInvoiceModal = ({
       impactMonth: "",
       payHead: "",
       invoiceNo: "",
-      vertoFee: "",
+      pay: "",
       gst: "",
       invoiceValue: "",
       tds: "",
@@ -738,7 +730,7 @@ const AddInvoiceModal = ({
                       <input
                         type="text"
                         list="invoice-clients-list"
-                        value={formData.client}
+                        value={formData.client || ""}
                         onChange={(e) => handleChange("client", e.target.value)}
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
                           showErrors && errors.client
@@ -762,7 +754,7 @@ const AddInvoiceModal = ({
 
                     <input
                       type="text"
-                      value={formData.payHead}
+                      value={formData.payHead || ""}
                       onChange={(e) => handleChange("payHead", e.target.value)}
                       className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg ${
                         showErrors && errors.payHead
@@ -803,7 +795,7 @@ const AddInvoiceModal = ({
                       </label>
                       <input
                         type="date"
-                        value={formData.invoiceDate}
+                        value={formData.invoiceDate || ""}
                         onChange={(e) =>
                           handleChange("invoiceDate", e.target.value)
                         }
@@ -822,12 +814,12 @@ const AddInvoiceModal = ({
                       </label>
                       <input
                         type="text"
-                        value={formData.impactMonth}
+                        value={formData.impactMonth || ""}
                         onChange={(e) =>
                           handleChange("impactMonth", e.target.value)
                         }
-                        className="w-full bg-gray-100 border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                        placeholder="Auto-calculated"
+                        className="w-full bg-white border border-gray-300 px-4 py-2.5 rounded-lg"
+                        placeholder="MM/YY (e.g. 04/26)"
                       />
                       <p className="text-xs text-gray-500 mt-1">
                         Auto from Invoice Date
@@ -849,7 +841,7 @@ const AddInvoiceModal = ({
                       </label>
                       <input
                         type="text"
-                        value={formData.invoiceNo}
+                        value={formData.invoiceNo || ""}
                         onChange={(e) =>
                           handleChange("invoiceNo", e.target.value)
                         }
@@ -863,12 +855,24 @@ const AddInvoiceModal = ({
                       <ErrorMessage error={errors.invoiceNo} />
                     </div>
                     <div>
+                      <label className="block text-xs font-semibold mb-2">
+                        Pay (Service Charge)
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.pay || ""}
+                        onChange={(e) => handleChange("pay", e.target.value)}
+                        className="w-full border px-4 py-2 rounded-lg"
+                        placeholder="₹ 0"
+                      />
+                    </div>
+                    <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
                         Verto Fee <span className="text-rose-600">*</span>
                       </label>
                       <input
                         type="number"
-                        value={formData.vertoFee}
+                        value={formData.vertoFee || ""}
                         onChange={(e) =>
                           handleChange("vertoFee", e.target.value)
                         }
@@ -888,7 +892,7 @@ const AddInvoiceModal = ({
 
                       <input
                         type="number"
-                        value={formData.gst}
+                        value={formData.gst || ""}
                         onChange={(e) => handleChange("gst", e.target.value)}
                         className={`w-full px-4 py-2.5 rounded-lg font-mono ${
                           gstMismatch
@@ -912,7 +916,7 @@ const AddInvoiceModal = ({
                       </label>
                       <input
                         type="number"
-                        value={formData.invoiceValue}
+                        value={formData.invoiceValue || ""}
                         onChange={(e) =>
                           handleChange("invoiceValue", e.target.value)
                         }
@@ -937,7 +941,7 @@ const AddInvoiceModal = ({
                       </label>
                       <input
                         type="number"
-                        value={formData.tds}
+                        value={formData.tds || ""}
                         onChange={(e) => handleChange("tds", e.target.value)}
                         className={`w-full px-4 py-2.5 rounded-lg font-mono ${
                           tdsMismatch
@@ -974,7 +978,7 @@ const AddInvoiceModal = ({
                       </label>
                       <input
                         type="text"
-                        value={formData.receivableRs}
+                        value={formData.receivableRs || ""}
                         readOnly
                         className="w-full bg-gray-100 border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg font-mono"
                         placeholder="Auto-calculated"
@@ -988,7 +992,7 @@ const AddInvoiceModal = ({
                       </label>
                       <input
                         type="date"
-                        value={formData.expectedCollectionDate}
+                        value={formData.expectedCollectionDate || ""}
                         onChange={(e) =>
                           handleChange("expectedCollectionDate", e.target.value)
                         }
@@ -1010,7 +1014,7 @@ const AddInvoiceModal = ({
                       <input
                         type="text"
                         list="banks-list"
-                        value={formData.bankName}
+                        value={formData.bankName || ""}
                         onChange={(e) =>
                           handleChange("bankName", e.target.value)
                         }

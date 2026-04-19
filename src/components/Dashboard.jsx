@@ -128,10 +128,8 @@ const Dashboard = ({
   const [showBounceHistory, setShowBounceHistory] = useState(false);
   const [showCNHistory, setShowCNHistory] = useState(false);
   const fetchBanks = async () => {
-    const { data, error } = await supabase
-      .from("bank_master")
-      .select("*");
-  
+    const { data, error } = await supabase.from("bank_master").select("*");
+
     if (!error) setBanks(data);
   };
 
@@ -172,63 +170,58 @@ const Dashboard = ({
       }
 
       const formatted = data.map((row) => ({
-        // 🔑 PRIMARY KEYS
+        // ✅ PRIMARY
         dbId: row.id,
         id: row.invoice_number,
 
-        // 📅 DATES
-        invDate: row.invoice_date,
-        invDateObj: row.invoice_date ? new Date(row.invoice_date) : new Date(),
-        impactMonth: row.impact_month,
-        expected_collection_date: row.expected_collection_date,
+        // ✅ REQUIRED FOR EDIT
+        invoice_number: row.invoice_number,
+        client_name: row.client_name,
+        dept_code: row.dept_code,
+        entity_name: row.entity_name,
+        ledger_name: row.ledger_name,
 
-        // 🏢 MASTER DATA
+        // ✅ IMPORTANT FIELDS (ONLY ONCE)
+        pay: Number(row.pay ?? 0),
+        pay_head: row.pay_head ?? "",
+        invoice_date: row.invoice_date ?? "",
+        expected_collection_date: row.expected_collection_date ?? "",
+        impact_month: row.impact_month ?? "",
+
+        // ✅ VALUES
+        verto_fee: Number(row.verto_fee ?? 0),
+        gst: Number(row.gst ?? 0),
+        tds: Number(row.tds ?? 0),
+        invoice_value: Number(row.invoice_value ?? 0),
+        receivable_amount: Number(row.receivable_amount ?? 0),
+
+        // ✅ UI
+        invDate: row.invoice_date ?? "",
+        invDateObj: row.invoice_date ? new Date(row.invoice_date) : new Date(),
         dept: row.dept_name,
-        department:
-          row.dept_code === "OS" || row.dept_name === "Outsourcing"
-            ? "OS"
-            : "REC", // 🔥 REQUIRED FOR EDIT
         client: row.client_name,
         entity: row.entity_name,
+        invValue: Number(row.invoice_value ?? 0),
+        vertoFee: Number(row.verto_fee ?? 0),
 
-        // 💰 CORE VALUES
-        invValue: Number(row.invoice_value || 0),
-        vertoFee: Number(row.verto_fee || 0),
-        gst: Number(row.gst || 0),
-        tds: Number(row.tds || 0),
+        // ✅ EXTRA
+        totalReceived: Number(row.amount_received ?? 0),
+        bounce: Number(row.total_bounce ?? 0),
+        cnBadDebt: Number(row.total_cn ?? 0),
+        notRecvd: Number(row.outstanding ?? 0),
+        delayDays: Number(row.delay_days ?? 0),
 
-        // ✅ NEW FIELDS (IMPORTANT ADD)
-        totalReceived: Number(row.amount_received || 0),
-        bounce: Number(row.total_bounce || 0), // keep but will be 0 for now
-        cnBadDebt: Number(row.total_cn || 0),
+        // ✅ OS
+        employee_count: row.employee_count ?? 0,
+        gross_value: row.gross_value ?? 0,
+        net_in_hand: row.net_in_hand ?? 0,
+        co_pf: row.co_pf ?? 0,
+        co_esi: row.co_esi ?? 0,
+        lwf_tax: row.lwf_tax ?? 0,
+        pt_tax: row.pt_tax ?? 0,
+        other_ded: row.other_ded ?? 0,
+        ctc: row.ctc ?? 0,
 
-        // ✅ DERIVED (OPTIONAL BUT GOOD)
-        netReceived:
-          Number(row.amount_received || 0) - Number(row.total_bounce || 0),
-
-        // ✅ FINAL (DO NOT CHANGE THIS)
-        notRecvd: Number(row.outstanding || 0),
-
-        delayDays: Number(row.delay_days || 0),
-
-        // ❗ FIX THIS LINE
-        osDiff:
-          row.dept_name === "Outsourcing"
-            ? Number(row.invoice_value || 0) -
-              Number(row.receivable_amount || 0)
-            : 0,
-        // 🧾 OS DATA (🔥 THIS WAS MISSING BEFORE)
-        employee_count: row.employee_count,
-        gross_value: row.gross_value,
-        net_in_hand: row.net_in_hand,
-        co_pf: row.co_pf,
-        co_esi: row.co_esi,
-        lwf_tax: row.lwf_tax,
-        pt_tax: row.pt_tax,
-        other_ded: row.other_ded,
-        ctc: row.ctc,
-
-        // 🚦 STATUS LOGIC
         status:
           row.outstanding === 0
             ? "paid"
@@ -249,7 +242,7 @@ const Dashboard = ({
 
     // 🔥 Make global refresh available
     window.refreshDashboard = fetchInvoices;
-    window.refreshBanks = fetchBanks;  // ✅ ADD THIS LINE
+    window.refreshBanks = fetchBanks; // ✅ ADD THIS LINE
 
     // 🔥 Realtime listener
     channel = supabase
@@ -546,10 +539,28 @@ const Dashboard = ({
     alert(`Viewing ${type} for ${row.id}`);
   };
 
-  const handleEdit = (type, row) => {
-    console.log("🔥 FULL ROW DATA:", row);
+  const handleEdit = async (type, row) => {
+    console.log("🔥 CLICKED ROW:", row);
 
-    setSelectedInvoiceData(row);
+    // 🔥 FETCH FULL DATA FROM invoice_finance_view
+    const { data, error } = await supabase
+      .from("invoice_finance_view")
+      .select("*")
+      .eq("id", row.dbId)
+      .single();
+
+    if (error) {
+      console.error("❌ Fetch error:", error);
+      alert("Failed to fetch invoice details");
+      return;
+    }
+
+    console.log("🔥 FULL EDIT DATA:", data);
+
+    setSelectedInvoiceData({
+      ...data,
+      dbId: data.id, // 🔥 ADD THIS
+    });
 
     if (type === "CN") {
       setShowCNBadDebtModal(true);
@@ -735,6 +746,8 @@ const Dashboard = ({
           setSelectedInvoiceData(null);
         }}
         selectedInvoice={selectedInvoiceData}
+        entities={entities} // 🔥 ADD THIS
+        clients={clients} // 🔥 ALSO ADD THIS
       />
 
       {/* Filter Bar */}
@@ -1364,9 +1377,24 @@ const Dashboard = ({
                                     View
                                   </button>
                                   <button
-                                    onClick={(e) => {
+                                    onClick={async (e) => {
                                       e.stopPropagation();
-                                      setSelectedInvoiceData(row);
+
+                                      const { data, error } = await supabase
+                                        .from("invoice_finance_view")
+                                        .select("*")
+                                        .eq("id", row.dbId)
+                                        .single();
+
+                                      if (error) {
+                                        alert("Error fetching invoice");
+                                        return;
+                                      }
+
+                                      setSelectedInvoiceData({
+                                        ...data,
+                                        dbId: data.id, // 🔥 IMPORTANT FIX
+                                      });
                                       setShowInvoiceModal(true);
                                     }}
                                     className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors text-sm font-medium"
