@@ -164,12 +164,15 @@ const AddInvoiceModal = ({
   // Auto-calculate GST, Invoice Value, TDS, Verto Fee Post TDS
   useEffect(() => {
 
+    if (selectedInvoice) return;
+    
     const pay = parseFloat(formData.pay);
     const vertoFee = parseFloat(formData.vertoFee);
     const grossValue = parseFloat(formData.grossValue);
     
     if (isNaN(pay) || isNaN(vertoFee)) return; // 🚨 STOP if invalid
     const dept = formData.department;
+    
 
     // ✅ TOTAL BASE
     const baseAmount = vertoFee + pay + (dept === "OS" ? grossValue : 0);
