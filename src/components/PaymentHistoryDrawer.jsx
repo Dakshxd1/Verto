@@ -12,9 +12,12 @@ const PaymentHistoryDrawer = ({ invoice, isOpen, onClose }) => {
 
     const fetchPayments = async () => {
       const { data, error } = await supabase
+
         .from("payment_history_view")
         .select("*")
-        .eq("invoice_number", invoice.id);
+        .eq("invoice_id", invoice.dbId);
+      console.log("🔥 INVOICE FULL:", invoice);
+      console.log("🔥 USING DB ID:", invoice.dbId);
 
       if (error) {
         console.error("Payment history error:", error);

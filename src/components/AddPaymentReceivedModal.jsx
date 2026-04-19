@@ -187,6 +187,17 @@ const AddPaymentReceivedModal = ({
     };
 
     try {
+      // 🔥 CHECK REMAINING AMOUNT
+      const remaining = Number(invoiceDetails?.outstanding || 0);
+      const enteredAmount = Number(formData.amountReceived);
+
+      console.log("REMAINING:", remaining);
+      console.log("ENTERED:", enteredAmount);
+
+      if (enteredAmount > remaining) {
+        alert(`❌ Payment cannot exceed remaining amount (₹ ${remaining})`);
+        return;
+      }
       const { error: paymentError } = await supabase
         .from("payments_received")
         .insert([
@@ -224,29 +235,7 @@ const AddPaymentReceivedModal = ({
           invoice_id: invoiceDetails?.id || null,
         },
       ]);
-      const { data: existing } = await supabase
-        .from("software_entries")
-        .select("id")
-        .eq("date", formData.dateReceived)
-        .eq("amount", Number(formData.amountReceived))
-        .eq("invoice_id", invoiceDetails?.id || null)
-        .maybeSingle();
 
-      if (!existing) {
-        const { error: softwareError } = await supabase
-          .from("software_entries")
-          .insert([
-            {
-              bank_id: formData.bankId,
-              entity: formData.entity || "Pvt Ltd",
-              amount: Number(formData.amountReceived),
-              date: formData.dateReceived,
-              remarks: "Auto from payment",
-            },
-          ]);
-
-        if (softwareError) throw softwareError;
-      }
       if (bankError) throw bankError;
 
       alert("✅ Payment saved successfully");
