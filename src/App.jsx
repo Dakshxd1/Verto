@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "./context/AuthContext";
+import Login from "./pages/Login";
+import UserManagement from "./pages/UserManagement";
+import supabase from "./lib/supabaseClient";
 import {
   LayoutDashboard,
   TrendingUp,
@@ -35,6 +39,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showUserManagement, setShowUserManagement] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showCNBadDebtModal, setShowCNBadDebtModal] = useState(false);
@@ -82,6 +87,10 @@ useEffect(() => {
     "PI-GL-200123-01",
     "PI-SO-250123-01",
   ];
+  const { user, role, loading } = useAuth();
+
+if (loading) return <div>Loading...</div>;
+if (!user) return <Login />;
 
   // Navigation Items Configuration
   const navItems = [
@@ -203,7 +212,15 @@ useEffect(() => {
             )}
           </AnimatePresence>
 
-          {navItems.map((item, idx) => (
+          {navItems.map((item, idx) => {
+
+  // 🔴 MANAGER restriction
+  if (role === "manager" && item.id === "bank-reco") return null;
+
+  // 🔴 EMPLOYEE restriction (hide all main modules)
+  if (role === "employee") return null;
+
+  return (
             <motion.button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
@@ -257,7 +274,8 @@ useEffect(() => {
                 />
               )}
             </motion.button>
-          ))}
+       );
+})}
 
           {/* Quick Actions Section */}
           <div className="mt-8">
@@ -348,73 +366,90 @@ useEffect(() => {
           <div className="absolute top-1/2 -left-20 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl"></div>
         </div>
 
-        {/* Header */}
-        <header className="h-16 bg-white/80 backdrop-blur-xl border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-8 z-10 sticky top-0 shadow-sm">
-          <div>
-            <motion.h1
-              key={activeTab}
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-xl font-semibold text-gray-900"
-            >
-              {navItems.find((n) => n.id === activeTab)?.label}
-            </motion.h1>
-            <p className="text-xs text-gray-500">
-              {navItems.find((n) => n.id === activeTab)?.desc}
-            </p>
-          </div>
+{/* Header */}
+<header className="h-16 bg-white/80 backdrop-blur-xl border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-8 z-10 sticky top-0 shadow-sm">
+  <div>
+    <motion.h1
+      key={activeTab}
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="text-xl font-semibold text-gray-900"
+    >
+      {navItems.find((n) => n.id === activeTab)?.label}
+    </motion.h1>
+    <p className="text-xs text-gray-500">
+      {navItems.find((n) => n.id === activeTab)?.desc}
+    </p>
+  </div>
 
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-3 relative">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium text-gray-900">Admin User</p>
-                <p className="text-xs text-gray-500">Finance Manager</p>
-              </div>
-              <button
-                onClick={() => setShowProfileMenu(!showProfileMenu)}
-                className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-blue-500 border-2 border-white shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
-              ></button>
+  <div className="flex items-center space-x-4">
+    <div className="flex items-center space-x-3 relative">
+      <div className="text-right hidden sm:block">
+        <p className="text-sm font-medium text-gray-900">Admin User</p>
+        <p className="text-xs text-gray-500">Finance Manager</p>
+      </div>
+      <button
+        onClick={() => setShowProfileMenu(!showProfileMenu)}
+        className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-blue-500 border-2 border-white shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
+      ></button>
 
-              {/* Profile Dropdown Menu */}
-              <AnimatePresence>
-                {showProfileMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                    transition={{ duration: 0.2 }}
-                    className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl py-2 z-50"
-                  >
-                    <div className="px-4 py-3 border-b border-gray-100">
-                      <p className="text-sm font-medium text-gray-900">
-                        Admin User
-                      </p>
-                      <p className="text-xs text-gray-500">admin@verto.com</p>
-                    </div>
-                    <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                      <Settings className="w-4 h-4" />
-                      <span>Account Settings</span>
-                    </button>
-                    <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                      <Users className="w-4 h-4" />
-                      <span>Manage Team</span>
-                    </button>
-                    <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                      <Activity className="w-4 h-4" />
-                      <span>Activity Log</span>
-                    </button>
-                    <div className="border-t border-gray-100 mt-1 pt-1">
-                      <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 transition-colors">
-                        <LogOut className="w-4 h-4" />
-                        <span>Logout</span>
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+      {/* Profile Dropdown Menu */}
+      <AnimatePresence>
+        {showProfileMenu && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl py-2 z-50"
+          >
+            <div className="px-4 py-3 border-b border-gray-100">
+              <p className="text-sm font-medium text-gray-900">Admin User</p>
+              <p className="text-xs text-gray-500">admin@verto.com</p>
             </div>
-          </div>
-        </header>
+
+            <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+              <Settings className="w-4 h-4" />
+              <span>Account Settings</span>
+            </button>
+
+            {/* ✅ ADMIN ONLY */}
+            {role === "admin" && (
+              <button
+                onClick={() => {
+                  setShowUserManagement(true);
+                  setShowProfileMenu(false);
+                }}
+                className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <Users className="w-4 h-4" />
+                <span>Manage Team</span>
+              </button>
+            )}
+
+            <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+              <Activity className="w-4 h-4" />
+              <span>Activity Log</span>
+            </button>
+
+            <div className="border-t border-gray-100 mt-1 pt-1">
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  window.location.reload();
+                }}
+                className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Logout</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  </div>
+</header>
 
         {/* Dynamic Content */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-4 sm:p-6 lg:p-8 relative z-0">
@@ -427,22 +462,35 @@ useEffect(() => {
               transition={{ duration: 0.3, ease: "easeOut" }}
               className="max-w-7xl mx-auto"
             >
-              {activeTab === "dashboard" && (
-                <Dashboard
-                  refreshFlag={refreshFlag}
-                  setShowInvoiceModal={setShowInvoiceModal}
-                  setShowPaymentModal={setShowPaymentModal}
-                  setShowCNBadDebtModal={setShowCNBadDebtModal}
-                  setShowBounceBackModal={setShowBounceBackModal}
-                  setSelectedInvoice={setSelectedInvoice}
-                />
-              )}
-              {activeTab === "pl-center" && <ProfitCenterPL />}
-              {activeTab === "ledger" && <LedgerPage />}
-              {activeTab === "pl-client" && <ClientPL />}
-              {activeTab === "internal-cost" && <InternalCost />}
-              {activeTab === "internal-team" && <InternalTeamDetails />}
-              {activeTab === "bank-reco" && <BankReco />}
+             {role !== "employee" ? (
+  <>
+    {activeTab === "dashboard" && (
+      <Dashboard
+        refreshFlag={refreshFlag}
+        setShowInvoiceModal={setShowInvoiceModal}
+        setShowPaymentModal={setShowPaymentModal}
+        setShowCNBadDebtModal={setShowCNBadDebtModal}
+        setShowBounceBackModal={setShowBounceBackModal}
+        setSelectedInvoice={setSelectedInvoice}
+      />
+    )}
+
+    {activeTab === "pl-center" && <ProfitCenterPL />}
+    {activeTab === "ledger" && <LedgerPage />}
+    {activeTab === "pl-client" && <ClientPL />}
+    {activeTab === "internal-cost" && <InternalCost />}
+    {activeTab === "internal-team" && <InternalTeamDetails />}
+
+    {/* 🔴 Manager restriction inside content */}
+    {!(role === "manager" && activeTab === "bank-reco") && (
+      activeTab === "bank-reco" && <BankReco />
+    )}
+  </>
+) : (
+  <div className="text-center text-gray-500 py-10">
+    Use Quick Actions from sidebar
+  </div>
+)}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -508,6 +556,22 @@ useEffect(() => {
         isOpen={showExpenseDetailsManModal}
         onClose={() => setShowExpenseDetailsManModal(false)}
       />
+      {showUserManagement && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div className="bg-white p-6 rounded-lg w-[500px] relative">
+
+      <button
+        onClick={() => setShowUserManagement(false)}
+        className="absolute top-2 right-2 text-red-500"
+      >
+        ✖
+      </button>
+
+      <UserManagement />
+
+    </div>
+  </div>
+)}
     </div>
   );
 };

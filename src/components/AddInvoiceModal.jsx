@@ -2,12 +2,11 @@ import React, { useState, useEffect } from "react";
 import supabase from "../lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowRight, AlertCircle, Calculator } from "lucide-react";
-
+import { useAuth } from "../context/AuthContext";
 const customRound = (num) => {
   const decimal = num - Math.floor(num);
   return decimal >= 0.75 ? Math.ceil(num) : Math.floor(num);
 };
-
 const AddInvoiceModal = ({
   isOpen,
   onClose,
@@ -15,7 +14,7 @@ const AddInvoiceModal = ({
   entities = [],
   selectedInvoice,
 }) => {
-  // Local form state
+  const { role } = useAuth();
   const [formData, setFormData] = useState({
     invoiceEntity: "",
     department: "",
@@ -434,180 +433,185 @@ const AddInvoiceModal = ({
     }));
   }, [formData.invoiceDate, formData.department]);
 
-  // Handle form submission
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setShowErrors(true);
+// Handle form submission
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setShowErrors(true);
 
-    if (!validateForm()) return;
-    if (!formData.payHead.trim()) {
-      alert("❌ Pay Head is required");
+  try {
+    let clientRow;
+
+    if (!formData.client) {
+      alert("❌ Client is required");
       return;
     }
 
-    try {
-      console.log("🔥 FORM DATA:", formData);
+    const { data: existingClient } = await supabase
+      .from("clients_master")
+      .select("id")
+      .ilike("client_name", `%${formData.client}%`)
+      .maybeSingle();
 
-      // 🔹 Get master IDs
-      let { data: clientRow } = await supabase
+    clientRow = existingClient;
+
+    if (!clientRow) {
+      // 🔴 Restrict non-admin
+      if (role !== "admin") {
+        alert("❌ Only admin can create new client");
+        return;
+      }
+
+      const { data: newClient, error: insertError } = await supabase
         .from("clients_master")
-        .select("id")
-        .eq("client_name", formData.client)
-        .maybeSingle();
+        .insert([
+          {
+            client_name: formData.client,
+            ledger_name: formData.ledgerName || formData.client,
+          },
+        ])
+        .select()
+        .single();
 
-      // ✅ If client does NOT exist → CREATE it
-      if (!clientRow) {
-        const { data: newClient, error: insertError } = await supabase
-          .from("clients_master")
-          .insert([
-            {
-              client_name: formData.client,
-              ledger_name: formData.ledgerName || formData.client,
-            },
-          ])
-          .select()
-          .single();
-
-        if (insertError) {
-          alert("❌ Failed to create new client");
-          return;
-        }
-
-        clientRow = newClient;
-      }
-
-      const { data: deptRow } = await supabase
-        .from("departments_master")
-        .select("id")
-        .eq("dept_code", formData.department?.trim())
-        .maybeSingle();
-
-      const { data: entityRow } = await supabase
-        .from("entity_master")
-        .select("id")
-        .ilike("entity_name", `%${formData.invoiceEntity}%`)
-        .maybeSingle();
-
-      console.log("DEBUG CHECK 👉");
-      console.log("CLIENT INPUT:", formData.client);
-      console.log("DEPT INPUT:", formData.department);
-      console.log("ENTITY INPUT:", formData.invoiceEntity);
-
-      console.log("CLIENT ROW:", clientRow);
-      console.log("DEPT ROW:", deptRow);
-      console.log("ENTITY ROW:", entityRow);
-      console.log("ENTITY:", selectedInvoice?.entity_name);
-      console.log("ENTITY LIST:", entities);
-
-      // 🚨 Validate master data
-      if (!clientRow || !deptRow || !entityRow) {
-        alert("❌ Invalid master data. Check client/entity/department.");
+      if (insertError) {
+        alert("❌ Failed to create new client");
         return;
       }
 
-      // 🚫 Duplicate check ONLY for NEW invoice
-      if (!selectedInvoice) {
-        const { data: existing } = await supabase
-          .from("invoices")
-          .select("id")
-          .eq("invoice_number", formData.invoiceNo)
-          .maybeSingle();
-
-        if (existing) {
-          alert("❌ Invoice number already exists");
-          return;
-        }
-      }
-
-      // 🚨 Mismatch validation
-      if (gstMismatch || tdsMismatch || invoiceMismatch) {
-        const confirmSave = window.confirm(
-          "⚠️ Values mismatch detected.\nDo you still want to save?"
-        );
-
-        if (!confirmSave) return;
-      }
-
-      const selectedBank = banks.find((b) => b.bank_name === formData.bankName);
-
-      if (!selectedBank || !selectedBank.id) {
-        alert("❌ Invalid Bank Selected");
-        return;
-      }
-
-      // 📦 Common data
-      const payload = {
-        invoice_number: formData.invoiceNo,
-        client_id: clientRow.id,
-        department_id: deptRow.id,
-        entity_id: entityRow.id,
-        invoice_date: formData.invoiceDate,
-        impact_month: formatImpactMonth(formData.impactMonth),
-        pay_head: formData.payHead,
-        bank_id: selectedBank.id,
-        pay: Number(formData.pay),
-
-        verto_fee: Number(formData.vertoFee),
-        gst: Number(formData.gst),
-        invoice_value: Number(formData.invoiceValue),
-        tds: Number(formData.tds),
-        receivable_amount: Number(formData.receivableRs),
-        expected_collection_date: formData.expectedCollectionDate,
-
-        // ✅ OS fields
-        employee_count: Number(formData.employeeCount) || 0,
-        gross_value: Number(formData.grossValue) || 0,
-        net_in_hand: Number(formData.netInHand) || 0,
-        co_pf: Number(formData.coPF) || 0,
-        co_esi: Number(formData.coESI) || 0,
-        lwf_tax: Number(formData.lwfTax) || 0,
-        pt_tax: Number(formData.ptTax) || 0,
-        other_ded: Number(formData.otherDed) || 0,
-        ctc: Number(formData.ctc) || 0,
-      };
-
-      let error;
-
-      // 🔥 ✅ MAIN LOGIC (INSERT vs UPDATE)
-      if (selectedInvoice) {
-        console.log("🔥 UPDATE MODE");
-
-        const res = await supabase
-          .from("invoices")
-          .update(payload)
-          .eq("id", selectedInvoice.dbId);
-
-        error = res.error;
-      } else {
-        console.log("🔥 INSERT MODE");
-
-        const res = await supabase.from("invoices").insert([payload]);
-        error = res.error;
-      }
-
-      // ❌ Error handling
-      if (error) {
-        console.error("DB Error:", error);
-        alert("❌ Failed: " + error.message);
-        return;
-      }
-
-      // ✅ Success
-      alert(selectedInvoice ? "✅ Invoice updated" : "✅ Invoice created");
-
-      // 🔄 Refresh dashboard
-      if (window.refreshClients) {
-        window.refreshClients(); // reload client list globally
-      }
-
-      // 🔄 Reset + close
-      resetForm();
-      onClose();
-    } catch (err) {
-      console.error("❌ Supabase error:", err);
-      alert("❌ Unexpected error");
+      clientRow = newClient;
     }
-  };
+
+    const { data: deptRow } = await supabase
+      .from("departments_master")
+      .select("id")
+      .eq("dept_code", formData.department?.trim())
+      .maybeSingle();
+
+    const { data: entityRow } = await supabase
+      .from("entity_master")
+      .select("id")
+      .ilike("entity_name", `%${formData.invoiceEntity}%`)
+      .maybeSingle();
+
+    console.log("DEBUG CHECK 👉");
+    console.log("CLIENT INPUT:", formData.client);
+    console.log("DEPT INPUT:", formData.department);
+    console.log("ENTITY INPUT:", formData.invoiceEntity);
+
+    console.log("CLIENT ROW:", clientRow);
+    console.log("DEPT ROW:", deptRow);
+    console.log("ENTITY ROW:", entityRow);
+    console.log("ENTITY:", selectedInvoice?.entity_name);
+    console.log("ENTITY LIST:", entities);
+
+    // 🚨 Validate master data
+    if (!clientRow || !deptRow || !entityRow) {
+      alert("❌ Invalid master data. Check client/entity/department.");
+      return;
+    }
+
+    // 🚫 Duplicate check ONLY for NEW invoice
+    if (!selectedInvoice) {
+      const { data: existing } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("invoice_number", formData.invoiceNo)
+        .maybeSingle();
+
+      if (existing) {
+        alert("❌ Invoice number already exists");
+        return;
+      }
+    }
+
+    // 🚨 Mismatch validation
+    if (gstMismatch || tdsMismatch || invoiceMismatch) {
+      const confirmSave = window.confirm(
+        "⚠️ Values mismatch detected.\nDo you still want to save?"
+      );
+
+      if (!confirmSave) return;
+    }
+
+    const selectedBank = banks.find((b) => b.bank_name === formData.bankName);
+
+    if (!selectedBank || !selectedBank.id) {
+      alert("❌ Invalid Bank Selected");
+      return;
+    }
+
+    // 📦 Common data
+    const payload = {
+      invoice_number: formData.invoiceNo,
+      client_id: clientRow.id,
+      department_id: deptRow.id,
+      entity_id: entityRow.id,
+      invoice_date: formData.invoiceDate,
+      impact_month: formatImpactMonth(formData.impactMonth),
+      pay_head: formData.payHead,
+      bank_id: selectedBank.id,
+      pay: Number(formData.pay),
+
+      verto_fee: Number(formData.vertoFee),
+      gst: Number(formData.gst),
+      invoice_value: Number(formData.invoiceValue),
+      tds: Number(formData.tds),
+      receivable_amount: Number(formData.receivableRs),
+      expected_collection_date: formData.expectedCollectionDate,
+
+      // ✅ OS fields
+      employee_count: Number(formData.employeeCount) || 0,
+      gross_value: Number(formData.grossValue) || 0,
+      net_in_hand: Number(formData.netInHand) || 0,
+      co_pf: Number(formData.coPF) || 0,
+      co_esi: Number(formData.coESI) || 0,
+      lwf_tax: Number(formData.lwfTax) || 0,
+      pt_tax: Number(formData.ptTax) || 0,
+      other_ded: Number(formData.otherDed) || 0,
+      ctc: Number(formData.ctc) || 0,
+    };
+
+    let error;
+
+    // 🔥 ✅ MAIN LOGIC (INSERT vs UPDATE)
+    if (selectedInvoice) {
+      console.log("🔥 UPDATE MODE");
+
+      const res = await supabase
+        .from("invoices")
+        .update(payload)
+        .eq("id", selectedInvoice.dbId);
+
+      error = res.error;
+    } else {
+      console.log("🔥 INSERT MODE");
+
+      const res = await supabase.from("invoices").insert([payload]);
+      error = res.error;
+    }
+
+    // ❌ Error handling
+    if (error) {
+      console.error("DB Error:", error);
+      alert("❌ Failed: " + error.message);
+      return;
+    }
+
+    // ✅ Success
+    alert(selectedInvoice ? "✅ Invoice updated" : "✅ Invoice created");
+
+    // 🔄 Refresh dashboard
+    if (window.refreshClients) {
+      window.refreshClients(); // reload client list globally
+    }
+
+    // 🔄 Reset + close
+    resetForm();
+    onClose();
+  } catch (err) {
+    console.error("❌ Supabase error:", err);
+    alert("❌ Unexpected error");
+  }
+};
 
   // Reset form to initial state
   const resetForm = () => {
