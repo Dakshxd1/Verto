@@ -3,6 +3,11 @@ import supabase from "../lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowRight, AlertCircle, Calculator } from "lucide-react";
 
+const customRound = (num) => {
+  const decimal = num - Math.floor(num);
+  return decimal >= 0.75 ? Math.ceil(num) : Math.floor(num);
+};
+
 const AddInvoiceModal = ({
   isOpen,
   onClose,
@@ -21,6 +26,7 @@ const AddInvoiceModal = ({
     impactMonth: "",
     invoiceNo: "",
     pay: "",
+    tdsPercent: "",
     vertoFee: "",
     gst: "",
     invoiceValue: "",
@@ -76,6 +82,7 @@ const AddInvoiceModal = ({
 
   useEffect(() => {
     if (!selectedInvoice || banks.length === 0) return;
+    setIsManualTds(false);
 
     console.log("🔥 EDIT DATA FULL:", selectedInvoice);
 
@@ -129,6 +136,7 @@ const AddInvoiceModal = ({
 
   const [errors, setErrors] = useState({});
   const [showErrors, setShowErrors] = useState(false);
+  const [isManualTds, setIsManualTds] = useState(false);
 
   // Department options
   const departments = [
@@ -154,6 +162,12 @@ const AddInvoiceModal = ({
   // Single handleChange function
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+
+    // 🔥 RESET manual TDS when base fields change
+    if (["pay", "vertoFee", "tdsPercent"].includes(field)) {
+      setIsManualTds(false);
+    }
+
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: "" }));
     }
@@ -164,15 +178,12 @@ const AddInvoiceModal = ({
   // Auto-calculate GST, Invoice Value, TDS, Verto Fee Post TDS
   useEffect(() => {
 
-    if (selectedInvoice) return;
-    
     const pay = parseFloat(formData.pay);
     const vertoFee = parseFloat(formData.vertoFee);
     const grossValue = parseFloat(formData.grossValue);
-    
+
     if (isNaN(pay) || isNaN(vertoFee)) return; // 🚨 STOP if invalid
     const dept = formData.department;
-    
 
     // ✅ TOTAL BASE
     const baseAmount = vertoFee + pay + (dept === "OS" ? grossValue : 0);
@@ -184,7 +195,13 @@ const AddInvoiceModal = ({
     const tdsBase = pay + vertoFee + (dept === "OS" ? grossValue : 0);
 
     // ✅ RATE
-    const tdsRate = dept === "OS" ? 0.02 : 0.1;
+    let tdsRate;
+
+    if (formData.tdsPercent) {
+      tdsRate = Number(formData.tdsPercent) / 100;
+    } else {
+      tdsRate = dept === "OS" ? 0.02 : 0.1;
+    }
 
     // ✅ INVOICE VALUE
     const invoiceValue = baseAmount + gst;
@@ -197,25 +214,38 @@ const AddInvoiceModal = ({
     const tds = totalBase * tdsRate;
 
     // ✅ RECEIVABLE
-    const receivable = invoiceValue - tds;
+    const finalTds = isManualTds
+  ? Number(formData.tds) || 0
+  : tds;
+    const receivable = invoiceValue - finalTds;
 
     // ✅ PROPORTIONAL VERT0 SHARE
     const vertoFeePostTds =
-      totalBase > 0 ? vertoFee - tds * (vertoFee / totalBase) : 0;
+      totalBase > 0 ? vertoFee - finalTds * (vertoFee / totalBase) : 0;
 
     setFormData((prev) => ({
       ...prev,
       gst: gst.toFixed(2),
-      tds: tds.toFixed(2),
-      invoiceValue: invoiceValue.toFixed(2),
-      receivableRs: receivable.toFixed(2),
+      tds: isManualTds ? formData.tds : tds.toFixed(2),
+
+      // ✅ ROUND APPLIED HERE
+      invoiceValue: customRound(invoiceValue),
+
+      // ✅ ROUND APPLIED HERE
+      receivableRs: customRound(receivable),
+
       vertoFeePostTds: vertoFeePostTds.toFixed(2),
     }));
   }, [
-    formData.pay,
-    formData.vertoFee,
-    formData.grossValue,
-    formData.department,
+    [
+      formData.pay,
+      formData.vertoFee,
+      formData.grossValue,
+      formData.department,
+      formData.tdsPercent,
+      formData.tds,
+      isManualTds
+    ]
   ]);
   // Auto-calculate CTC for OS department
   useEffect(() => {
@@ -284,7 +314,13 @@ const AddInvoiceModal = ({
     const tdsBase =
       payNum + vertoFeeNum + (formData.department === "OS" ? grossValueNum : 0);
 
-    const expectedTDS = tdsBase * (formData.department === "OS" ? 0.02 : 0.1);
+    const expectedTDS =
+      tdsBase *
+      (formData.tdsPercent
+        ? Number(formData.tdsPercent) / 100
+        : formData.department === "OS"
+        ? 0.02
+        : 0.1);
 
     const expectedInvoice = base + expectedGST;
 
@@ -327,7 +363,13 @@ const AddInvoiceModal = ({
     const tdsBase =
       payNum + vertoFeeNum + (formData.department === "OS" ? grossValueNum : 0);
 
-    const expectedTDS = tdsBase * (formData.department === "OS" ? 0.02 : 0.1);
+      const expectedTDS =
+      tdsBase *
+      (formData.tdsPercent
+        ? Number(formData.tdsPercent) / 100
+        : formData.department === "OS"
+        ? 0.02
+        : 0.1);
 
     const expectedInvoice = base + expectedGST;
 
@@ -454,7 +496,7 @@ const AddInvoiceModal = ({
       console.log("CLIENT ROW:", clientRow);
       console.log("DEPT ROW:", deptRow);
       console.log("ENTITY ROW:", entityRow);
-      console.log("ENTITY:", selectedInvoice.entity_name);
+      console.log("ENTITY:", selectedInvoice?.entity_name);
       console.log("ENTITY LIST:", entities);
 
       // 🚨 Validate master data
@@ -865,7 +907,7 @@ const AddInvoiceModal = ({
                         type="number"
                         value={formData.pay || ""}
                         onChange={(e) => handleChange("pay", e.target.value)}
-                        className="w-full border px-4 py-2 rounded-lg"
+                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20`}
                         placeholder="₹ 0"
                       />
                     </div>
@@ -939,13 +981,31 @@ const AddInvoiceModal = ({
                     </div>
 
                     <div>
+                      <label className="block text-xs font-semibold mb-2">
+                        TDS %
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.tdsPercent || ""}
+                        onChange={(e) =>
+                          handleChange("tdsPercent", e.target.value)
+                        }
+                        className="w-full bg-white border px-4 py-2.5 rounded-lg"
+                        placeholder="Enter %"
+                      />
+                    </div>
+
+                    <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
                         TDS
                       </label>
                       <input
                         type="number"
                         value={formData.tds || ""}
-                        onChange={(e) => handleChange("tds", e.target.value)}
+                        onChange={(e) => {
+                          handleChange("tds", e.target.value);
+                          setIsManualTds(true); // 🔥 mark manual override
+                        }}
                         className={`w-full px-4 py-2.5 rounded-lg font-mono ${
                           tdsMismatch
                             ? "border-red-500 bg-red-50"
