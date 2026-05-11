@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactDOM from 'react-dom';
+import { useAuth } from '../context/AuthContext';
+import supabase from '../lib/supabaseClient';
 import { 
   Search, 
   Download, 
@@ -30,11 +32,15 @@ const generateTeamData = () => {
   
   return Array.from({ length: 15 }).map((_, i) => {
     const ctc = Math.floor(300000 + Math.random() * 900000);
+    const name = names[Math.floor(Math.random() * names.length)];
+    const normalizedName = name.toLowerCase().replace(/\s+/g, '.');
     return {
       id: `EMP${String(i + 1).padStart(3, '0')}`,
       department: departments[Math.floor(Math.random() * departments.length)],
       empCode: `EMP${String(i + 1).padStart(3, '0')}`,
-      name: names[Math.floor(Math.random() * names.length)],
+      name,
+      email: `${normalizedName}.${i + 1}@verto.com`,
+      role: 'employee',
       fatherName: 'Father ' + names[Math.floor(Math.random() * names.length)].split(' ')[1],
       designation: designations[Math.floor(Math.random() * designations.length)],
       location: locations[Math.floor(Math.random() * locations.length)],
@@ -53,6 +59,7 @@ const generateTeamData = () => {
 };
 
 const InternalTeamDetails = () => {
+  const { role } = useAuth();
   const [data] = useState(() => generateTeamData());
   const [searchTerm, setSearchTerm] = useState('');
   const [deptFilter, setDeptFilter] = useState('All');
@@ -62,12 +69,46 @@ const InternalTeamDetails = () => {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
+  const [teamRoles, setTeamRoles] = useState([]);
+  const [roleLoading, setRoleLoading] = useState(true);
   const itemsPerPage = 7;
 
-  let filteredData = data.filter(row => {
+  useEffect(() => {
+    const loadTeamRoles = async () => {
+      setRoleLoading(true);
+      const { data: rolesData, error } = await supabase
+        .from('user_roles')
+        .select('email, role');
+      if (error) {
+        console.error('Error loading user_roles:', error);
+        setTeamRoles([]);
+      } else {
+        setTeamRoles(rolesData ?? []);
+      }
+      setRoleLoading(false);
+    };
+
+    loadTeamRoles();
+  }, []);
+
+  const mergedData = useMemo(() => {
+    if (!teamRoles.length) return data;
+    return data.map((row) => {
+      const match = teamRoles.find((item) => item.email === row.email);
+      return {
+        ...row,
+        role: match?.role ?? row.role,
+        email: match?.email ?? row.email,
+      };
+    });
+  }, [data, teamRoles]);
+
+  let filteredData = mergedData.filter(row => {
     const matchesSearch = row.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           row.empCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          row.designation.toLowerCase().includes(searchTerm.toLowerCase());
+                          row.designation.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          row.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          row.role.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDept = deptFilter === 'All' || row.department === deptFilter;
     const matchesStatus = statusFilter === 'All' || row.status === statusFilter;
     return matchesSearch && matchesDept && matchesStatus;
@@ -122,6 +163,7 @@ const InternalTeamDetails = () => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
+
 
   const handleEdit = (employee) => {
     console.log('handleEdit called with employee:', employee);
@@ -189,6 +231,7 @@ const InternalTeamDetails = () => {
         </div>
       </Card>
 
+
       {/* Main Table */}
       <Card className="overflow-hidden">
         <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
@@ -201,7 +244,7 @@ const InternalTeamDetails = () => {
           </span>
         </div>
         
-        <div className="overflow-auto max-h-[600px]">
+        <div className="overflow-auto max-h-150">
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
@@ -228,6 +271,12 @@ const InternalTeamDetails = () => {
                     <span>Location</span>
                     <SortIcon columnKey="location" />
                   </div>
+                </th>
+                <th className="p-3 cursor-pointer hover:bg-gray-100 transition-colors">
+                  <span>Email</span>
+                </th>
+                <th className="p-3 text-center cursor-pointer hover:bg-gray-100 transition-colors">
+                  <span>Role</span>
                 </th>
                 <th className="p-3 text-right cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('ctc')}>
                   <div className="flex items-center justify-end space-x-2">
@@ -259,18 +308,23 @@ const InternalTeamDetails = () => {
                   <td className="p-3 font-medium text-gray-900">{row.name}</td>
                   <td className="p-3 text-gray-700">{row.designation}</td>
                   <td className="p-3 text-gray-600">{row.location}</td>
+                  <td className="p-3 text-gray-700 break-all">{row.email}</td>
+                  <td className="p-3 text-center text-sm font-medium text-slate-900">{row.role || 'employee'}</td>
                   <td className="p-3 text-right font-mono font-medium text-gray-900">{formatCurrency(row.ctc)}</td>
                   <td className="p-3 text-right font-mono text-gray-600">{formatCurrency(row.variable)}</td>
                   <td className="p-3 text-center">
                     <button
-                      onClick={() => setSelectedEmployee(row)}
+                      onClick={() => {
+                        setSelectedEmployee(row);
+                        setResetEmail(row.email);
+                      }}
                       className="inline-flex items-center space-x-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-xs font-medium"
                     >
                       <Eye className="w-3.5 h-3.5" />
                       <span>View Details</span>
                     </button>
                   </td>
-                </motion.tr>
+                  </motion.tr>
               ))}
             </tbody>
           </table>
@@ -329,7 +383,7 @@ const InternalTeamDetails = () => {
 
       {/* Employee Detail Modal */}
       {selectedEmployee && ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[99999]">
+        <div className="fixed inset-0 z-99999">
           {/* Backdrop */}
           <motion.div 
             initial={{ opacity: 0 }}
@@ -349,7 +403,7 @@ const InternalTeamDetails = () => {
               className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto pointer-events-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-700 text-white flex justify-between items-center sticky top-0 z-10">
+              <div className="p-6 border-b border-gray-200 bg-linear-to-r from-blue-600 to-indigo-700 text-white flex justify-between items-center sticky top-0 z-10">
                 <div>
                   <h3 className="text-lg font-bold flex items-center">
                     <Users className="w-5 h-5 mr-2" />
@@ -387,6 +441,10 @@ const InternalTeamDetails = () => {
                       <p className="text-sm font-medium text-gray-900 mt-1">
                         <Badge variant="secondary">{selectedEmployee.department}</Badge>
                       </p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 uppercase tracking-wider">Email</label>
+                      <p className="text-sm font-medium text-blue-600 mt-1 font-mono">{selectedEmployee.email}</p>
                     </div>
                     <div>
                       <label className="text-xs text-gray-500 uppercase tracking-wider">Employee Code</label>

@@ -10,21 +10,37 @@ export const AuthProvider = ({ children }) => {
 
   // 🔥 Fetch role
   const fetchRole = async (email) => {
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("email", email)
-      .single();
+  console.log('Fetching role for email:', email);
+  const { data, error } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("email", email)
+    .single();
 
-    if (data) setRole(data.role);
-  };
+  console.log('Role fetch result:', { data, error });
+
+  if (data?.role) {
+    console.log('Setting role to:', data.role);
+    setRole(data.role);
+  } else {
+    console.log('No role found, setting to null');
+    setRole(null);
+  }
+};
 
   useEffect(() => {
   const getSession = async () => {
+    console.log('Getting session...');
     const { data } = await supabase.auth.getUser();
+    console.log('Session data:', data);
     if (data?.user) {
+      console.log('User found:', data.user.email);
       setUser(data.user);
       await fetchRole(data.user.email);
+    } else {
+      console.log('No user found');
+      setUser(null);
+      setRole(null);
     }
     setLoading(false);
   };
@@ -33,6 +49,7 @@ export const AuthProvider = ({ children }) => {
 
   const { data: listener } = supabase.auth.onAuthStateChange(
     (_event, session) => {
+      console.log('Auth state change:', _event, session?.user?.email);
       if (session?.user) {
         setUser(session.user);
         fetchRole(session.user.email);

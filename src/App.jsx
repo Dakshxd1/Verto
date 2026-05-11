@@ -44,6 +44,9 @@ const App = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showPaymentMadeModal, setShowPaymentMadeModal] = useState(false);
+  const [resetFormEmail, setResetFormEmail] = useState('');
+  const [resetFormMessage, setResetFormMessage] = useState('');
+  const [resetFormLoading, setResetFormLoading] = useState(false);
   const [paymentMadeInvoice, setPaymentMadeInvoice] = useState(null);
   const [showCNBadDebtModal, setShowCNBadDebtModal] = useState(false);
   const [showBounceBackModal, setShowBounceBackModal] = useState(false);
@@ -73,6 +76,49 @@ const App = () => {
     window.setActiveTab = setActiveTab; // ✅ THIS FIXES YOUR ERROR
   }, []);
 
+  const generateRandomPassword = (length = 10) => {
+    const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_+=';
+    return Array.from({ length }, () => charset[Math.floor(Math.random() * charset.length)]).join('');
+  };
+
+  const handleAdminResetPassword = async () => {
+    const email = resetFormEmail.trim();
+    if (!email) {
+      alert('Enter the employee email to reset password');
+      return;
+    }
+
+    setResetFormLoading(true);
+    setResetFormMessage('');
+
+    const { data: userRole, error } = await supabase
+      .from('user_roles')
+      .select('email')
+      .eq('email', email)
+      .single();
+
+    if (error) {
+      setResetFormMessage(`Unable to verify email: ${error.message}`);
+      setResetFormLoading(false);
+      return;
+    }
+
+    if (!userRole) {
+      setResetFormMessage(`Email not registered in user_roles: ${email}`);
+      setResetFormLoading(false);
+      return;
+    }
+
+    const tempPassword = generateRandomPassword(12);
+    setResetFormMessage(
+      `Employee found in user_roles.
+Temporary password generated: ${tempPassword}
+
+Share this password with the user so they can log in and update it.`
+    );
+    setResetFormLoading(false);
+  };
+
   // Mock entities list
   const entities = ["Verto India Pvt Ltd", "Verto Global LLC", "Verto UK Ltd"];
   // Mock invoices list
@@ -91,6 +137,8 @@ const App = () => {
     "PI-SO-250123-01",
   ];
   const { user, role, loading } = useAuth();
+
+  console.log('App.jsx - User:', user?.email, 'Role:', role, 'Loading:', loading);
 
   if (loading) return <div>Loading...</div>;
   if (!user) return <Login />;
@@ -432,6 +480,34 @@ const App = () => {
                         <Users className="w-4 h-4" />
                         <span>Manage Team</span>
                       </button>
+                    )}
+
+                    {role === 'admin' && (
+                      <div className="px-4 py-3 border-t border-gray-100">
+                        <p className="text-sm font-semibold text-gray-900">Reset User Password</p>
+                        <p className="text-xs text-gray-500 mb-2">
+                          Enter email and click Reset Password to verify the user exists in user_roles and generate a temporary password.
+                        </p>
+                        <input
+                          type="email"
+                          value={resetFormEmail}
+                          onChange={(e) => setResetFormEmail(e.target.value)}
+                          placeholder="employee@example.com"
+                          className="w-full mb-2 rounded-xl border border-gray-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                        <button
+                          onClick={handleAdminResetPassword}
+                          disabled={resetFormLoading}
+                          className="w-full rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {resetFormLoading ? 'Sending...' : 'Reset Password'}
+                        </button>
+                        {resetFormMessage && (
+                          <p className="mt-2 whitespace-pre-line text-xs text-gray-700">
+                            {resetFormMessage}
+                          </p>
+                        )}
+                      </div>
                     )}
 
                     <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">

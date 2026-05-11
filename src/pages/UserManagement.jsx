@@ -13,20 +13,14 @@ const UserManagement = () => {
   const addUser = async () => {
   if (!email) return alert("Enter email");
 
-  const password = Math.random().toString(36).slice(-8);
+  // IMPORTANT: signing up a new user with supabase.auth.signUp()
+  // will replace the current session in the browser. That is why
+  // the admin account immediately appears to become the new employee.
+  //
+  // Use a server-side admin/create-user endpoint or ask the employee
+  // to sign up themselves with the same email.
 
-  // 🔥 Create user (Auth)
-  const { error: authError } = await supabase.auth.signUp({
-    email,
-    password,
-  });
-
-  if (authError) {
-    alert(authError.message);
-    return;
-  }
-
-  // 🔥 Save role
+  // 🔥 Save role only
   const { error: roleError } = await supabase
     .from("user_roles")
     .insert([{ email, role }]);
@@ -36,7 +30,10 @@ const UserManagement = () => {
     return;
   }
 
-  alert(`User created!\nEmail: ${email}\nPassword: ${password}`);
+  alert(
+    `User role saved!\nEmail: ${email}\nRole: ${role}\n\n` +
+      "The user must still sign up or be created via a backend admin flow."
+  );
 };
 
   return (
