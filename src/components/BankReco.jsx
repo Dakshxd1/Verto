@@ -486,6 +486,7 @@ const BankReco = () => {
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showTransferHistory, setShowTransferHistory] = useState(false);
   const [transfers, setTransfers] = useState([]);
+  const [interestPenalties, setInterestPenalties] = useState([]);
   const [editTransfer, setEditTransfer] = useState(null);
 
   const [newEntry, setNewEntry] = useState({
@@ -569,6 +570,21 @@ const BankReco = () => {
       .select("*")
       .order("transfer_date", { ascending: false });
     if (!error) setTransfers(data || []);
+  };
+  const fetchInterestPenalties = async () => {
+    const { data, error } = await supabase
+      .from("interest_penalties")
+      .select(
+        `
+        *,
+        bank_master(bank_name)
+      `
+      )
+      .order("entry_date", { ascending: false });
+
+    if (!error) {
+      setInterestPenalties(data || []);
+    }
   };
 
   // ✅ FIXED — Fetches 6 months from master_cashflow_view
@@ -671,6 +687,8 @@ const BankReco = () => {
             ? "Bank Balance Adjustment"
             : entry.entry_type === "manual_adjustment"
             ? "Manual Entry"
+            : entry.entry_type === "interest_penalty"
+            ? "Interest / Penalty"
             : "Other",
         amount:
           entry.type === "debit"
@@ -764,8 +782,20 @@ const BankReco = () => {
 
       // ✅ FINAL SOFTWARE BALANCE
 
+      const unpaidPenalties = interestPenalties
+        .filter((p) => {
+          return String(p.bank_id) === String(bankId) && p.status === "unpaid";
+        })
+        .reduce((sum, p) => {
+          return sum + Number(p.amount || 0);
+        }, 0);
+
       const currentSoftwareMovement =
-        actualCredits + dueReceivables - actualDebits - dueTaxes;
+        actualCredits +
+        dueReceivables -
+        actualDebits -
+        dueTaxes -
+        unpaidPenalties;
 
       // ✅ Current month bank movement
       const currentBankMovement = row.asPerBankTotalBal;
@@ -801,6 +831,7 @@ const BankReco = () => {
     fetchOutstandingInvoices();
     fetchFundFlowProjection();
     fetchTransfers();
+    fetchInterestPenalties();
   }, []);
 
   useEffect(() => {

@@ -33,6 +33,7 @@ import AddInternalTeamModal from "./components/AddInternalTeamModal";
 import AddPaymentMadeModal from "./components/AddPaymentMadeModal";
 import InternalTeamDetails from "./components/InternalTeamDetails";
 import AddExpenseDetailsModal from "./components/AddExpenseDetailsModal";
+import AddInterestPenaltyModal from "./components/AddInterestPenaltyModal";
 import AddExpenseDetailsManModal from "./components/AddExpenseDetailsManModal";
 import LedgerPage from "./components/LedgerPage";
 
@@ -50,6 +51,7 @@ const App = () => {
   const [paymentMadeInvoice, setPaymentMadeInvoice] = useState(null);
   const [showCNBadDebtModal, setShowCNBadDebtModal] = useState(false);
   const [showBounceBackModal, setShowBounceBackModal] = useState(false);
+  const [showPenaltyModal, setShowPenaltyModal] = useState(false);
   const [showInternalTeamModal, setShowInternalTeamModal] = useState(false);
   const [showExpenseDetailsModal, setShowExpenseDetailsModal] = useState(false);
   const [showExpenseDetailsManModal, setShowExpenseDetailsManModal] =
@@ -380,6 +382,8 @@ Share this password with the user so they can log in and update it.`
                       setShowCNBadDebtModal(true);
                     } else if (action.label === "Add Bounce Back") {
                       setShowBounceBackModal(true);
+                    } else if (action.label === "Interest or Penalties") {
+                      setShowPenaltyModal(true);
                     } else if (action.label === "Add Statutory Payout") {
                       setShowStatutoryModal(true);
                     } else if (
@@ -640,6 +644,12 @@ Share this password with the user so they can log in and update it.`
         onClose={() => setShowBounceBackModal(false)}
         invoices={invoices}
         paymentReferences={paymentReferences}
+      />
+
+      <AddInterestPenaltyModal
+        isOpen={showPenaltyModal}
+        onClose={() => setShowPenaltyModal(false)}
+        banks={banks}
       />
 
       {/* Add Statutory Payout Modal */}
