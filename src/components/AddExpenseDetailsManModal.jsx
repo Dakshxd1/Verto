@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import ReactDOM from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import supabase from "../lib/supabaseClient";
+import * as XLSX from "xlsx";
 import {
   X,
   Plus,
@@ -445,6 +446,108 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
       setLoading(false);
     }
   };
+  const handleExcelUpload = async (e) => {
+    try {
+      const file = e.target.files[0];
+
+      if (!file) return;
+
+      setLoading(true);
+
+      const data = await file.arrayBuffer();
+
+      const workbook = XLSX.read(data);
+
+      const sheetName = workbook.SheetNames[0];
+
+      const worksheet = workbook.Sheets[sheetName];
+
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      console.log("Excel Data:", jsonData);
+
+      const finalPayload = [];
+
+      for (const row of jsonData) {
+        // ───── ENTITY ─────
+        const entity = entities.find(
+          (x) =>
+            x.entity_name?.trim().toLowerCase() ===
+            row["Entity"]?.trim().toLowerCase()
+        );
+
+        // ───── DEPARTMENT ─────
+        const department = departments.find(
+          (x) =>
+            x.dept_name?.trim().toLowerCase() ===
+            row["Department"]?.trim().toLowerCase()
+        );
+
+        // ───── BANK ─────
+        const bank = banks.find(
+          (x) =>
+            x.bank_name?.trim().toLowerCase() ===
+            row["Bank Name/Acct No"]?.trim().toLowerCase()
+        );
+
+        const paymentAmount = parseFloat(row["Payment Amount"]) || 0;
+
+        const tax = parseFloat(row["Income Tax deducted"]) || 0;
+
+        finalPayload.push({
+          entity_id: entity?.id || null,
+
+          department_id: department?.id || null,
+
+          emp_code: row["Emp Code"] || "",
+
+          employee_name: row["Name"] || "",
+
+          designation: row["Designation"] || "",
+
+          pay_head: row["Payment Head"] || "",
+
+          payment_description: row["Payment Description"] || "",
+
+          payment_amount: paymentAmount,
+
+          income_tax_deducted: tax,
+
+          net_payment: paymentAmount - tax,
+
+          month_of_pay: row["Month of Pay"]
+            ? `${row["Month of Pay"]}-01`
+            : null,
+
+          date_of_pay: row["Date of Pay"] || null,
+
+          bank_id: bank?.id || null,
+
+          bank_name: row["Bank Name/Acct No"] || "",
+
+          remarks: "",
+        });
+      }
+
+      console.log("FINAL PAYLOAD:", finalPayload);
+
+      const { error } = await supabase
+        .from("employee_expense_payouts")
+        .insert(finalPayload);
+
+      if (error) throw error;
+
+      alert("Excel uploaded successfully!");
+
+      onSaved?.();
+    } catch (err) {
+      console.error(err);
+
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ── Save OS ──
   const saveOS = async () => {
@@ -839,6 +942,17 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
         >
           ← Back
         </button>
+        <div className="flex items-center gap-3">
+          <label className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition">
+            Upload Excel
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleExcelUpload}
+              className="hidden"
+            />
+          </label>
+        </div>
         <button
           onClick={saveInternal}
           disabled={loading || saved}

@@ -494,7 +494,10 @@ const BankReco = () => {
     dateOfBankBal: "",
     amount: "",
     remarks: "",
-    entry_type: "other",
+
+    entry_type: "manual_adjustment",
+
+    transaction_mode: "credit",
   });
 
   // ─── FETCH FUNCTIONS ──────────────────────────────────────────────────────
@@ -664,6 +667,10 @@ const BankReco = () => {
             ? "Expense"
             : entry.entry_type === "statutory_payment"
             ? "Statutory Payment"
+            : entry.entry_type === "bank_balance_adjustment"
+            ? "Bank Balance Adjustment"
+            : entry.entry_type === "manual_adjustment"
+            ? "Manual Entry"
             : "Other",
         amount:
           entry.type === "debit"
@@ -918,6 +925,26 @@ const BankReco = () => {
     }
 
     const enteredAmount = parseFloat(newEntry.amount || 0);
+    // ✅ TOTAL BALANCE UPDATE MODE
+    if (newEntry.transaction_mode === "total_update") {
+      const bankEntries = entries.filter(
+        (e) => String(e.bank_id) === String(newEntry.bank_id)
+      );
+
+      const currentBalance = bankEntries.reduce((sum, e) => {
+        const amt = Number(e.amount || 0);
+
+        return e.type === "debit" ? sum - amt : sum + amt;
+      }, 0);
+
+      const adjustment = enteredAmount - currentBalance;
+
+      newEntry.amount = Math.abs(adjustment);
+
+      newEntry.transaction_mode = adjustment >= 0 ? "credit" : "debit";
+
+      newEntry.entry_type = "bank_balance_adjustment";
+    }
     if (enteredAmount <= 0) {
       alert("Amount must be greater than 0");
       return;
@@ -939,20 +966,60 @@ const BankReco = () => {
       return;
     }
 
+    // =====================================
+    // ERP BANK ENTRY LOGIC
+    // =====================================
+
+    let finalAmount = enteredAmount;
+
+    let finalType = newEntry.transaction_mode || "credit";
+
+    let finalEntryType = newEntry.entry_type || "manual_adjustment";
+
+    // =====================================
+    // TOTAL BALANCE UPDATE MODE
+    // =====================================
+
+    if (newEntry.transaction_mode === "total_update") {
+      const bankEntries = entries.filter(
+        (e) => String(e.bank_id) === String(newEntry.bank_id)
+      );
+
+      const currentBalance = bankEntries.reduce((sum, e) => {
+        const amt = Math.abs(Number(e.amount || 0));
+
+        return String(e.type).toLowerCase() === "debit" ? sum - amt : sum + amt;
+      }, 0);
+
+      const adjustment = enteredAmount - currentBalance;
+
+      finalAmount = Math.abs(adjustment);
+
+      finalType = adjustment >= 0 ? "credit" : "debit";
+
+      finalEntryType = "bank_balance_adjustment";
+    }
+
+    // =====================================
+    // INSERT ENTRY
+    // =====================================
+
     const { error } = await supabase.from("bank_entries").insert([
       {
         bank_id: newEntry.bank_id,
-        entity: newEntry.entity || "Pvt Ltd",
-        amount: enteredAmount,
+
+        entity: newEntry.entity || "Verto India Pvt Ltd",
+
+        amount: finalAmount,
+
         date: newEntry.dateOfBankBal,
+
         remarks: newEntry.remarks || "",
-        entry_type: newEntry.entry_type || "other",
-        type:
-          newEntry.entry_type === "payment_received" ||
-          newEntry.entry_type === "bank_credit" ||
-          newEntry.entry_type === "transfer_in"
-            ? "credit"
-            : "debit",
+
+        entry_type: finalEntryType,
+
+        type: finalType,
+
         reference_no: "BNK-" + Date.now(),
       },
     ]);

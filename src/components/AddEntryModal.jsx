@@ -82,22 +82,45 @@ const AddEntryModal = ({
               })
             }
           />
+          {/* TRANSACTION MODE */}
+
+          <div className="mb-3">
+            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
+              Transaction Type
+            </label>
+
+            <select
+              className="w-full border border-gray-300 rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={newEntry.transaction_mode || "credit"}
+              onChange={(e) =>
+                setNewEntry({
+                  ...newEntry,
+                  transaction_mode: e.target.value,
+                })
+              }
+            >
+              <option value="credit">Credit (+ Add Money)</option>
+
+              <option value="debit">Debit (- Reduce Money)</option>
+
+              <option value="total_update">Total Balance Update</option>
+            </select>
+          </div>
 
           {/* AMOUNT */}
           <input
             type="text"
-            placeholder="Amount"
+            placeholder={
+              newEntry.transaction_mode === "total_update"
+                ? "Enter Actual Bank Balance"
+                : "Enter Amount"
+            }
             className="w-full border p-2 mb-2"
             value={newEntry.amount || ""}
             onChange={(e) => {
               const val = e.target.value;
 
               if (/^\d*\.?\d*$/.test(val)) {
-                // ✅ PREVENT OVERFLOW
-                if (remainingBalance && Number(val) > remainingBalance) {
-                  alert(`Max allowed ₹${remainingBalance}`);
-                  return;
-                }
 
                 setNewEntry({ ...newEntry, amount: val });
               }
@@ -159,11 +182,6 @@ const AddEntryModal = ({
 
                 if (!newEntry.amount || Number(newEntry.amount) <= 0) {
                   alert("Enter valid amount");
-                  return;
-                }
-
-                if (Number(newEntry.amount) > remainingBalance) {
-                  alert(`Cannot exceed ₹${remainingBalance}`);
                   return;
                 }
 
