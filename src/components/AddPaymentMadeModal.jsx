@@ -265,12 +265,21 @@ const AddPaymentMadeModal = ({ isOpen, onClose, invoice, onSaved }) => {
                   Record an outgoing payment from bank
                 </p>
               </div>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
-              >
-                <X size={15} className="text-white/80" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setViewOpen(true)}
+                  className="flex items-center gap-1.5 px-3 h-8 rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  <Eye size={13} className="text-white/80" />
+                  <span className="text-white/80 text-xs font-semibold">View</span>
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+                >
+                  <X size={15} className="text-white/80" />
+                </button>
+              </div>
             </div>
 
             {/* Invoice badge (when passed from parent) */}
@@ -642,15 +651,6 @@ const AddPaymentMadeModal = ({ isOpen, onClose, invoice, onSaved }) => {
 
           {/* ── FOOTER ── */}
           <div className="flex-shrink-0 px-5 pb-6 pt-3 border-t border-slate-100 flex items-center gap-3">
-            {/* View button — left side */}
-            <button
-              onClick={() => setViewOpen(true)}
-              title="Preview payment details"
-              className="w-10 h-10 rounded-2xl border-2 border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-700 flex items-center justify-center flex-shrink-0 transition-colors"
-            >
-              <Eye size={16} />
-            </button>
-
             <button
               onClick={onClose}
               className="flex-1 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors"

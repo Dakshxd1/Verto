@@ -755,18 +755,6 @@ const BankReco = () => {
   }, [entries, softwareEntries, outstandingInvoices]);
 
   useEffect(() => {
-    if (bankData.length > 0 && !selectedRow) {
-      setSelectedRow(bankData[0]);
-      setRemainingBalance(
-        Math.abs(
-          (bankData[0]?.asPerBankTotalBal || 0) -
-            (bankData[0]?.asPerSwTotalBal || 0)
-        )
-      );
-    }
-  }, [bankData]);
-
-  useEffect(() => {
     const channel = supabase
       .channel("realtime-bank")
       .on(
