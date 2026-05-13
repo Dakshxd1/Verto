@@ -91,7 +91,6 @@ const exportToExcel = (rows) => {
         fill: { fgColor: { rgb: "C2410C" } },
       };
   });
-  XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
 
   /* ── Detail sheet ── */
   const headers = [
@@ -180,7 +179,10 @@ const exportToExcel = (rows) => {
   ];
   detailWs["!rows"] = [{ hpt: 30 }];
 
+  wb.Workbook = wb.Workbook || {};
+  wb.Workbook.Views = [{ activeTab: 0 }];
   XLSX.utils.book_append_sheet(wb, detailWs, "Expense Details");
+  XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
   XLSX.writeFile(wb, `Expenses_${new Date().toISOString().slice(0, 10)}.xlsx`);
 };
 
@@ -251,7 +253,14 @@ const ExpenseViewModal = ({ open, onClose }) => {
 
   const handleExport = () => {
     setExporting(true);
-    setTimeout(() => { exportToExcel(filtered); setExporting(false); }, 100);
+    try {
+      exportToExcel(filtered);
+    } catch (error) {
+      console.error("Expense export failed:", error);
+      alert("Export failed. Check console for details.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   /* ─────────── RENDER ─────────── */

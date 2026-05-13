@@ -103,9 +103,7 @@ const exportToExcel = (rows) => {
       summaryWs[addr].s = { font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "312E81" } } };
   });
 
-  XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
-
-  /* ── Detail sheet ── */
+/* ── Detail sheet ── */
   const headers = [
     "#",
     "Payment Date",
@@ -133,6 +131,10 @@ const exportToExcel = (rows) => {
   ]);
 
   const detailWs = XLSX.utils.aoa_to_sheet([headers, ...detail]);
+
+  /* make details sheet the default visible tab */
+  wb.Workbook = wb.Workbook || {};
+  wb.Workbook.Views = [{ activeTab: 0 }];
 
   /* header row style */
   const headerStyle = {
@@ -202,6 +204,7 @@ const exportToExcel = (rows) => {
   detailWs["!rows"] = [{ hpt: 30 }]; // header row height
 
   XLSX.utils.book_append_sheet(wb, detailWs, "Payment Details");
+  XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
 
   XLSX.writeFile(wb, `Payments_Made_${new Date().toISOString().slice(0, 10)}.xlsx`);
 };
@@ -266,10 +269,14 @@ const ViewPaymentModal = ({ isOpen, onClose, invoice }) => {
 
   const handleExport = () => {
     setExporting(true);
-    setTimeout(() => {
+    try {
       exportToExcel(filtered);
+    } catch (error) {
+      console.error("Payment export failed:", error);
+      alert("Export failed. Check console for details.");
+    } finally {
       setExporting(false);
-    }, 100);
+    }
   };
 
   /* ────────────────── RENDER ────────────────── */
