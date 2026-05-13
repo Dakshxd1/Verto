@@ -10,7 +10,7 @@ import AddInvoiceModal from "./AddInvoiceModal";
 import AddCNBadDebtModal from "./AddCNBadDebtModal";
 import BounceHistoryDrawer from "./BounceHistoryDrawer";
 import CNHistoryDrawer from "./CNHistoryDrawer";
-import PaymentMadeHistoryDrawer from "./Paymentmadehistorydrawer";
+import PaymentMadeHistoryDrawer from "./PaymentHistoryDrawer";
 import {
   Search,
   Calendar,
