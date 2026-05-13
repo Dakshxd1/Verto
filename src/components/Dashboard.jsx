@@ -24,12 +24,527 @@ import {
   Edit3,
   History,
   Eye,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
 import Button from "./ui/button";
 import Card from "./ui/Card";
 import Badge from "./ui/Badge";
 
-// Mock Data Generator
+// ─── Injected styles ────────────────────────────────────────────────────────
+const dashboardStyles = `
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne+Mono&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+  .dash-root {
+    font-family: 'DM Sans', sans-serif;
+    --c-bg: #f6f7f9;
+    --c-surface: #ffffff;
+    --c-border: #e8eaed;
+    --c-border-strong: #d1d5db;
+    --c-text-primary: #111827;
+    --c-text-secondary: #6b7280;
+    --c-text-muted: #9ca3af;
+    --c-emerald: #059669;
+    --c-emerald-light: #d1fae5;
+    --c-emerald-mid: #a7f3d0;
+    --c-blue: #2563eb;
+    --c-blue-light: #dbeafe;
+    --c-rose: #e11d48;
+    --c-rose-light: #ffe4e6;
+    --c-amber: #d97706;
+    --c-amber-light: #fef3c7;
+    --c-purple: #7c3aed;
+    --c-purple-light: #ede9fe;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.04);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.04);
+  }
+
+  /* ── Stat Cards ── */
+  .stat-card {
+    background: var(--c-surface);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--c-border);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+  .stat-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+  .stat-card.emerald::before { background: linear-gradient(90deg, #059669, #34d399); }
+  .stat-card.blue::before    { background: linear-gradient(90deg, #2563eb, #60a5fa); }
+  .stat-card.rose::before    { background: linear-gradient(90deg, #e11d48, #fb7185); }
+  .stat-card.amber::before   { background: linear-gradient(90deg, #d97706, #fbbf24); }
+
+  .stat-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .stat-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--c-text-secondary);
+    margin-bottom: 6px;
+  }
+
+  /* ✅ UPDATED — larger, bolder stat values using Space Grotesk */
+  .stat-value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--c-text-primary);
+    line-height: 1;
+    margin-bottom: 10px;
+    letter-spacing: -0.02em;
+  }
+
+  .stat-meta {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 500;
+  }
+
+  /* ── Filter Card ── */
+  .filter-card {
+    background: var(--c-surface);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--c-border);
+    padding: 18px 20px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* ── Search Input ── */
+  .search-wrap {
+    position: relative; flex: 1; max-width: 400px;
+  }
+  .search-input {
+    width: 100%;
+    background: #f9fafb;
+    border: 1.5px solid var(--c-border);
+    border-radius: var(--radius-md);
+    padding: 9px 14px 9px 38px;
+    font-size: 13.5px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--c-text-primary);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+  }
+  .search-input::placeholder { color: var(--c-text-muted); }
+  .search-input:focus {
+    border-color: var(--c-emerald);
+    box-shadow: 0 0 0 3px rgba(5,150,105,0.10);
+    background: #fff;
+  }
+  .search-icon {
+    position: absolute; left: 11px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--c-text-muted); pointer-events: none;
+  }
+
+  /* ── Date Button ── */
+  .date-btn {
+    display: flex; align-items: center; gap: 7px;
+    background: #f9fafb;
+    border: 1.5px solid var(--c-border);
+    border-radius: var(--radius-md);
+    padding: 9px 13px;
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--c-text-secondary);
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    white-space: nowrap;
+  }
+  .date-btn.active, .date-btn:hover {
+    border-color: var(--c-emerald);
+    color: var(--c-emerald);
+    background: #fff;
+  }
+
+  /* ── Date Picker Dropdown ── */
+  .date-dropdown {
+    position: absolute; top: calc(100% + 8px); left: 0; z-index: 100;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    padding: 20px;
+    min-width: 280px;
+  }
+  .date-input {
+    width: 100%;
+    background: #f9fafb;
+    border: 1.5px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    padding: 8px 11px;
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--c-text-primary);
+    outline: none;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+  }
+  .date-input:focus { border-color: var(--c-emerald); background: #fff; }
+  .input-label {
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--c-text-muted);
+    margin-bottom: 6px; display: block;
+  }
+  .divider { border: none; border-top: 1px solid var(--c-border); margin: 14px 0; }
+
+  /* ── Filter Chips ── */
+  .chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: all 0.15s;
+    background: #f3f4f6; color: #4b5563;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .chip:hover { background: #e5e7eb; }
+  .chip.active-emerald {
+    background: var(--c-emerald-light);
+    color: var(--c-emerald);
+    border-color: var(--c-emerald-mid);
+  }
+  .chip.active-blue {
+    background: var(--c-blue-light);
+    color: var(--c-blue);
+    border-color: #93c5fd;
+  }
+  .chip.active-purple {
+    background: var(--c-purple-light);
+    color: var(--c-purple);
+    border-color: #c4b5fd;
+  }
+  .chip.active-amber {
+    background: var(--c-amber-light);
+    color: var(--c-amber);
+    border-color: #fcd34d;
+  }
+
+  /* ── Filter Panel ── */
+  .filter-panel {
+    margin-top: 16px;
+    padding-top: 18px;
+    border-top: 1px solid var(--c-border);
+  }
+  .filter-panel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+  }
+
+  /* ── Table Card ── */
+  .table-card {
+    background: var(--c-surface);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--c-border);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  .table-scroll {
+    overflow-x: auto;
+    max-height: 600px;
+    overflow-y: auto;
+  }
+  .table-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .table-scroll::-webkit-scrollbar-track { background: transparent; }
+  .table-scroll::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 99px;
+  }
+  .table-scroll::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+  table.dash-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.dash-table thead {
+    position: sticky; top: 0; z-index: 10;
+  }
+  table.dash-table thead tr {
+    background: #f8f9fb;
+    border-bottom: 2px solid var(--c-border);
+  }
+  table.dash-table th {
+    padding: 13px 16px;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--c-text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.12s, color 0.12s;
+  }
+  table.dash-table th:hover {
+    background: #f0f2f5;
+    color: var(--c-text-primary);
+  }
+  table.dash-table tbody tr {
+    border-bottom: 1px solid #f0f2f5;
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+  table.dash-table tbody tr:hover { background: #f8fffe; }
+  table.dash-table tbody tr.row-expanded { background: #f0fdf8; }
+  table.dash-table tbody tr:last-child { border-bottom: none; }
+  table.dash-table td {
+    padding: 13px 16px;
+    color: var(--c-text-primary);
+    white-space: nowrap;
+  }
+
+  /* ✅ UPDATED — table numbers use Space Grotesk for readability */
+  table.dash-table td.mono {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: right;
+  }
+  table.dash-table td.center { text-align: center; }
+  table.dash-table tfoot tr {
+    background: #f8f9fb;
+    border-top: 2px solid var(--c-border);
+  }
+  table.dash-table tfoot td {
+    padding: 14px 16px;
+    font-weight: 700;
+    font-size: 13.5px;
+    color: var(--c-text-primary);
+  }
+  table.dash-table tfoot td.mono {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  /* ── Pill Badges ── */
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .status-pill.paid    { background: var(--c-emerald-light); color: var(--c-emerald); }
+  .status-pill.pending { background: #fef3c7; color: #b45309; }
+  .status-pill.overdue { background: var(--c-rose-light); color: var(--c-rose); }
+  .status-pill.fresh   { background: var(--c-blue-light); color: var(--c-blue); }
+  .status-pill.ok      { background: var(--c-emerald-light); color: var(--c-emerald); }
+  .status-pill.mismatch { background: var(--c-rose-light); color: var(--c-rose); }
+
+  .delay-pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12px; font-weight: 500;
+  }
+  .delay-pill.low  { background: #f0fdf4; color: #16a34a; }
+  .delay-pill.med  { background: #fef3c7; color: #b45309; }
+  .delay-pill.high { background: var(--c-rose-light); color: var(--c-rose); }
+
+  .dept-pill {
+    display: inline-block;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 11.5px; font-weight: 600;
+  }
+  .dept-pill.os     { background: var(--c-purple-light); color: var(--c-purple); }
+  .dept-pill.normal { background: var(--c-blue-light); color: var(--c-blue); }
+
+  .type-pill {
+    display: inline-block;
+    padding: 2px 9px; border-radius: 20px;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .type-pill.os     { background: var(--c-purple-light); color: var(--c-purple); }
+  .type-pill.normal { background: #f3f4f6; color: #6b7280; }
+
+  /* ── Expanded Row Panel ── */
+  .expand-panel {
+    padding: 20px 24px;
+    background: #f8fffe;
+    border-top: 1px solid var(--c-emerald-mid);
+  }
+  .expand-title {
+    font-size: 11.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--c-emerald); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .expand-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+  .action-card {
+    background: #fff;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    transition: box-shadow 0.15s;
+  }
+  .action-card:hover { box-shadow: var(--shadow-md); }
+  .action-card-label {
+    font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--c-text-muted); margin-bottom: 12px;
+  }
+  .action-btn {
+    display: block; width: 100%;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12.5px; font-weight: 500;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer; border: none;
+    transition: all 0.15s; text-align: center;
+    margin-bottom: 6px;
+  }
+  .action-btn:last-child { margin-bottom: 0; }
+  .action-btn.view   { background: #eff6ff; color: var(--c-blue); }
+  .action-btn.view:hover { background: #dbeafe; }
+  .action-btn.edit   { background: #f9fafb; color: #374151; }
+  .action-btn.edit:hover { background: #f3f4f6; }
+
+  /* ── Filter Toggle ── */
+  .filter-toggle-btn {
+    position: relative;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--c-border);
+    background: #f9fafb;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--c-text-secondary);
+  }
+  .filter-toggle-btn:hover {
+    background: #fff;
+    border-color: var(--c-emerald);
+    color: var(--c-emerald);
+  }
+  .filter-toggle-btn.active {
+    background: var(--c-emerald-light);
+    border-color: var(--c-emerald);
+    color: var(--c-emerald);
+  }
+  .filter-badge {
+    position: absolute; top: -6px; right: -6px;
+    width: 18px; height: 18px;
+    background: var(--c-emerald);
+    color: #fff; font-size: 10px; font-weight: 700;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ── Export Button ── */
+  .export-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 18px;
+    background: var(--c-emerald);
+    color: #fff;
+    border-radius: var(--radius-md);
+    font-size: 13.5px; font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
+    border: none; cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+    box-shadow: 0 2px 8px rgba(5,150,105,0.25);
+  }
+  .export-btn:hover {
+    background: #047857;
+    box-shadow: 0 4px 14px rgba(5,150,105,0.35);
+    transform: translateY(-1px);
+  }
+
+  /* ── Empty State ── */
+  .empty-state {
+    padding: 64px 24px;
+    text-align: center;
+    color: var(--c-text-muted);
+  }
+  .empty-state svg {
+    opacity: 0.2; margin: 0 auto 14px; display: block;
+  }
+
+  /* ── Small Buttons ── */
+  .apply-btn {
+    padding: 6px 14px;
+    background: var(--c-emerald); color: #fff;
+    border: none; border-radius: var(--radius-sm);
+    font-size: 12px; font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .apply-btn:hover { background: #047857; }
+  .clear-link {
+    background: none; border: none;
+    font-size: 12px; font-weight: 500;
+    color: var(--c-text-muted); cursor: pointer;
+    padding: 0; font-family: 'DM Sans', sans-serif;
+    transition: color 0.15s;
+  }
+  .clear-link:hover { color: var(--c-text-primary); }
+
+  /* ── Range Inputs ── */
+  .range-input {
+    flex: 1;
+    background: #f9fafb;
+    border: 1.5px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    padding: 8px 11px;
+    font-size: 13px;
+    font-family: 'Space Grotesk', sans-serif;
+    color: var(--c-text-primary);
+    outline: none; transition: border-color 0.15s;
+  }
+  .range-input:focus { border-color: var(--c-emerald); background: #fff; }
+  .range-input::placeholder {
+    font-family: 'DM Sans', sans-serif;
+    color: var(--c-text-muted);
+  }
+
+  /* ── Icon Buttons ── */
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 8px;
+    background: transparent; border: none; cursor: pointer;
+    transition: background 0.12s;
+    color: var(--c-text-muted);
+  }
+  .icon-btn:hover { background: #eff6ff; color: var(--c-blue); }
+  .icon-btn.expand:hover { background: #f3f4f6; color: var(--c-text-primary); }
+`;
+
+// ─── Mock Data Generator ─────────────────────────────────────────────────────
 const generateData = (count = 10) => {
   const departments = ["Operations", "Sales", "Finance", "HR", "IT"];
   const clients = [
@@ -63,21 +578,11 @@ const generateData = (count = 10) => {
     return {
       id: `INV-${2023000 + i}`,
       invDate: randomDate.toLocaleDateString("en-GB"),
-      invDateObj: randomDate, // Store as Date object for filtering
+      invDateObj: randomDate,
       impactMonth:
         [
-          "Jan",
-          "Feb",
-          "Mar",
-          "Apr",
-          "May",
-          "Jun",
-          "Jul",
-          "Aug",
-          "Sep",
-          "Oct",
-          "Nov",
-          "Dec",
+          "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
         ][Math.floor(Math.random() * 12)] + " 2023",
       dept: departments[Math.floor(Math.random() * departments.length)],
       client: clients[Math.floor(Math.random() * clients.length)],
@@ -100,6 +605,7 @@ const generateData = (count = 10) => {
   });
 };
 
+// ─── Dashboard Component ─────────────────────────────────────────────────────
 const Dashboard = ({
   refreshFlag,
   setShowPaymentModal,
@@ -110,7 +616,6 @@ const Dashboard = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [dateRangePreset, setDateRangePreset] = useState("12months");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [data] = useState(() => generateData(12));
@@ -139,20 +644,9 @@ const Dashboard = ({
     if (!error) setBanks(data);
   };
 
-  // Initialize date range to last 12 months on component mount
-  React.useEffect(() => {
-    const today = new Date();
-    const twelveMonthsAgo = new Date(
-      today.getFullYear(),
-      today.getMonth() - 12,
-      today.getDate()
-    );
-    setDateFrom(twelveMonthsAgo.toISOString().split("T")[0]);
-    setDateTo(today.toISOString().split("T")[0]);
-  }, []);
+  // Date range is empty on load — user selects manually
 
-  // 🔥 Fetch invoices from Supabase (SAFE ADD)
-  // 🔹 Fetch invoices from Supabase
+  // 🔥 Fetch invoices from Supabase
   React.useEffect(() => {
     let channel;
 
@@ -169,11 +663,6 @@ const Dashboard = ({
       }
       console.log("🔥 FULL DB DATA:", data);
       console.log("🔥 FIRST ROW:", data?.[0]);
-
-      if (error) {
-        console.error("Fetch error:", error);
-        return;
-      }
 
       const formatted = data.map((row) => {
         // ✅ Outstanding computed from SQL VIEW
@@ -281,36 +770,31 @@ const Dashboard = ({
 
     // 🔥 Make global refresh available
     window.refreshDashboard = fetchInvoices;
-    window.refreshBanks = fetchBanks; // ✅ ADD THIS LINE
+    window.refreshBanks = fetchBanks;
 
     // 🔥 Realtime listener
     channel = supabase
       .channel("realtime-all")
-
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "payments_received" },
         () => fetchInvoices()
       )
-
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bounce_back" },
         () => fetchInvoices()
       )
-
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bank_entries" },
         () => fetchInvoices()
       )
-
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "software_entries" },
         () => fetchInvoices()
       )
-
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "invoices" },
@@ -321,7 +805,6 @@ const Dashboard = ({
         { event: "*", schema: "public", table: "credit_note_bad_debt" },
         () => fetchInvoices()
       )
-
       .subscribe();
 
     // 🔥 Cleanup
@@ -330,9 +813,9 @@ const Dashboard = ({
         supabase.removeChannel(channel);
       }
     };
-  }, [refreshFlag]); // 🔥 THIS TRIGGERS REFRESH
+  }, [refreshFlag]);
 
-  // Filter states
+  // No filters auto-selected on load — user picks manually
   const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [selectedClients, setSelectedClients] = useState([]);
   const [selectedEntities, setSelectedEntities] = useState([]);
@@ -362,6 +845,7 @@ const Dashboard = ({
 
       const matchesDateFrom = !from || row.invDateObj >= from;
       const matchesDateTo = !to || row.invDateObj <= to;
+
       // Department filter
       const matchesDept =
         selectedDepartments.length === 0 ||
@@ -491,56 +975,13 @@ const Dashboard = ({
       return `${new Date(dateFrom).toLocaleDateString("en-GB", {
         day: "2-digit",
         month: "short",
-      })} - ${new Date(dateTo).toLocaleDateString("en-GB", {
+      })} – ${new Date(dateTo).toLocaleDateString("en-GB", {
         day: "2-digit",
         month: "short",
         year: "numeric",
       })}`;
     }
     return "Select Date Range";
-  };
-
-  const handleDateRangePreset = (preset) => {
-    const today = new Date();
-    let fromDate;
-
-    setDateRangePreset(preset);
-
-    switch (preset) {
-      case "6months":
-        fromDate = new Date(
-          today.getFullYear(),
-          today.getMonth() - 6,
-          today.getDate()
-        );
-        break;
-      case "12months":
-        fromDate = new Date(
-          today.getFullYear(),
-          today.getMonth() - 12,
-          today.getDate()
-        );
-        break;
-      case "2years":
-        fromDate = new Date(
-          today.getFullYear() - 2,
-          today.getMonth(),
-          today.getDate()
-        );
-        break;
-      case "manual":
-        // Don't auto-set dates for manual entry
-        return;
-      default:
-        fromDate = new Date(
-          today.getFullYear(),
-          today.getMonth() - 12,
-          today.getDate()
-        );
-    }
-
-    setDateFrom(fromDate.toISOString().split("T")[0]);
-    setDateTo(today.toISOString().split("T")[0]);
   };
 
   const toggleFilter = (array, setArray, value) => {
@@ -593,7 +1034,7 @@ const Dashboard = ({
 
     setSelectedInvoiceData({
       ...data,
-      dbId: data.id, // 🔥 ADD THIS
+      dbId: data.id,
     });
 
     if (type === "CN") {
@@ -643,7 +1084,7 @@ const Dashboard = ({
               ? row.invoice_value - row.receivable_amount
               : 0,
           cnBadDebt: Number(row.total_cn || 0),
-          bounce: Number(row.total_bounce || 0), // ✅ ADD THIS
+          bounce: Number(row.total_bounce || 0),
           entity: row.entity_name,
           status:
             row.outstanding === 0
@@ -660,85 +1101,111 @@ const Dashboard = ({
     }
   };
 
+  const delayClass = (d) => (d > 30 ? "high" : d > 0 ? "med" : "low");
+
   return (
-    <div className="space-y-6">
-      {/* Header Stats */}
+    <div className="dash-root" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <style>{dashboardStyles}</style>
+
+      {/* ── Header Stats ── */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-emerald-50 to-white border-emerald-100">
-          <Card.Content className="pt-6">
-            <p className="text-xs text-gray-600 uppercase tracking-wider">
-              Total Invoiced
-            </p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">
-              {formatCurrency(totals.invValue)}
-            </p>
-            <div className="flex items-center mt-2 text-xs text-emerald-600">
-              <ArrowUpRight className="w-3 h-3 mr-1" />
-              <span>+12% from last period</span>
-            </div>
-          </Card.Content>
-        </Card>
 
-        <Card className="bg-gradient-to-br from-blue-50 to-white border-blue-100">
-          <Card.Content className="pt-6">
-            <p className="text-xs text-gray-600 uppercase tracking-wider">
-              Verto Fees
-            </p>
-            <p className="text-2xl font-bold text-emerald-600 mt-1">
-              {formatCurrency(totals.vertoFee)}
-            </p>
-            <div className="flex items-center mt-2 text-xs text-gray-500">
-              <span>
-                {totals.invValue
-                  ? ((totals.vertoFee / totals.invValue) * 100).toFixed(1)
-                  : 0}
-                % avg margin
-              </span>
-            </div>
-          </Card.Content>
-        </Card>
+        {/* Total Invoiced */}
+        <motion.div
+          className="stat-card emerald"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0 }}
+        >
+          <div className="stat-icon" style={{ background: "#d1fae5" }}>
+            <FileText size={18} color="#059669" />
+          </div>
+          <div className="stat-label">Total Invoiced</div>
+          <div className="stat-value">
+            ₹{formatCurrency(totals.invValue)}
+          </div>
+          <div className="stat-meta" style={{ color: "#059669" }}>
+            <ArrowUpRight size={13} />
+            <span>+12% from last period</span>
+          </div>
+        </motion.div>
 
-        <Card className="bg-gradient-to-br from-rose-50 to-white border-rose-100">
-          <Card.Content className="pt-6">
-            <p className="text-xs text-gray-600 uppercase tracking-wider">
-              Outstanding
-            </p>
-            <p className="text-2xl font-bold text-rose-600 mt-1">
-              {formatCurrency(totals.notRecvd)}
-            </p>
-            <div className="flex items-center mt-2 text-xs text-rose-600">
-              <ArrowDownLeft className="w-3 h-3 mr-1" />
-              <span>
-                {totals.invValue
-                  ? ((totals.notRecvd / totals.invValue) * 100).toFixed(1)
-                  : 0}
-                % of total
-              </span>
-            </div>
-          </Card.Content>
-        </Card>
+        {/* Verto Fees */}
+        <motion.div
+          className="stat-card blue"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06 }}
+        >
+          <div className="stat-icon" style={{ background: "#dbeafe" }}>
+            <TrendingUp size={18} color="#2563eb" />
+          </div>
+          <div className="stat-label">Verto Fees</div>
+          <div className="stat-value" style={{ color: "#059669" }}>
+            ₹{formatCurrency(totals.vertoFee)}
+          </div>
+          <div className="stat-meta" style={{ color: "#6b7280" }}>
+            <span>
+              {totals.invValue
+                ? ((totals.vertoFee / totals.invValue) * 100).toFixed(1)
+                : 0}
+              % avg margin
+            </span>
+          </div>
+        </motion.div>
 
-        <Card className="bg-gradient-to-br from-amber-50 to-white border-amber-100">
-          <Card.Content className="pt-6">
-            <p className="text-xs text-gray-600 uppercase tracking-wider">
-              CN / Bad Debt
-            </p>
-            <p className="text-2xl font-bold text-amber-600 mt-1">
-              {formatCurrency(totals.cnBadDebt)}
-            </p>
-            <div className="flex items-center mt-2 text-xs text-gray-500">
-              <span>
-                {filteredData.filter((d) => d.cnBadDebt > 0).length} invoices
-                affected
-              </span>
-            </div>
-          </Card.Content>
-        </Card>
+        {/* Outstanding */}
+        <motion.div
+          className="stat-card rose"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+        >
+          <div className="stat-icon" style={{ background: "#ffe4e6" }}>
+            <AlertCircle size={18} color="#e11d48" />
+          </div>
+          <div className="stat-label">Outstanding</div>
+          <div className="stat-value" style={{ color: "#e11d48" }}>
+            ₹{formatCurrency(totals.notRecvd)}
+          </div>
+          <div className="stat-meta" style={{ color: "#e11d48" }}>
+            <ArrowDownLeft size={13} />
+            <span>
+              {totals.invValue
+                ? ((totals.notRecvd / totals.invValue) * 100).toFixed(1)
+                : 0}
+              % of total
+            </span>
+          </div>
+        </motion.div>
+
+        {/* CN / Bad Debt */}
+        <motion.div
+          className="stat-card amber"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+        >
+          <div className="stat-icon" style={{ background: "#fef3c7" }}>
+            <Clock size={18} color="#d97706" />
+          </div>
+          <div className="stat-label">CN / Bad Debt</div>
+          <div className="stat-value" style={{ color: "#d97706" }}>
+            ₹{formatCurrency(totals.cnBadDebt)}
+          </div>
+          <div className="stat-meta" style={{ color: "#6b7280" }}>
+            <span>
+              {filteredData.filter((d) => d.cnBadDebt > 0).length} invoices
+              affected
+            </span>
+          </div>
+        </motion.div>
+
       </div>
 
       <AgingReport />
 
-      {/* ✅ ALL DRAWERS & MODALS */}
+      {/* ── All Drawers & Modals ── */}
       <PaymentHistoryDrawer
         invoice={historyInvoice}
         isOpen={showPaymentHistory}
@@ -760,7 +1227,7 @@ const Dashboard = ({
         onClose={() => setShowCNBadDebtModal(false)}
         editData={selectedInvoiceData}
         invoices={dbData.map((d) => d.id)}
-        invoicesData={dbData} // ✅ IMPORTANT
+        invoicesData={dbData}
       />
       <BounceHistoryDrawer
         invoice={historyInvoice}
@@ -779,11 +1246,11 @@ const Dashboard = ({
           setSelectedInvoiceData(null);
         }}
         selectedInvoice={selectedInvoiceData}
-        entities={entities} // 🔥 ADD THIS
-        clients={clients} // 🔥 ALSO ADD THIS
+        entities={entities}
+        clients={clients}
       />
 
-      {/* ✅ NEW — Payment Made History Drawer */}
+      {/* ✅ Payment Made History Drawer */}
       <PaymentMadeHistoryDrawer
         invoice={paymentMadeHistoryInvoice}
         isOpen={showPaymentMadeHistory}
@@ -793,38 +1260,42 @@ const Dashboard = ({
         }}
       />
 
-      {/* Filter Bar */}
-      <Card className="p-4 bg-white border-gray-200">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center space-x-4 flex-1">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+      {/* ── Filter Bar ── */}
+      <div className="filter-card">
+        <div
+          className="flex flex-wrap items-center justify-between gap-4"
+          style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+
+            {/* Search */}
+            <div className="search-wrap">
+              <Search className="search-icon" size={15} />
               <input
                 type="text"
+                className="search-input"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search by Client, Dept, or Invoice ID..."
-                className="w-full bg-gray-50 border border-gray-300 text-gray-900 pl-10 pr-4 py-2.5 rounded-xl text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
               />
             </div>
 
-            <div className="relative">
+            {/* Date Range Picker */}
+            <div style={{ position: "relative" }}>
               <button
+                className={`date-btn${dateFrom || dateTo ? " active" : ""}`}
                 onClick={() => setShowDatePicker(!showDatePicker)}
-                className={`flex items-center space-x-2 bg-white border rounded-xl px-3 py-2.5 text-sm transition-all ${
-                  dateFrom || dateTo
-                    ? "border-emerald-500 text-emerald-600"
-                    : "border-gray-300 text-gray-600 hover:border-gray-400"
-                }`}
               >
-                <Calendar className="w-4 h-4" />
-                <span className="min-w-[140px] text-left">
+                <Calendar size={14} />
+                <span style={{ minWidth: 148 }}>
                   {formatDateDisplay()}
                 </span>
                 <ChevronDown
-                  className={`w-4 h-4 transition-transform ${
-                    showDatePicker ? "rotate-180" : ""
-                  }`}
+                  size={13}
+                  style={{
+                    transition: "transform 0.2s",
+                    transform: showDatePicker ? "rotate(180deg)" : "none",
+                  }}
                 />
               </button>
 
@@ -832,132 +1303,83 @@ const Dashboard = ({
               <AnimatePresence>
                 {showDatePicker && (
                   <motion.div
+                    className="date-dropdown"
                     initial={{ opacity: 0, y: -10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -10, scale: 0.95 }}
                     transition={{ duration: 0.2 }}
-                    className="absolute top-full mt-2 left-0 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 min-w-[320px]"
                   >
-                    <div className="space-y-3">
-                      {/* Quick Presets */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                       <div>
-                        <label className="text-xs text-gray-600 uppercase tracking-wider mb-2 block">
-                          Quick Select
-                        </label>
-                        <div className="grid grid-cols-3 gap-2">
-                          <button
-                            onClick={() => handleDateRangePreset("6months")}
-                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                              dateRangePreset === "6months"
-                                ? "bg-emerald-500 text-white"
-                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                            }`}
-                          >
-                            Last 6 Months
-                          </button>
-                          <button
-                            onClick={() => handleDateRangePreset("12months")}
-                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                              dateRangePreset === "12months"
-                                ? "bg-emerald-500 text-white"
-                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                            }`}
-                          >
-                            Last 12 Months
-                          </button>
-                          <button
-                            onClick={() => handleDateRangePreset("2years")}
-                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                              dateRangePreset === "2years"
-                                ? "bg-emerald-500 text-white"
-                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                            }`}
-                          >
-                            Last 2 Years
-                          </button>
-                        </div>
+                        <span className="input-label">From Date</span>
+                        <input
+                          type="date"
+                          className="date-input"
+                          value={dateFrom}
+                          onChange={(e) => setDateFrom(e.target.value)}
+                        />
                       </div>
+                      <div>
+                        <span className="input-label">To Date</span>
+                        <input
+                          type="date"
+                          className="date-input"
+                          value={dateTo}
+                          onChange={(e) => setDateTo(e.target.value)}
+                        />
+                      </div>
+                    </div>
 
-                      {/* Manual Date Inputs */}
-                      <div className="pt-2 border-t border-gray-200">
-                        <div className="space-y-3">
-                          <div>
-                            <label className="text-xs text-gray-600 uppercase tracking-wider mb-1.5 block">
-                              From Date
-                            </label>
-                            <input
-                              type="date"
-                              value={dateFrom}
-                              onChange={(e) => {
-                                setDateFrom(e.target.value);
-                                setDateRangePreset("manual");
-                              }}
-                              className="w-full bg-gray-50 border border-gray-300 text-gray-900 px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-600 uppercase tracking-wider mb-1.5 block">
-                              To Date
-                            </label>
-                            <input
-                              type="date"
-                              value={dateTo}
-                              onChange={(e) => {
-                                setDateTo(e.target.value);
-                                setDateRangePreset("manual");
-                              }}
-                              className="w-full bg-gray-50 border border-gray-300 text-gray-900 px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                            />
-                          </div>
-                        </div>
-                      </div>
+                    <hr className="divider" />
 
-                      <div className="flex items-center justify-between pt-2 border-t border-gray-200">
-                        <button
-                          onClick={() => {
-                            setDateFrom("");
-                            setDateTo("");
-                            setDateRangePreset("12months");
-                          }}
-                          className="text-xs text-gray-600 hover:text-gray-900 transition-colors"
-                        >
-                          Clear
-                        </button>
-                        <button
-                          onClick={() => setShowDatePicker(false)}
-                          className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs rounded-lg transition-colors"
-                        >
-                          Apply
-                        </button>
-                      </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <button
+                        className="clear-link"
+                        onClick={() => {
+                          setDateFrom("");
+                          setDateTo("");
+                        }}
+                      >
+                        Clear
+                      </button>
+                      <button
+                        className="apply-btn"
+                        onClick={() => setShowDatePicker(false)}
+                      >
+                        Apply
+                      </button>
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
-            <Button
-              variant="outline"
-              size="icon"
+            {/* Filter Toggle Button */}
+            <button
+              className={`filter-toggle-btn${showFilters ? " active" : ""}`}
               onClick={() => setShowFilters(!showFilters)}
-              className="relative"
             >
-              <Filter className="w-4 h-4" />
+              <Filter size={15} />
               {activeFiltersCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 text-white text-xs rounded-full flex items-center justify-center">
-                  {activeFiltersCount}
-                </span>
+                <span className="filter-badge">{activeFiltersCount}</span>
               )}
-            </Button>
+            </button>
           </div>
 
-          <Button
+          {/* Export Button */}
+          <button
+            className="export-btn"
             onClick={() => exportToExcel(filteredData)}
-            className="flex items-center space-x-2"
           >
-            <Download className="w-4 h-4" />
-            <span>Export Excel</span>
-          </Button>
+            <Download size={14} />
+            Export Excel
+          </button>
         </div>
 
         {/* Advanced Filters Panel */}
@@ -968,36 +1390,53 @@ const Dashboard = ({
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="overflow-hidden"
+              style={{ overflow: "hidden" }}
             >
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900 flex items-center">
-                    <Filter className="w-4 h-4 mr-2 text-emerald-500" />
+              <div className="filter-panel">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 16,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.07em",
+                      color: "#374151",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Filter size={13} color="#059669" />
                     Advanced Filters
-                  </h3>
+                  </span>
                   {activeFiltersCount > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearAllFilters}
-                      className="text-xs text-gray-600 hover:text-gray-900"
-                    >
+                    <button className="clear-link" onClick={clearAllFilters}>
                       Clear All ({activeFiltersCount})
-                    </Button>
+                    </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="filter-panel-grid">
+
                   {/* Department Filter */}
                   <div>
-                    <label className="text-xs text-gray-600 uppercase tracking-wider mb-2 block">
-                      Department
-                    </label>
-                    <div className="flex flex-wrap gap-2">
+                    <span className="input-label">Department</span>
+                    <div className="chip-group">
                       {departments.map((dept) => (
                         <button
                           key={dept}
+                          className={`chip${
+                            selectedDepartments.includes(dept)
+                              ? " active-emerald"
+                              : ""
+                          }`}
                           onClick={() =>
                             toggleFilter(
                               selectedDepartments,
@@ -1005,11 +1444,6 @@ const Dashboard = ({
                               dept
                             )
                           }
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                            selectedDepartments.includes(dept)
-                              ? "bg-emerald-500 text-white"
-                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          }`}
                         >
                           {dept}
                         </button>
@@ -1019,13 +1453,16 @@ const Dashboard = ({
 
                   {/* Client Filter */}
                   <div>
-                    <label className="text-xs text-gray-600 uppercase tracking-wider mb-2 block">
-                      Client
-                    </label>
-                    <div className="flex flex-wrap gap-2">
+                    <span className="input-label">Client</span>
+                    <div className="chip-group">
                       {clients.map((client) => (
                         <button
                           key={client}
+                          className={`chip${
+                            selectedClients.includes(client)
+                              ? " active-blue"
+                              : ""
+                          }`}
                           onClick={() =>
                             toggleFilter(
                               selectedClients,
@@ -1033,11 +1470,6 @@ const Dashboard = ({
                               client
                             )
                           }
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                            selectedClients.includes(client)
-                              ? "bg-blue-500 text-white"
-                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          }`}
                         >
                           {client}
                         </button>
@@ -1047,13 +1479,16 @@ const Dashboard = ({
 
                   {/* Entity Filter */}
                   <div>
-                    <label className="text-xs text-gray-600 uppercase tracking-wider mb-2 block">
-                      Entity
-                    </label>
-                    <div className="flex flex-wrap gap-2">
+                    <span className="input-label">Entity</span>
+                    <div className="chip-group">
                       {entities.map((entity) => (
                         <button
                           key={entity}
+                          className={`chip${
+                            selectedEntities.includes(entity)
+                              ? " active-purple"
+                              : ""
+                          }`}
                           onClick={() =>
                             toggleFilter(
                               selectedEntities,
@@ -1061,11 +1496,6 @@ const Dashboard = ({
                               entity
                             )
                           }
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                            selectedEntities.includes(entity)
-                              ? "bg-purple-500 text-white"
-                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          }`}
                         >
                           {entity ? entity.split(" ")[1] : "Unknown"}
                         </button>
@@ -1075,175 +1505,209 @@ const Dashboard = ({
 
                   {/* Status Filter */}
                   <div>
-                    <label className="text-xs text-gray-600 uppercase tracking-wider mb-2 block">
-                      Status
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {statuses.map((status) => (
-                        <button
-                          key={status}
-                          onClick={() =>
-                            toggleFilter(
-                              selectedStatuses,
-                              setSelectedStatuses,
-                              status
-                            )
-                          }
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${
-                            selectedStatuses.includes(status)
-                              ? "bg-amber-500 text-white"
-                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          }`}
-                        >
-                          {status}
-                        </button>
-                      ))}
+                    <span className="input-label">Status</span>
+                    <div className="chip-group">
+                      <button
+                        className={`chip${
+                          selectedStatuses.includes("paid")
+                            ? " active-amber"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          toggleFilter(
+                            selectedStatuses,
+                            setSelectedStatuses,
+                            "paid"
+                          )
+                        }
+                      >
+                        Paid
+                      </button>
+                      <button
+                        className={`chip${
+                          selectedStatuses.includes("pending")
+                            ? " active-amber"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          toggleFilter(
+                            selectedStatuses,
+                            setSelectedStatuses,
+                            "pending"
+                          )
+                        }
+                      >
+                        Pending
+                      </button>
+                      <button
+                        className={`chip${
+                          selectedStatuses.includes("overdue")
+                            ? " active-amber"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          toggleFilter(
+                            selectedStatuses,
+                            setSelectedStatuses,
+                            "overdue"
+                          )
+                        }
+                      >
+                        Overdue
+                      </button>
+                      <button
+                        className={`chip${
+                          selectedStatuses.includes("fresh")
+                            ? " active-amber"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          toggleFilter(
+                            selectedStatuses,
+                            setSelectedStatuses,
+                            "fresh"
+                          )
+                        }
+                      >
+                        Fresh
+                      </button>
                     </div>
                   </div>
 
                   {/* Invoice Value Range */}
-                  <div className="md:col-span-2">
-                    <label className="text-xs text-gray-600 uppercase tracking-wider mb-2 block">
-                      Invoice Value Range
-                    </label>
-                    <div className="flex items-center space-x-3">
+                  <div style={{ gridColumn: "span 2" }}>
+                    <span className="input-label">Invoice Value Range</span>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
                       <input
                         type="number"
+                        className="range-input"
                         value={minInvoiceValue}
                         onChange={(e) => setMinInvoiceValue(e.target.value)}
                         placeholder="Min (₹)"
-                        className="flex-1 bg-gray-50 border border-gray-300 text-gray-900 px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                       />
-                      <span className="text-gray-400">to</span>
+                      <span style={{ color: "#9ca3af", fontSize: 13 }}>to</span>
                       <input
                         type="number"
+                        className="range-input"
                         value={maxInvoiceValue}
                         onChange={(e) => setMaxInvoiceValue(e.target.value)}
                         placeholder="Max (₹)"
-                        className="flex-1 bg-gray-50 border border-gray-300 text-gray-900 px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                       />
                     </div>
                   </div>
+
                 </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
-      </Card>
+      </div>
 
-      {/* Data Table */}
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-gray-100 text-gray-700 text-xs uppercase tracking-wider border-b-2 border-gray-300">
-                <th
-                  className="p-4 font-semibold cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort("invDate")}
-                >
-                  <div className="flex items-center justify-between">
+      {/* ── Data Table ── */}
+      <div className="table-card">
+        <div className="table-scroll">
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th onClick={() => handleSort("invDate")}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span>Invoice Date</span>
                     <SortIcon columnKey="invDate" />
                   </div>
                 </th>
-                <th
-                  className="p-4 font-semibold cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort("impactMonth")}
-                >
-                  <div className="flex items-center justify-between">
+                <th onClick={() => handleSort("impactMonth")}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span>Impact Month</span>
                     <SortIcon columnKey="impactMonth" />
                   </div>
                 </th>
-                <th
-                  className="p-4 font-semibold cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort("dept")}
-                >
-                  <div className="flex items-center justify-between">
+                <th onClick={() => handleSort("dept")}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span>Department</span>
                     <SortIcon columnKey="dept" />
                   </div>
                 </th>
-                <th
-                  className="p-4 font-semibold cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort("client")}
-                >
-                  <div className="flex items-center justify-between">
+                <th onClick={() => handleSort("client")}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span>Client Name</span>
                     <SortIcon columnKey="client" />
                   </div>
                 </th>
                 <th
-                  className="p-4 font-semibold text-right cursor-pointer hover:bg-gray-200 transition-colors"
+                  style={{ textAlign: "right" }}
                   onClick={() => handleSort("invValue")}
                 >
-                  <div className="flex items-center justify-end space-x-2">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
                     <span>Invoice Value</span>
                     <SortIcon columnKey="invValue" />
                   </div>
                 </th>
                 <th
-                  className="p-4 font-semibold text-right cursor-pointer hover:bg-gray-200 transition-colors"
+                  style={{ textAlign: "right" }}
                   onClick={() => handleSort("vertoFee")}
                 >
-                  <div className="flex items-center justify-end space-x-2">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
                     <span>Verto Fee</span>
                     <SortIcon columnKey="vertoFee" />
                   </div>
                 </th>
                 <th
-                  className="p-4 font-semibold text-right cursor-pointer hover:bg-gray-200 transition-colors"
+                  style={{ textAlign: "right" }}
                   onClick={() => handleSort("notRecvd")}
                 >
-                  <div className="flex items-center justify-end space-x-2">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
                     <span>Not Recvd Amt</span>
                     <SortIcon columnKey="notRecvd" />
                   </div>
                 </th>
                 <th
-                  className="p-4 font-semibold text-center cursor-pointer hover:bg-gray-200 transition-colors"
+                  style={{ textAlign: "center" }}
                   onClick={() => handleSort("delayDays")}
                 >
-                  <div className="flex items-center justify-center space-x-2">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                     <span>Delay Days</span>
                     <SortIcon columnKey="delayDays" />
                   </div>
                 </th>
                 <th
-                  className="p-4 font-semibold text-right cursor-pointer hover:bg-gray-200 transition-colors"
+                  style={{ textAlign: "right" }}
                   onClick={() => handleSort("osDiff")}
                 >
-                  <div className="flex items-center justify-end space-x-2">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
                     <span>OS Amt Difference</span>
                     <SortIcon columnKey="osDiff" />
                   </div>
                 </th>
                 <th
-                  className="p-4 font-semibold text-right cursor-pointer hover:bg-gray-200 transition-colors"
+                  style={{ textAlign: "right" }}
                   onClick={() => handleSort("cnBadDebt")}
                 >
-                  <div className="flex items-center justify-end space-x-2">
-                    <span>CN/Bad Debt</span>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+                    <span>CN / Bad Debt</span>
                     <SortIcon columnKey="cnBadDebt" />
                   </div>
                 </th>
-                <th
-                  className="p-4 font-semibold cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort("entity")}
-                >
-                  <div className="flex items-center justify-between">
+                <th onClick={() => handleSort("entity")}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span>Invoice Entity</span>
                     <SortIcon columnKey="entity" />
                   </div>
                 </th>
-                <th className="p-4 font-semibold text-center">GST</th>
-                <th className="p-4 text-center">Type</th>
-                <th className="p-4 font-semibold text-center">TDS</th>
-                <th className="p-4 font-semibold text-center">Status</th>
-                <th className="p-4 font-semibold text-center">Action</th>
+                <th style={{ textAlign: "center" }}>GST</th>
+                <th style={{ textAlign: "center" }}>Type</th>
+                <th style={{ textAlign: "center" }}>TDS</th>
+                <th style={{ textAlign: "center" }}>Status</th>
+                <th style={{ textAlign: "center" }}>Action</th>
               </tr>
             </thead>
-            <tbody className="text-sm text-gray-700 divide-y divide-gray-400">
+
+            <tbody>
               {filteredData.map((row, index) => (
                 <React.Fragment key={row.id}>
                   <motion.tr
@@ -1251,133 +1715,160 @@ const Dashboard = ({
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.03 }}
-                    className={`hover:bg-gray-50 transition-colors cursor-pointer group ${
-                      expandedRow === row.id ? "bg-blue-50" : ""
-                    }`}
+                    className={expandedRow === row.id ? "row-expanded" : ""}
                     onClick={(e) => {
-                      if (e.target.closest("button")) return; // ✅ allow button clicks
+                      if (e.target.closest("button")) return;
                       toggleRow(row.id);
                     }}
                   >
-                    <td className="p-4 text-gray-600">{row.invDate}</td>
-                    <td className="p-4 text-gray-700">{row.impactMonth}</td>
-                    <td className="p-4">
-                      <Badge
-                        className={`text-xs ${
-                          row.dept === "Outsourcing"
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-blue-100 text-blue-700"
+                    <td style={{ color: "#6b7280", fontSize: 12.5 }}>
+                      {row.invDate}
+                    </td>
+                    <td style={{ color: "#374151" }}>{row.impactMonth}</td>
+                    <td>
+                      <span
+                        className={`dept-pill ${
+                          row.dept === "Outsourcing" ? "os" : "normal"
                         }`}
                       >
                         {row.dept}
-                      </Badge>
+                      </span>
                     </td>
-                    <td className="p-4 font-medium text-gray-900">
-                      {row.client}
+                    <td style={{ fontWeight: 500 }}>{row.client}</td>
+                    <td className="mono">
+                      ₹{formatCurrency(row.invValue ?? 0)}
                     </td>
-                    <td className="p-4 text-right font-mono text-gray-900">
-                      {formatCurrency(row.invValue ?? 0)}
+                    <td className="mono">₹{formatCurrency(row.vertoFee)}</td>
+                    <td
+                      className="mono"
+                      style={{
+                        color: row.notRecvd > 0 ? "#e11d48" : "inherit",
+                      }}
+                    >
+                      ₹{formatCurrency(row.notRecvd)}
                     </td>
-                    <td className="p-4 text-right font-mono text-gray-900">
-                      {formatCurrency(row.vertoFee)}
-                    </td>
-                    <td className="p-4 text-right font-mono text-gray-900">
-                      {formatCurrency(row.notRecvd)}
-                    </td>
-                    <td className="p-4 text-center">
-                      <Badge
-                        variant={
-                          row.delayDays > 30
-                            ? "destructive"
-                            : row.delayDays > 0
-                            ? "warning"
-                            : "secondary"
-                        }
+                    <td className="center">
+                      <span
+                        className={`delay-pill ${delayClass(row.delayDays)}`}
                       >
                         {row.delayDays}d
-                      </Badge>
+                      </span>
                     </td>
-                    <td className="p-4 text-right font-mono text-gray-900">
+                    <td
+                      className="mono"
+                      style={{
+                        color: row.osDiff >= 0 ? "#059669" : "#e11d48",
+                      }}
+                    >
                       {row.osDiff >= 0 ? "+" : ""}
                       {formatCurrency(row.osDiff)}
                     </td>
-                    <td className="p-4 text-right font-mono text-gray-900">
+                    <td className="mono">
                       {row.cnBadDebt > 0 ? (
-                        formatCurrency(row.cnBadDebt)
+                        <span style={{ color: "#d97706" }}>
+                          ₹{formatCurrency(row.cnBadDebt)}
+                        </span>
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span style={{ color: "#d1d5db" }}>—</span>
                       )}
                     </td>
-                    <td className="p-4 text-xs text-gray-600">{row.entity}</td>
+                    <td style={{ fontSize: 12, color: "#6b7280" }}>
+                      {row.entity}
+                    </td>
+
                     {/* GST */}
-                    <td className="p-4 text-center">
+                    <td className="center">
                       {row.gstMismatch ? (
                         <span className="text-red-600 font-bold">🔴</span>
                       ) : (
-                        <span className="text-green-600">₹ {row.gst ?? 0}</span>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: "#059669",
+                            fontFamily: "'Space Grotesk', sans-serif",
+                          }}
+                        >
+                          ₹ {row.gst ?? 0}
+                        </span>
                       )}
                     </td>
 
-                    {/* TYPE */}
-                    <td className="p-4 text-center">
-                      {row.dept === "Outsourcing" ? (
-                        <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs">
-                          OS
-                        </span>
-                      ) : (
-                        <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
-                          Normal
-                        </span>
-                      )}
+                    {/* Type */}
+                    <td className="center">
+                      <span
+                        className={`type-pill ${
+                          row.dept === "Outsourcing" ? "os" : "normal"
+                        }`}
+                      >
+                        {row.dept === "Outsourcing" ? "OS" : "Normal"}
+                      </span>
                     </td>
 
                     {/* TDS */}
-                    <td className="p-4 text-center">
+                    <td className="center">
                       {row.tdsMismatch ? (
                         <span className="text-red-600 font-bold">🔴</span>
                       ) : (
-                        <span className="text-green-600">₹ {row.tds ?? 0}</span>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: "#059669",
+                            fontFamily: "'Space Grotesk', sans-serif",
+                          }}
+                        >
+                          ₹ {row.tds ?? 0}
+                        </span>
                       )}
                     </td>
-                    <td className="p-4 text-center">
+
+                    {/* Status */}
+                    <td className="center">
                       {row.gstMismatch || row.tdsMismatch ? (
-                        <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs">
-                          Mismatch
-                        </span>
+                        <span className="status-pill mismatch">Mismatch</span>
                       ) : (
-                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">
-                          OK
-                        </span>
+                        <span className="status-pill ok">OK</span>
                       )}
                     </td>
-                    <td className="p-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        {/* 🔥 Ledger Button */}
+
+                    {/* Action */}
+                    <td className="center">
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 4,
+                        }}
+                      >
+                        {/* Ledger Button */}
                         <button
+                          className="icon-btn"
+                          title="View Ledger"
                           onClick={(e) => {
                             e.stopPropagation();
                             window.ledgerInvoice = row;
                             window.setActiveTab("ledger");
                           }}
-                          className="p-1.5 hover:bg-blue-50 rounded-lg transition"
-                          title="View Ledger"
                         >
-                          <Eye className="w-4 h-4 text-gray-500 hover:text-blue-600" />
+                          <Eye size={14} />
                         </button>
 
-                        {/* Existing Expand Button */}
-                        <button className="p-1.5 hover:bg-gray-100 rounded-lg transition">
+                        {/* Expand Button */}
+                        <button className="icon-btn expand">
                           {expandedRow === row.id ? (
-                            <ChevronUp className="w-4 h-4 text-blue-600" />
+                            <ChevronUp
+                              size={14}
+                              style={{ color: "#2563eb" }}
+                            />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+                            <ChevronDown size={14} />
                           )}
                         </button>
                       </div>
                     </td>
                   </motion.tr>
 
-                  {/* Expanded Details */}
+                  {/* Expanded Details Row */}
                   <AnimatePresence>
                     {expandedRow === row.id && (
                       <motion.tr
@@ -1387,191 +1878,184 @@ const Dashboard = ({
                         transition={{ duration: 0.2 }}
                       >
                         <td
-                          colSpan="15"
-                          className="p-0 border-b border-gray-200"
+                          colSpan="16"
+                          style={{
+                            padding: 0,
+                            borderBottom: "1px solid #e8eaed",
+                          }}
                         >
                           <motion.div
                             initial={{ y: -10 }}
                             animate={{ y: 0 }}
-                            className="p-6 bg-gray-50"
+                            className="expand-panel"
                           >
-                            <div className="mb-4">
-                              <h3 className="text-blue-600 font-semibold flex items-center text-sm uppercase tracking-wider">
-                                <FileText className="w-4 h-4 mr-2" />
-                                Invoice Details: {row.id}
-                              </h3>
+                            <div className="expand-title">
+                              <FileText size={13} />
+                              Invoice Details: {row.id}
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                            <div className="expand-grid">
+
                               {/* Invoice Details */}
-                              <div className="bg-white p-4 rounded-xl border border-gray-200">
-                                <p className="text-xs text-gray-600 uppercase mb-3 font-semibold">
+                              <div className="action-card">
+                                <p className="action-card-label">
                                   Invoice Details
                                 </p>
-                                <div className="space-y-2">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setDetailsInvoice(row);
-                                      setShowInvoiceDetails(true);
-                                    }}
-                                    className="w-full px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    View
-                                  </button>
-                                  <button
-                                    onClick={async (e) => {
-                                      e.stopPropagation();
+                                <button
+                                  className="action-btn view"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDetailsInvoice(row);
+                                    setShowInvoiceDetails(true);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="action-btn edit"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
 
-                                      const { data, error } = await supabase
-                                        .from("invoice_finance_view")
-                                        .select("*")
-                                        .eq("id", row.dbId)
-                                        .single();
+                                    const { data, error } = await supabase
+                                      .from("invoice_finance_view")
+                                      .select("*")
+                                      .eq("id", row.dbId)
+                                      .single();
 
-                                      if (error) {
-                                        alert("Error fetching invoice");
-                                        return;
-                                      }
+                                    if (error) {
+                                      alert("Error fetching invoice");
+                                      return;
+                                    }
 
-                                      setSelectedInvoiceData({
-                                        ...data,
-                                        dbId: data.id, // 🔥 IMPORTANT FIX
-                                      });
-                                      setShowInvoiceModal(true);
-                                    }}
-                                    className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    Edit
-                                  </button>
-                                </div>
+                                    setSelectedInvoiceData({
+                                      ...data,
+                                      dbId: data.id,
+                                    });
+                                    setShowInvoiceModal(true);
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               </div>
 
                               {/* Payment Received */}
-                              <div className="bg-white p-4 rounded-xl border border-gray-200">
-                                <p className="text-xs text-gray-600 uppercase mb-3 font-semibold">
+                              <div className="action-card">
+                                <p className="action-card-label">
                                   Payment Received
                                 </p>
-                                <div className="space-y-2">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setHistoryInvoice(row);
-                                      setShowPaymentHistory(true);
-                                    }}
-                                    className="w-full px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    View
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedInvoice(row);
-                                      setShowPaymentModal(true);
-                                    }}
-                                    className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    Edit
-                                  </button>
-                                </div>
+                                <button
+                                  className="action-btn view"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setHistoryInvoice(row);
+                                    setShowPaymentHistory(true);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="action-btn edit"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedInvoice(row);
+                                    setShowPaymentModal(true);
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               </div>
 
                               {/* Payment Made */}
-                              <div className="bg-white p-4 rounded-xl border border-gray-200">
-                                <p className="text-xs text-gray-600 uppercase mb-3 font-semibold">
+                              <div className="action-card">
+                                <p className="action-card-label">
                                   Payment Made
                                 </p>
-                                <div className="space-y-2">
-                                  {/* ✅ FIXED — opens PaymentMadeHistoryDrawer */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setPaymentMadeHistoryInvoice(row);
-                                      setShowPaymentMadeHistory(true);
-                                    }}
-                                    className="w-full px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    View
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setPaymentMadeInvoice({
-                                        ...row,
-                                        dbId: row.dbId || row.id,
-                                        invoice_number:
-                                          row.invoice_number || row.id,
-                                        bank_id: row.bank_id || "",
-                                        entity:
-                                          row.entity ||
-                                          row.entity_name ||
-                                          "Pvt Ltd",
-                                      });
-                                      setShowPaymentMadeModal(true);
-                                    }}
-                                    className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    Edit
-                                  </button>
-                                </div>
+                                {/* ✅ FIXED — opens PaymentMadeHistoryDrawer */}
+                                <button
+                                  className="action-btn view"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPaymentMadeHistoryInvoice(row);
+                                    setShowPaymentMadeHistory(true);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="action-btn edit"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPaymentMadeInvoice({
+                                      ...row,
+                                      dbId: row.dbId || row.id,
+                                      invoice_number:
+                                        row.invoice_number || row.id,
+                                      bank_id: row.bank_id || "",
+                                      entity:
+                                        row.entity ||
+                                        row.entity_name ||
+                                        "Pvt Ltd",
+                                    });
+                                    setShowPaymentMadeModal(true);
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               </div>
 
                               {/* Bounce Back */}
-                              <div className="bg-white p-4 rounded-xl border border-gray-200">
-                                <p className="text-xs text-gray-600 uppercase mb-3 font-semibold">
+                              <div className="action-card">
+                                <p className="action-card-label">
                                   Bounce Back
                                 </p>
-                                <div className="space-y-2">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setHistoryInvoice(row);
-                                      setShowBounceHistory(true);
-                                    }}
-                                    className="w-full px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    View
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setShowBounceBackModal(true);
-                                    }}
-                                    className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    Edit
-                                  </button>
-                                </div>
+                                <button
+                                  className="action-btn view"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setHistoryInvoice(row);
+                                    setShowBounceHistory(true);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="action-btn edit"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowBounceBackModal(true);
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               </div>
 
                               {/* CN / Bad Debt */}
-                              <div className="bg-white p-4 rounded-xl border border-gray-200">
-                                <p className="text-xs text-gray-600 uppercase mb-3 font-semibold">
+                              <div className="action-card">
+                                <p className="action-card-label">
                                   CN / Bad Debt
                                 </p>
-                                <div className="space-y-2">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setHistoryInvoice(row);
-                                      setShowCNHistory(true);
-                                    }}
-                                    className="w-full px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    View
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedInvoiceData(row);
-                                      setShowCNBadDebtModal(true);
-                                    }}
-                                    className="w-full px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    Edit
-                                  </button>
-                                </div>
+                                <button
+                                  className="action-btn view"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setHistoryInvoice(row);
+                                    setShowCNHistory(true);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="action-btn edit"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedInvoiceData(row);
+                                    setShowCNBadDebtModal(true);
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               </div>
+
                             </div>
                           </motion.div>
                         </td>
@@ -1581,48 +2065,71 @@ const Dashboard = ({
                 </React.Fragment>
               ))}
             </tbody>
-            <tfoot className="bg-gray-100 font-semibold text-gray-900 border-t-2 border-gray-300">
+
+            <tfoot>
               <tr className="align-bottom">
                 <td
                   colSpan="4"
-                  className="p-4 text-right text-gray-900 text-base align-bottom"
+                  style={{
+                    textAlign: "right",
+                    color: "#9ca3af",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    verticalAlign: "bottom",
+                  }}
                 >
                   TOTALS
                 </td>
-                <td className="p-4 text-right font-mono text-gray-900 text-base align-bottom">
-                  {formatCurrency(totals.invValue)}
+                <td className="mono" style={{ verticalAlign: "bottom" }}>
+                  ₹{formatCurrency(totals.invValue)}
                 </td>
-                <td className="p-4 text-right font-mono text-gray-900 text-base align-bottom">
-                  {formatCurrency(totals.vertoFee)}
+                <td className="mono" style={{ verticalAlign: "bottom" }}>
+                  ₹{formatCurrency(totals.vertoFee)}
                 </td>
-                <td className="p-4 text-right font-mono text-gray-900 text-base align-bottom">
-                  {formatCurrency(totals.notRecvd)}
+                <td
+                  className="mono"
+                  style={{ color: "#e11d48", verticalAlign: "bottom" }}
+                >
+                  ₹{formatCurrency(totals.notRecvd)}
                 </td>
-                <td className="p-4 text-center text-gray-400 align-bottom">
-                  -
+                <td
+                  style={{
+                    textAlign: "center",
+                    color: "#d1d5db",
+                    verticalAlign: "bottom",
+                  }}
+                >
+                  —
                 </td>
-                <td className="p-4 text-center text-gray-400 align-bottom">
-                  -
+                <td
+                  style={{
+                    textAlign: "center",
+                    color: "#d1d5db",
+                    verticalAlign: "bottom",
+                  }}
+                >
+                  —
                 </td>
-                <td className="p-4 text-right font-mono text-gray-900 text-base align-bottom">
-                  {formatCurrency(totals.cnBadDebt)}
+                <td className="mono" style={{ verticalAlign: "bottom" }}>
+                  ₹{formatCurrency(totals.cnBadDebt)}
                 </td>
-                <td className="p-4 text-center text-gray-400 align-bottom">
-                  -
-                </td>
-                <td className="p-4 align-bottom"></td>
+                <td colSpan="6" />
               </tr>
             </tfoot>
           </table>
         </div>
 
         {filteredData.length === 0 && (
-          <div className="p-12 text-center text-gray-500">
-            <Search className="w-12 h-12 mx-auto mb-4 opacity-20" />
-            <p>No records found matching your search criteria</p>
+          <div className="empty-state">
+            <Search size={48} />
+            <p style={{ fontSize: 14 }}>
+              No records found matching your search criteria
+            </p>
           </div>
         )}
-      </Card>
+      </div>
     </div>
   );
 };
