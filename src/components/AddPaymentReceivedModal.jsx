@@ -145,8 +145,6 @@ const AddPaymentReceivedModal = ({
         newErrors.client = "Client is required";
       if (!formData.ledgerName.trim())
         newErrors.ledgerName = "Ledger name is required";
-      if (!formData.paymentDescription.trim())
-        newErrors.paymentDescription = "Payment description is required";
       if (!formData.payoutMonth.trim())
         newErrors.payoutMonth = "Payout month is required";
     }
@@ -635,7 +633,7 @@ const AddPaymentReceivedModal = ({
                         {/* Payment Description */}
                         <div>
                           <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                            Payment Description <span className="text-rose-600">*</span>
+                            Payment Description
                           </label>
                           <textarea
                             value={formData.paymentDescription}
