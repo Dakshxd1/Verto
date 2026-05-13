@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactDOM from "react-dom";
+import * as XLSX from "xlsx";
 import { useAuth } from "../context/AuthContext";
 import supabase from "../lib/supabaseClient";
 import {
@@ -147,6 +148,7 @@ const InternalTeamDetails = () => {
   const formatCurrency = (val) => `₹ ${(val / 1000).toFixed(0)}K`;
   const formatCurrencyFull = (val) => `₹ ${val.toLocaleString("en-IN")}`;
   const formatDate = (dateStr) => {
+    if (!dateStr) return "-";
     const date = new Date(dateStr);
     return date.toLocaleDateString("en-GB", {
       day: "2-digit",
@@ -160,6 +162,76 @@ const InternalTeamDetails = () => {
     setIsModalOpen(true);
     setSelectedEmployee(null);
   };
+
+  // ─── Export Excel ────────────────────────────────────────────────────────────
+  const handleExportExcel = () => {
+    // Find the max number of clients across all rows so we can build dynamic columns
+    const maxClients = mergedData.reduce((max, row) => {
+      return Math.max(max, row.client_focus?.length || 0);
+    }, 0);
+
+    const exportRows = mergedData.map((row) => {
+      const base = {
+        // Identity
+        "Emp Code": row.emp_code || "",
+        "Name": row.name || "",
+        "Father Name": row.father_name || "",
+        "Email": row.email || "",
+        // Work
+        "Department": row.department || "",
+        "Designation": row.designation || "",
+        "Location": row.location || "",
+        "Role": row.role || "employee",
+        "Status": row.status || "",
+        // Dates
+        "Date of Birth": row.dob ? formatDate(row.dob) : "",
+        "Date of Joining": row.doj ? formatDate(row.doj) : "",
+        // Compensation
+        "CTC (₹)": row.ctc || 0,
+        "PF (₹)": row.pf || 0,
+        "ESI (₹)": row.esi || 0,
+        "Bonus (₹)": row.bonus || 0,
+        "Variable (₹)": row.variable || 0,
+        "Other Component (₹)": row.other_component || 0,
+        "Reimbursement (₹)": row.reimbursement || 0,
+        // Cost Head Breakup
+        "Cost Head - OS (%)": row.cost_head_breakup?.os || 0,
+        "Cost Head - REC (%)": row.cost_head_breakup?.rec || 0,
+        "Cost Head - TEMP (%)": row.cost_head_breakup?.temp || 0,
+        "Cost Head - Projects (%)": row.cost_head_breakup?.projects || 0,
+        "Cost Head - BD (%)": row.cost_head_breakup?.bd || 0,
+        "Cost Head - HR (%)": row.cost_head_breakup?.hr || 0,
+        "Cost Head - Accts (%)": row.cost_head_breakup?.accts || 0,
+        "Cost Head - Admin (%)": row.cost_head_breakup?.admin || 0,
+        "Cost Head - Others (%)": row.cost_head_breakup?.others || 0,
+      };
+
+      // Dynamically add client focus columns
+      for (let i = 0; i < maxClients; i++) {
+        const client = row.client_focus?.[i];
+        base[`Client ${i + 1} Name`] = client?.clientName || "";
+        base[`Client ${i + 1} %`] = client?.percentage ?? "";
+      }
+
+      return base;
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+
+    // Style: auto column widths based on header length
+    const headers = Object.keys(exportRows[0] || {});
+    worksheet["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 2, 14) }));
+
+    // Freeze the header row
+    worksheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Internal Team");
+
+    const fileName = `Internal_Team_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+  };
+  // ─────────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4 pb-6">
@@ -211,7 +283,10 @@ const InternalTeamDetails = () => {
               <Filter className="w-4 h-4" />
               <span>More Filters</span>
             </Button>
-            <Button className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700">
+            <Button
+              onClick={handleExportExcel}
+              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700"
+            >
               <Download className="w-4 h-4" />
               <span>Export Excel</span>
             </Button>
