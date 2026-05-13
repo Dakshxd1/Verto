@@ -672,12 +672,31 @@ const AddInvoiceModal = ({
   const ErrorMessage = ({ error }) => {
     if (!showErrors || !error) return null;
     return (
-      <div className="flex items-center mt-1 text-xs text-rose-600">
+      <div className="flex items-center mt-1 text-xs text-rose-500">
         <AlertCircle className="w-3 h-3 mr-1" />
         {error}
       </div>
     );
   };
+
+  // ── shared input style helpers ──────────────────────────────────
+  const inp =
+    "w-full bg-white border text-gray-800 px-3.5 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors placeholder-gray-400";
+  const inpNormal = `${inp} border-gray-200`;
+  const inpErr    = `${inp} border-rose-400 bg-rose-50`;
+  const inpAuto   =
+    "w-full bg-blue-50 border border-blue-200 text-blue-700 px-3.5 py-2.5 rounded-lg text-sm font-mono font-semibold";
+
+  const fi = (field) => (showErrors && errors[field] ? inpErr : inpNormal);
+
+  // section card wrapper
+  const card = "bg-white border border-gray-200 rounded-xl p-5 shadow-sm";
+
+  // section title
+  const sectionTitle = "text-[11px] font-bold text-blue-700 uppercase tracking-widest mb-4 flex items-center gap-2";
+
+  // label
+  const lbl = "block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5";
 
   return (
     <AnimatePresence>
@@ -686,112 +705,114 @@ const AddInvoiceModal = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
           onClick={handleClose}
         >
           <motion.div
-            initial={{ scale: 0.95, y: 20 }}
+            initial={{ scale: 0.96, y: 16 }}
             animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.95, y: 20 }}
+            exit={{ scale: 0.96, y: 16 }}
+            transition={{ type: "spring", stiffness: 300, damping: 26 }}
             onClick={(e) => e.stopPropagation()}
             className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden"
           >
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white">
-              <div className="flex items-center justify-between">
+            {/* ── Header ── */}
+            <div
+              className="px-7 py-5 text-white relative overflow-hidden"
+              style={{
+                background:
+                  "linear-gradient(135deg, #1d4ed8 0%, #1e40af 60%, #1e3a8a 100%)",
+              }}
+            >
+              {/* decorative glow blob */}
+              <div
+                className="absolute -top-8 -right-8 w-40 h-40 rounded-full pointer-events-none"
+                style={{
+                  background:
+                    "radial-gradient(circle, rgba(147,197,253,0.25), transparent 70%)",
+                }}
+              />
+              <div className="relative flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold">
+                  <h2 className="text-xl font-bold tracking-tight">
                     {selectedInvoice ? "✏️ Edit Invoice" : "+ Add Invoice"}
                   </h2>
-                  <p className="text-blue-100 text-sm mt-1">
+                  <p className="text-blue-200 text-sm mt-0.5">
                     Create new invoice with auto-calculations
                   </p>
                 </div>
                 <button
                   onClick={handleClose}
-                  className="text-blue-100 hover:text-white transition-colors"
+                  className="p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-white/15 transition-colors"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            {/* Form Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-              <form onSubmit={handleSubmit} className="space-y-6">
+            {/* ── Form Content ── */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-82px)] bg-gray-50/60">
+              <form onSubmit={handleSubmit} className="space-y-4">
+
                 {/* Basic Invoice Details */}
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
-                  <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wider mb-4 flex items-center">
-                    <Calculator className="w-4 h-4 mr-2" />
+                <div className={card}>
+                  <h3 className={sectionTitle}>
+                    <span className="w-5 h-5 rounded-md bg-blue-600 flex items-center justify-center shrink-0">
+                      <Calculator className="w-3 h-3 text-white" />
+                    </span>
                     Basic Invoice Information
                   </h3>
 
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Invoice Entity <span className="text-rose-600">*</span>
+                      <label className={lbl}>
+                        Invoice Entity <span className="text-rose-500">*</span>
                       </label>
                       <select
                         value={formData.invoiceEntity}
                         onChange={(e) =>
                           handleChange("invoiceEntity", e.target.value)
                         }
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
-                          showErrors && errors.invoiceEntity
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
+                        className={fi("invoiceEntity")}
                       >
                         <option value="">Select Entity</option>
                         {entities.map((entity, idx) => (
-                          <option key={idx} value={entity}>
-                            {entity}
-                          </option>
+                          <option key={idx} value={entity}>{entity}</option>
                         ))}
                       </select>
                       <ErrorMessage error={errors.invoiceEntity} />
-                      <p className="text-xs text-gray-500 mt-1">PS/PVT/LLP</p>
+                      <p className="text-xs text-gray-400 mt-1">PS/PVT/LLP</p>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Department <span className="text-rose-600">*</span>
+                      <label className={lbl}>
+                        Department <span className="text-rose-500">*</span>
                       </label>
                       <select
                         value={formData.department}
                         onChange={(e) =>
                           handleChange("department", e.target.value)
                         }
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
-                          showErrors && errors.department
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
+                        className={fi("department")}
                       >
                         <option value="">Select Department</option>
                         {departments.map((dept) => (
-                          <option key={dept.value} value={dept.value}>
-                            {dept.label}
-                          </option>
+                          <option key={dept.value} value={dept.value}>{dept.label}</option>
                         ))}
                       </select>
                       <ErrorMessage error={errors.department} />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Client <span className="text-rose-600">*</span>
+                      <label className={lbl}>
+                        Client <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
                         list="invoice-clients-list"
                         value={formData.client || ""}
                         onChange={(e) => handleChange("client", e.target.value)}
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
-                          showErrors && errors.client
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
+                        className={fi("client")}
                         placeholder="Type or select"
                       />
                       <datalist id="invoice-clients-list">
@@ -804,18 +825,14 @@ const AddInvoiceModal = ({
                   </div>
 
                   <div className="mt-4">
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                      Pay Head <span className="text-rose-600">*</span>
+                    <label className={lbl}>
+                      Pay Head <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.payHead || ""}
                       onChange={(e) => handleChange("payHead", e.target.value)}
-                      className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg ${
-                        showErrors && errors.payHead
-                          ? "border-rose-500"
-                          : "border-gray-300"
-                      }`}
+                      className={fi("payHead")}
                       placeholder="Enter Pay Head"
                     />
                     <ErrorMessage error={errors.payHead} />
@@ -823,8 +840,8 @@ const AddInvoiceModal = ({
 
                   <div className="grid grid-cols-3 gap-4 mt-4">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Ledger Name <span className="text-rose-600">*</span>
+                      <label className={lbl}>
+                        Ledger Name <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -833,19 +850,19 @@ const AddInvoiceModal = ({
                         onChange={(e) =>
                           handleChange("ledgerName", e.target.value)
                         }
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
-                          showErrors && errors.ledgerName
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
+                        className={
+                          selectedInvoice
+                            ? `${inpNormal} bg-gray-50 text-gray-500 cursor-default`
+                            : fi("ledgerName")
+                        }
                         placeholder="Ledger name"
                       />
                       <ErrorMessage error={errors.ledgerName} />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Invoice Date <span className="text-rose-600">*</span>
+                      <label className={lbl}>
+                        Invoice Date <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="date"
@@ -853,29 +870,23 @@ const AddInvoiceModal = ({
                         onChange={(e) =>
                           handleChange("invoiceDate", e.target.value)
                         }
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
-                          showErrors && errors.invoiceDate
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
+                        className={fi("invoiceDate")}
                       />
                       <ErrorMessage error={errors.invoiceDate} />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Impact Month
-                      </label>
+                      <label className={lbl}>Impact Month</label>
                       <input
                         type="text"
                         value={formData.impactMonth || ""}
                         onChange={(e) =>
                           handleChange("impactMonth", e.target.value)
                         }
-                        className="w-full bg-white border border-gray-300 px-4 py-2.5 rounded-lg"
+                        className={inpNormal}
                         placeholder="MM/YY (e.g. 04/26)"
                       />
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-gray-400 mt-1">
                         Auto from Invoice Date
                       </p>
                     </div>
@@ -883,15 +894,18 @@ const AddInvoiceModal = ({
                 </div>
 
                 {/* Financial Details */}
-                <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4">
-                  <h3 className="text-sm font-bold text-emerald-900 uppercase tracking-wider mb-4">
-                    Financial Details & Auto-Calculations
+                <div className={card}>
+                  <h3 className={sectionTitle}>
+                    <span className="w-5 h-5 rounded-md bg-blue-600 flex items-center justify-center shrink-0 text-white font-bold text-[10px]">
+                      ₹
+                    </span>
+                    Financial Details &amp; Auto-Calculations
                   </h3>
 
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Invoice No <span className="text-rose-600">*</span>
+                      <label className={lbl}>
+                        Invoice No <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -899,30 +913,24 @@ const AddInvoiceModal = ({
                         onChange={(e) =>
                           handleChange("invoiceNo", e.target.value)
                         }
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${
-                          showErrors && errors.invoiceNo
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
+                        className={fi("invoiceNo")}
                         placeholder="INV-001"
                       />
                       <ErrorMessage error={errors.invoiceNo} />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold mb-2">
-                        Pay (Service Charge)
-                      </label>
+                      <label className={lbl}>Pay (Service Charge)</label>
                       <input
                         type="number"
                         value={formData.pay || ""}
                         onChange={(e) => handleChange("pay", e.target.value)}
-                        className="w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        className={inpNormal}
                         placeholder="₹ 0"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Verto Fee <span className="text-rose-600">*</span>
+                      <label className={lbl}>
+                        Verto Fee <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="number"
@@ -930,28 +938,22 @@ const AddInvoiceModal = ({
                         onChange={(e) =>
                           handleChange("vertoFee", e.target.value)
                         }
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${
-                          showErrors && errors.vertoFee
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
+                        className={fi("vertoFee")}
                         placeholder="₹ 0"
                       />
                       <ErrorMessage error={errors.vertoFee} />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        GST 18%
-                      </label>
+                      <label className={lbl}>GST 18%</label>
                       <input
                         type="number"
                         value={formData.gst || ""}
                         onChange={(e) => handleChange("gst", e.target.value)}
-                        className={`w-full px-4 py-2.5 rounded-lg font-mono ${
+                        className={
                           gstMismatch
-                            ? "border-red-500 bg-red-50"
-                            : "border-gray-300 bg-white"
-                        }`}
+                            ? `${inp} border-red-400 bg-red-50`
+                            : inpNormal
+                        }
                         placeholder="Enter GST"
                       />
                       {gstMismatch && (
@@ -964,20 +966,18 @@ const AddInvoiceModal = ({
 
                   <div className="grid grid-cols-3 gap-4 mt-4">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Invoice Value
-                      </label>
+                      <label className={lbl}>Invoice Value</label>
                       <input
                         type="number"
                         value={formData.invoiceValue || ""}
                         onChange={(e) =>
                           handleChange("invoiceValue", e.target.value)
                         }
-                        className={`w-full px-4 py-2.5 rounded-lg font-bold ${
+                        className={
                           invoiceMismatch
-                            ? "border-red-500 bg-red-50"
-                            : "border-gray-300 bg-white"
-                        }`}
+                            ? `${inp} border-red-400 bg-red-50 font-bold`
+                            : `${inpNormal} font-bold`
+                        }
                       />
                       {invoiceMismatch && (
                         <p className="text-red-500 text-xs mt-1">
@@ -988,24 +988,20 @@ const AddInvoiceModal = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold mb-2">
-                        TDS %
-                      </label>
+                      <label className={lbl}>TDS %</label>
                       <input
                         type="number"
                         value={formData.tdsPercent || ""}
                         onChange={(e) =>
                           handleChange("tdsPercent", e.target.value)
                         }
-                        className="w-full bg-white border px-4 py-2.5 rounded-lg"
+                        className={inpNormal}
                         placeholder="Enter %"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        TDS
-                      </label>
+                      <label className={lbl}>TDS</label>
                       <input
                         type="number"
                         value={formData.tds || ""}
@@ -1013,11 +1009,11 @@ const AddInvoiceModal = ({
                           handleChange("tds", e.target.value);
                           setIsManualTds(true);
                         }}
-                        className={`w-full px-4 py-2.5 rounded-lg font-mono ${
+                        className={
                           tdsMismatch
-                            ? "border-red-500 bg-red-50"
-                            : "border-gray-300 bg-white"
-                        }`}
+                            ? `${inp} border-red-400 bg-red-50`
+                            : inpNormal
+                        }
                       />
                       {tdsMismatch && (
                         <p className="text-red-500 text-xs mt-1">
@@ -1027,14 +1023,12 @@ const AddInvoiceModal = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Verto Fee (Post TDS)
-                      </label>
+                      <label className={lbl}>Verto Fee (Post TDS)</label>
                       <input
                         type="text"
                         value={formData.vertoFeePostTds}
                         readOnly
-                        className="w-full bg-emerald-100 border border-emerald-300 text-emerald-700 px-4 py-2.5 rounded-lg font-mono font-bold"
+                        className={inpAuto}
                         placeholder="Auto-calculated"
                       />
                     </div>
@@ -1042,22 +1036,20 @@ const AddInvoiceModal = ({
 
                   <div className="grid grid-cols-3 gap-4 mt-4">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Receivable Rs
-                      </label>
+                      <label className={lbl}>Receivable Rs</label>
                       <input
                         type="text"
                         value={formData.receivableRs || ""}
                         readOnly
-                        className="w-full bg-gray-100 border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg font-mono"
+                        className={inpAuto}
                         placeholder="Auto-calculated"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                      <label className={lbl}>
                         Expected Collection Date{" "}
-                        <span className="text-rose-600">*</span>
+                        <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="date"
@@ -1065,20 +1057,16 @@ const AddInvoiceModal = ({
                         onChange={(e) =>
                           handleChange("expectedCollectionDate", e.target.value)
                         }
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${
-                          showErrors && errors.expectedCollectionDate
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
+                        className={fi("expectedCollectionDate")}
                       />
                       <ErrorMessage error={errors.expectedCollectionDate} />
-                      <p className="text-xs text-amber-600 mt-1">Alert Ping</p>
+                      <p className="text-xs text-amber-500 mt-1">📌 Alert Ping</p>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Bank Name & Acct No{" "}
-                        <span className="text-rose-600">*</span>
+                      <label className={lbl}>
+                        Bank Name &amp; Acct No{" "}
+                        <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -1087,11 +1075,7 @@ const AddInvoiceModal = ({
                         onChange={(e) =>
                           handleChange("bankName", e.target.value)
                         }
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${
-                          showErrors && errors.bankName
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
+                        className={fi("bankName")}
                         placeholder="Type or select"
                       />
                       <datalist id="banks-list">
@@ -1105,22 +1089,20 @@ const AddInvoiceModal = ({
 
                   <div className="grid grid-cols-2 gap-4 mt-4">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Invoice Description
-                      </label>
+                      <label className={lbl}>Invoice Description</label>
                       <textarea
                         value={formData.invoiceDescription}
                         onChange={(e) =>
                           handleChange("invoiceDescription", e.target.value)
                         }
                         rows={2}
-                        className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        className={`${inpNormal} resize-none`}
                         placeholder="Optional description"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                      <label className={lbl}>
                         Ref No of payment made against Invoice (If Any)
                       </label>
                       <textarea
@@ -1129,10 +1111,10 @@ const AddInvoiceModal = ({
                           handleChange("refNoPaymentMade", e.target.value)
                         }
                         rows={2}
-                        className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        className={`${inpNormal} resize-none`}
                         placeholder="e.g. PI-DD-120526-01"
                       />
-                      <p className="text-xs text-amber-600 mt-1">
+                      <p className="text-xs text-amber-500 mt-1">
                         Enter advance payment ref to auto-link
                       </p>
                     </div>
@@ -1145,17 +1127,20 @@ const AddInvoiceModal = ({
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4"
+                    className={card}
                   >
-                    <h3 className="text-sm font-bold text-amber-900 uppercase tracking-wider mb-4">
+                    <h3 className={sectionTitle}>
+                      <span className="w-5 h-5 rounded-md bg-amber-500 flex items-center justify-center shrink-0 text-white font-bold text-[10px]">
+                        OS
+                      </span>
                       Extra Fields for OS Department
                     </h3>
 
                     <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                        <label className={lbl}>
                           Employee Count{" "}
-                          <span className="text-rose-600">*</span>
+                          <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="number"
@@ -1163,19 +1148,15 @@ const AddInvoiceModal = ({
                           onChange={(e) =>
                             handleChange("employeeCount", e.target.value)
                           }
-                          className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 ${
-                            showErrors && errors.employeeCount
-                              ? "border-rose-500"
-                              : "border-gray-300"
-                          }`}
+                          className={fi("employeeCount")}
                           placeholder="0"
                         />
                         <ErrorMessage error={errors.employeeCount} />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Gross Value <span className="text-rose-600">*</span>
+                        <label className={lbl}>
+                          Gross Value <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="number"
@@ -1183,19 +1164,15 @@ const AddInvoiceModal = ({
                           onChange={(e) =>
                             handleChange("grossValue", e.target.value)
                           }
-                          className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 ${
-                            showErrors && errors.grossValue
-                              ? "border-rose-500"
-                              : "border-gray-300"
-                          }`}
+                          className={fi("grossValue")}
                           placeholder="₹ 0"
                         />
                         <ErrorMessage error={errors.grossValue} />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Net In Hand <span className="text-rose-600">*</span>
+                        <label className={lbl}>
+                          Net In Hand <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="number"
@@ -1203,15 +1180,11 @@ const AddInvoiceModal = ({
                           onChange={(e) =>
                             handleChange("netInHand", e.target.value)
                           }
-                          className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 ${
-                            showErrors && errors.netInHand
-                              ? "border-rose-500"
-                              : "border-gray-300"
-                          }`}
+                          className={fi("netInHand")}
                           placeholder="₹ 0"
                         />
                         <ErrorMessage error={errors.netInHand} />
-                        <p className="text-xs text-rose-600 mt-1">
+                        <p className="text-xs text-rose-500 mt-1">
                           Gross Value - Co (discuss with Sunil)
                         </p>
                       </div>
@@ -1219,65 +1192,53 @@ const AddInvoiceModal = ({
 
                     <div className="grid grid-cols-4 gap-4 mt-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Co PF = ER PF & EE PF
-                        </label>
+                        <label className={lbl}>Co PF = ER PF &amp; EE PF</label>
                         <input
                           type="number"
                           value={formData.coPF}
                           onChange={(e) => handleChange("coPF", e.target.value)}
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                           placeholder="₹ 0"
                         />
-                        <p className="text-xs text-rose-600 mt-1">
-                          Gross Value - Co
-                        </p>
+                        <p className="text-xs text-rose-500 mt-1">Gross Value - Co</p>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Co ESI = ER ESIC + EE ESIC
-                        </label>
+                        <label className={lbl}>Co ESI = ER ESIC + EE ESIC</label>
                         <input
                           type="number"
                           value={formData.coESI}
                           onChange={(e) =>
                             handleChange("coESI", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                           placeholder="₹ 0"
                         />
-                        <p className="text-xs text-rose-600 mt-1">
-                          Gross Value - Co
-                        </p>
+                        <p className="text-xs text-rose-500 mt-1">Gross Value - Co</p>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          LWF Tax
-                        </label>
+                        <label className={lbl}>LWF Tax</label>
                         <input
                           type="number"
                           value={formData.lwfTax}
                           onChange={(e) =>
                             handleChange("lwfTax", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                           placeholder="₹ 0"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          PT Tax
-                        </label>
+                        <label className={lbl}>PT Tax</label>
                         <input
                           type="number"
                           value={formData.ptTax}
                           onChange={(e) =>
                             handleChange("ptTax", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                           placeholder="₹ 0"
                         />
                       </div>
@@ -1285,47 +1246,39 @@ const AddInvoiceModal = ({
 
                     <div className="grid grid-cols-3 gap-4 mt-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Other Ded
-                        </label>
+                        <label className={lbl}>Other Ded</label>
                         <input
                           type="number"
                           value={formData.otherDed}
                           onChange={(e) =>
                             handleChange("otherDed", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                           placeholder="₹ 0"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          (CTC)
-                        </label>
+                        <label className={lbl}>(CTC)</label>
                         <input
                           type="text"
                           value={formData.ctc}
                           readOnly
-                          className="w-full bg-amber-100 border border-amber-300 text-amber-700 px-4 py-2.5 rounded-lg font-mono font-bold"
+                          className={inpAuto}
                           placeholder="Auto-calculated"
                         />
-                        <p className="text-xs text-rose-600 mt-1">
-                          Gross Value - Co
-                        </p>
+                        <p className="text-xs text-rose-500 mt-1">Gross Value - Co</p>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Month of Payout
-                        </label>
+                        <label className={lbl}>Month of Payout</label>
                         <input
                           type="text"
                           value={formData.monthOfPayout}
                           onChange={(e) =>
                             handleChange("monthOfPayout", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                           placeholder="e.g., Jan 2023"
                         />
                       </div>
@@ -1333,24 +1286,20 @@ const AddInvoiceModal = ({
 
                     <div className="grid grid-cols-2 gap-4 mt-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Statutory Payout Date by
-                        </label>
+                        <label className={lbl}>Statutory Payout Date by</label>
                         <input
                           type="date"
                           value={formData.statutoryPayoutDate}
                           onChange={(e) =>
                             handleChange("statutoryPayoutDate", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                         />
-                        <p className="text-xs text-amber-600 mt-1">
-                          Alert Ping
-                        </p>
+                        <p className="text-xs text-amber-500 mt-1">📌 Alert Ping</p>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                        <label className={lbl}>
                           Verto Fee Payout Date by Client
                         </label>
                         <input
@@ -1359,17 +1308,15 @@ const AddInvoiceModal = ({
                           onChange={(e) =>
                             handleChange("vertoFeePayoutDate", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                         />
-                        <p className="text-xs text-amber-600 mt-1">
-                          Alert Ping
-                        </p>
+                        <p className="text-xs text-amber-500 mt-1">📌 Alert Ping</p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-5 gap-4 mt-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                        <label className={lbl}>
                           Expected Outflow "In hand"
                         </label>
                         <input
@@ -1381,63 +1328,57 @@ const AddInvoiceModal = ({
                               e.target.value
                             )
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Expected Outflow "PF"
-                        </label>
+                        <label className={lbl}>Expected Outflow "PF"</label>
                         <input
                           type="date"
                           value={formData.expectedOutflowPF}
                           onChange={(e) =>
                             handleChange("expectedOutflowPF", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                         />
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-gray-400 mt-1">
                           As per master due date
                         </p>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Expected Outflow "ESI"
-                        </label>
+                        <label className={lbl}>Expected Outflow "ESI"</label>
                         <input
                           type="date"
                           value={formData.expectedOutflowESI}
                           onChange={(e) =>
                             handleChange("expectedOutflowESI", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                         />
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-gray-400 mt-1">
                           As per master due date
                         </p>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                          Expected Outflow "GST"
-                        </label>
+                        <label className={lbl}>Expected Outflow "GST"</label>
                         <input
                           type="date"
                           value={formData.expectedOutflowGST}
                           onChange={(e) =>
                             handleChange("expectedOutflowGST", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                         />
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-gray-400 mt-1">
                           As per master due date
                         </p>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                        <label className={lbl}>
                           Expected Outflow "Tax Deducted"
                         </label>
                         <input
@@ -1446,9 +1387,9 @@ const AddInvoiceModal = ({
                           onChange={(e) =>
                             handleChange("expectedOutflowTax", e.target.value)
                           }
-                          className="w-full bg-white border border-gray-300 text-gray-900 px-4 py-2.5 rounded-lg"
+                          className={inpNormal}
                         />
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-gray-400 mt-1">
                           As per master due date
                         </p>
                       </div>
@@ -1461,13 +1402,18 @@ const AddInvoiceModal = ({
                   <button
                     type="button"
                     onClick={handleClose}
-                    className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors font-medium"
+                    className="px-6 py-2.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-8 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium shadow-lg shadow-blue-500/30 flex items-center space-x-2"
+                    className="px-8 py-2.5 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition-all hover:brightness-110"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                      boxShadow: "0 4px 14px rgba(37,99,235,0.4)",
+                    }}
                   >
                     <span>Save Invoice</span>
                     <ArrowRight className="w-4 h-4" />
