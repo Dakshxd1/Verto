@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Mail,
   RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 
 // Import Components
@@ -45,56 +46,66 @@ import LedgerPage from "./components/LedgerPage";
 
 // ── Manage Team Modal ────────────────────────────────────────────────────────
 const ManageTeamModal = ({ onClose, role }) => {
-  const [activeSection, setActiveSection] = useState("team"); // "team" | "reset"
-  const [resetFormEmail, setResetFormEmail] = useState("");
-  const [resetFormMessage, setResetFormMessage] = useState("");
-  const [resetFormLoading, setResetFormLoading] = useState(false);
-  const [resetSuccess, setResetSuccess] = useState(false);
+  const [activeSection, setActiveSection] = useState("team");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetResult, setResetResult] = useState(null);
+  // resetResult: { success: bool, newPassword?: string, email?: string, error?: string }
 
-  const generateRandomPassword = (length = 12) => {
-    const charset =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_+=";
-    return Array.from(
-      { length },
-      () => charset[Math.floor(Math.random() * charset.length)]
-    ).join("");
+  const clearReset = () => {
+    setResetEmail("");
+    setResetResult(null);
   };
 
-  const handleAdminResetPassword = async () => {
-    const email = resetFormEmail.trim();
+  // ── Calls the Supabase Edge Function ─────────────────────────────────────
+  const handleReset = async () => {
+    const email = resetEmail.trim();
     if (!email) {
-      setResetFormMessage("Please enter the employee email.");
-      setResetSuccess(false);
+      setResetResult({
+        success: false,
+        error: "Please enter an email address.",
+      });
       return;
     }
 
-    setResetFormLoading(true);
-    setResetFormMessage("");
-    setResetSuccess(false);
+    setResetLoading(true);
+    setResetResult(null);
 
-    const { data: userRole, error } = await supabase
-      .from("user_roles")
-      .select("email")
-      .eq("email", email)
-      .single();
+    try {
+      // Get the logged-in admin's JWT
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error("You are not logged in.");
 
-    if (error || !userRole) {
-      setResetFormMessage(
-        error
-          ? `Unable to verify email: ${error.message}`
-          : `Email not found in system: ${email}`
+      const response = await fetch(
+        `https://exykcukcvjdkrlbmxzdx.supabase.co/functions/v1/reset-user-password`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ email }),
+        }
       );
-      setResetSuccess(false);
-      setResetFormLoading(false);
-      return;
-    }
 
-    const tempPassword = generateRandomPassword(12);
-    setResetFormMessage(
-      `Employee verified.\n\nTemporary password:\n${tempPassword}\n\nShare this with the user so they can log in and update it.`
-    );
-    setResetSuccess(true);
-    setResetFormLoading(false);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `Server error: ${response.status}`);
+      }
+
+      setResetResult({
+        success: true,
+        newPassword: data.newPassword,
+        email: data.email,
+      });
+    } catch (err) {
+      setResetResult({ success: false, error: err.message });
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const tabs = [
@@ -141,9 +152,7 @@ const ManageTeamModal = ({ onClose, role }) => {
               key={tab.id}
               onClick={() => {
                 setActiveSection(tab.id);
-                setResetFormMessage("");
-                setResetFormEmail("");
-                setResetSuccess(false);
+                clearReset();
               }}
               className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 -mb-px ${
                 activeSection === tab.id
@@ -160,6 +169,7 @@ const ManageTeamModal = ({ onClose, role }) => {
         {/* Tab Content */}
         <div className="overflow-y-auto max-h-[60vh]">
           <AnimatePresence mode="wait">
+            {/* ── Team Members tab ── */}
             {activeSection === "team" && (
               <motion.div
                 key="team"
@@ -173,6 +183,7 @@ const ManageTeamModal = ({ onClose, role }) => {
               </motion.div>
             )}
 
+            {/* ── Reset Password tab ── */}
             {activeSection === "reset" && (
               <motion.div
                 key="reset"
@@ -182,19 +193,19 @@ const ManageTeamModal = ({ onClose, role }) => {
                 transition={{ duration: 0.18 }}
                 className="p-6"
               >
-                <div className="max-w-md mx-auto">
+                <div className="max-w-md mx-auto space-y-5">
                   {/* Info banner */}
-                  <div className="flex items-start space-x-3 bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
+                  <div className="flex items-start space-x-3 bg-blue-50 border border-blue-100 rounded-xl p-4">
                     <KeyRound className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-blue-700 leading-relaxed">
-                      Enter an employee's email address to verify their account
-                      and generate a temporary password. Share this with them so
-                      they can log in and set a new one.
+                      Enter the employee's email. A new random password will be
+                      generated and <strong>immediately applied</strong> to
+                      their account. Share it with them so they can log in.
                     </p>
                   </div>
 
                   {/* Email Input */}
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">
                       Employee Email
                     </label>
@@ -202,13 +213,13 @@ const ManageTeamModal = ({ onClose, role }) => {
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <input
                         type="email"
-                        value={resetFormEmail}
+                        value={resetEmail}
                         onChange={(e) => {
-                          setResetFormEmail(e.target.value);
-                          setResetFormMessage("");
-                          setResetSuccess(false);
+                          setResetEmail(e.target.value);
+                          setResetResult(null);
                         }}
-                        placeholder="employee@company.com"
+                        onKeyDown={(e) => e.key === "Enter" && handleReset()}
+                        placeholder="employee@verto.com"
                         className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                       />
                     </div>
@@ -216,76 +227,107 @@ const ManageTeamModal = ({ onClose, role }) => {
 
                   {/* Reset Button */}
                   <button
-                    onClick={handleAdminResetPassword}
-                    disabled={resetFormLoading || !resetFormEmail.trim()}
+                    onClick={handleReset}
+                    disabled={resetLoading || !resetEmail.trim()}
                     className="w-full flex items-center justify-center space-x-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    {resetFormLoading ? (
+                    {resetLoading ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Verifying...</span>
+                        <span>Resetting password…</span>
                       </>
                     ) : (
                       <>
                         <KeyRound className="w-4 h-4" />
-                        <span>Generate Temporary Password</span>
+                        <span>Generate &amp; Apply New Password</span>
                       </>
                     )}
                   </button>
 
-                  {/* Result Message */}
+                  {/* Result */}
                   <AnimatePresence>
-                    {resetFormMessage && (
+                    {resetResult && (
                       <motion.div
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
-                        className={`mt-4 rounded-xl border p-4 ${
-                          resetSuccess
-                            ? "bg-emerald-50 border-emerald-100"
-                            : "bg-rose-50 border-rose-100"
+                        className={`rounded-xl border p-4 ${
+                          resetResult.success
+                            ? "bg-emerald-50 border-emerald-200"
+                            : "bg-rose-50 border-rose-200"
                         }`}
                       >
-                        {resetSuccess ? (
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold text-emerald-700 flex items-center space-x-1">
-                              <ShieldCheck className="w-3.5 h-3.5" />
-                              <span>Employee verified successfully</span>
+                        {resetResult.success ? (
+                          <div className="space-y-3">
+                            {/* Success header */}
+                            <div className="flex items-center space-x-2">
+                              <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                              </div>
+                              <p className="text-sm font-semibold text-emerald-800">
+                                Password reset successfully!
+                              </p>
+                            </div>
+
+                            <p className="text-xs text-emerald-700">
+                              Account:{" "}
+                              <span className="font-mono font-medium">
+                                {resetResult.email}
+                              </span>
                             </p>
-                            {/* Extract temp password from message */}
-                            {resetFormMessage.includes(
-                              "Temporary password:"
-                            ) && (
-                              <div className="bg-white border border-emerald-200 rounded-lg px-4 py-3 mt-2 flex items-center justify-between">
-                                <span className="font-mono text-sm font-bold tracking-widest text-gray-900">
-                                  {
-                                    resetFormMessage
-                                      .split("Temporary password:\n")[1]
-                                      ?.split("\n")[0]
-                                  }
+
+                            {/* Password display box */}
+                            <div className="bg-white border-2 border-emerald-300 rounded-xl px-4 py-3">
+                              <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">
+                                New Temporary Password
+                              </p>
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono text-lg font-bold tracking-widest text-gray-900 select-all">
+                                  {resetResult.newPassword}
                                 </span>
                                 <button
-                                  onClick={() => {
-                                    const pw = resetFormMessage
-                                      .split("Temporary password:\n")[1]
-                                      ?.split("\n")[0];
-                                    navigator.clipboard?.writeText(pw || "");
-                                  }}
-                                  className="text-xs text-blue-600 hover:text-blue-700 font-medium ml-3"
+                                  onClick={() =>
+                                    navigator.clipboard?.writeText(
+                                      resetResult.newPassword
+                                    )
+                                  }
+                                  className="ml-3 px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors"
                                 >
                                   Copy
                                 </button>
                               </div>
-                            )}
-                            <p className="text-xs text-emerald-600 mt-1">
-                              Share this with the user so they can log in and
-                              update their password.
-                            </p>
+                            </div>
+
+                            {/* Warning */}
+                            <div className="flex items-start space-x-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-600 mt-0.5 flex-shrink-0" />
+                              <p className="text-xs text-amber-700">
+                                This password is <strong>active now</strong>.
+                                Share it securely with the employee. Ask them to
+                                change it after logging in.
+                              </p>
+                            </div>
+
+                            {/* Reset again */}
+                            <button
+                              onClick={clearReset}
+                              className="text-xs text-blue-600 hover:underline"
+                            >
+                              Reset another employee →
+                            </button>
                           </div>
                         ) : (
-                          <p className="text-xs text-rose-700 whitespace-pre-line">
-                            {resetFormMessage}
-                          </p>
+                          <div className="flex items-start space-x-2">
+                            <AlertCircle className="w-4 h-4 text-rose-500 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-sm font-semibold text-rose-800 mb-1">
+                                Reset failed
+                              </p>
+                              <p className="text-xs text-rose-700">
+                                {resetResult.error}
+                              </p>
+                            </div>
+                          </div>
                         )}
                       </motion.div>
                     )}
@@ -374,6 +416,7 @@ const App = () => {
   ];
 
   const { user, role, loading } = useAuth();
+
   useEffect(() => {
     if (user?.email) {
       fetchLoggedInEmployee();
@@ -466,7 +509,7 @@ const App = () => {
       cyan: "hover:text-cyan-600 hover:bg-cyan-50 text-gray-600",
       orange: "hover:text-orange-600 hover:bg-orange-50 text-gray-600",
       indigo: "hover:text-indigo-600 hover:bg-indigo-50 text-gray-600",
-      red: "hover:text-red-add hover:bg-red-50 text-gray-600",
+      red: "hover:text-red-600 hover:bg-red-50 text-gray-600",
       pink: "hover:text-pink-600 hover:bg-pink-50 text-gray-600",
     };
     return colors[color] || colors.blue;
@@ -697,11 +740,9 @@ const App = () => {
                 <p className="text-sm font-medium text-gray-900">
                   {loggedInEmployee?.name || "User"}
                 </p>
-
                 <p className="text-xs text-gray-500">
                   {loggedInEmployee?.designation || role}
                 </p>
-
                 <p className="text-[10px] text-gray-400">{user?.email}</p>
               </div>
               <button
@@ -723,11 +764,9 @@ const App = () => {
                       <p className="text-sm font-medium text-gray-900">
                         {loggedInEmployee?.name || "User"}
                       </p>
-
                       <p className="text-xs text-gray-500">
                         {loggedInEmployee?.designation || role}
                       </p>
-
                       <p className="text-[10px] text-gray-400 mt-1">
                         {user?.email}
                       </p>
@@ -738,7 +777,6 @@ const App = () => {
                       <span>Account Settings</span>
                     </button>
 
-                    {/* ✅ ADMIN ONLY — now opens the unified modal */}
                     {role === "admin" && (
                       <button
                         onClick={() => {
