@@ -11,26 +11,49 @@ const AgingReport = () => {
   });
 
   const fetchAging = async () => {
-    const { data, error } = await supabase
-      .from("outstanding_invoice_view")
-      .select("outstanding, delay_days");
+    const { data, error } = await supabase.from("outstanding_invoice_view")
+      .select(`
+        outstanding,
+        days_overdue,
+        aging_bucket
+      `);
 
     if (error) {
       console.error("Aging fetch error:", error);
       return;
     }
 
-    let b0_30 = 0,
-      b31_60 = 0,
-      b61_plus = 0;
+    let b0_30 = 0;
+    let b31_60 = 0;
+    let b61_plus = 0;
 
-    data.forEach((inv) => {
-      if (inv.delay_days <= 30) b0_30 += inv.outstanding;
-      else if (inv.delay_days <= 60) b31_60 += inv.outstanding;
-      else b61_plus += inv.outstanding;
+    (data || []).forEach((inv) => {
+      const amount = Number(inv.outstanding || 0);
+
+      switch (inv.aging_bucket) {
+        case "1-30 Days":
+          b0_30 += amount;
+          break;
+
+        case "31-60 Days":
+          b31_60 += amount;
+          break;
+
+        case "61-90 Days":
+        case "90+ Days":
+          b61_plus += amount;
+          break;
+
+        default:
+          break;
+      }
     });
 
-    setBuckets({ b0_30, b31_60, b61_plus });
+    setBuckets({
+      b0_30,
+      b31_60,
+      b61_plus,
+    });
   };
 
   useEffect(() => {

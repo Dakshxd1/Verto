@@ -359,65 +359,111 @@ const dashboardStyles = `
 // ─── Mock Data Generator ─────────────────────────────────────────────────────
 const generateData = (count = 10) => {
   const departments = ["Operations", "Sales", "Finance", "HR", "IT"];
-  const clients = ["Acme Corp", "Globex", "Soylent", "Initech", "Umbrella", "Massive", "Stark Ind", "Wayne Ent"];
+  const clients = [
+    "Acme Corp",
+    "Globex",
+    "Soylent",
+    "Initech",
+    "Umbrella",
+    "Massive",
+    "Stark Ind",
+    "Wayne Ent",
+  ];
   const entities = ["Verto India Pvt Ltd", "Verto Global LLC", "Verto UK Ltd"];
 
   return Array.from({ length: count }).map((_, i) => {
     const invValue = Math.floor(15000 + Math.random() * 50000);
     const vertoFee = Math.floor(invValue * 0.08);
-    const received = Math.random() > 0.3 ? Math.floor(invValue * (0.5 + Math.random() * 0.5)) : 0;
+    const received =
+      Math.random() > 0.3
+        ? Math.floor(invValue * (0.5 + Math.random() * 0.5))
+        : 0;
     const notRecvd = invValue - received;
     const delayDays = notRecvd > 0 ? Math.floor(Math.random() * 45) : 0;
-    const randomDate = new Date(2023, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
+    const randomDate = new Date(
+      2023,
+      Math.floor(Math.random() * 12),
+      Math.floor(Math.random() * 28) + 1
+    );
 
     return {
       id: `INV-${2023000 + i}`,
       invDate: randomDate.toLocaleDateString("en-GB"),
       invDateObj: randomDate,
-      impactMonth: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Math.floor(Math.random() * 12)] + " 2023",
+      impactMonth:
+        [
+          "Jan",
+          "Feb",
+          "Mar",
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dec",
+        ][Math.floor(Math.random() * 12)] + " 2023",
       dept: departments[Math.floor(Math.random() * departments.length)],
       client: clients[Math.floor(Math.random() * clients.length)],
-      invValue, vertoFee, notRecvd, delayDays,
+      invValue,
+      vertoFee,
+      notRecvd,
+      delayDays,
       osDiff: Math.floor(Math.random() * 1000) - 200,
       cnBadDebt: Math.random() > 0.9 ? Math.floor(Math.random() * 5000) : 0,
       entity: entities[Math.floor(Math.random() * entities.length)],
-      status: notRecvd === 0 ? "paid" : delayDays > 30 ? "overdue" : delayDays > 0 ? "pending" : "fresh",
+      status:
+        notRecvd === 0
+          ? "paid"
+          : delayDays > 30
+          ? "overdue"
+          : delayDays > 0
+          ? "pending"
+          : "fresh",
     };
   });
 };
 
 // ─── Dashboard Component ─────────────────────────────────────────────────────
-const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, setSelectedInvoice }) => {
-  const [expandedRow, setExpandedRow]                   = useState(null);
-  const [searchTerm, setSearchTerm]                     = useState("");
-  const [showFilters, setShowFilters]                   = useState(false);
-  const [showDatePicker, setShowDatePicker]             = useState(false);
-  const [dateFrom, setDateFrom]                         = useState("");
-  const [dateTo, setDateTo]                             = useState("");
-  const [data]                                          = useState(() => generateData(12));
-  const [dbData, setDbData]                             = useState([]);
-  const [banks, setBanks]                               = useState([]);
-  const [showPaymentHistory, setShowPaymentHistory]     = useState(false);
-  const [historyInvoice, setHistoryInvoice]             = useState(null);
-  const [showInvoiceDetails, setShowInvoiceDetails]     = useState(false);
-  const [detailsInvoice, setDetailsInvoice]             = useState(null);
+const Dashboard = ({
+  refreshFlag,
+  setShowPaymentModal,
+  setShowBounceBackModal,
+  setSelectedInvoice,
+}) => {
+  const [expandedRow, setExpandedRow] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [data] = useState(() => generateData(12));
+  const [dbData, setDbData] = useState([]);
+  const [banks, setBanks] = useState([]);
+  const [showPaymentHistory, setShowPaymentHistory] = useState(false);
+  const [historyInvoice, setHistoryInvoice] = useState(null);
+  const [showInvoiceDetails, setShowInvoiceDetails] = useState(false);
+  const [detailsInvoice, setDetailsInvoice] = useState(null);
   const [showPaymentMadeModal, setShowPaymentMadeModal] = useState(false);
-  const [paymentMadeInvoice, setPaymentMadeInvoice]     = useState(null);
-  const [sortConfig, setSortConfig]                     = useState({ key: null, direction: "asc" });
-  const [selectedInvoiceData, setSelectedInvoiceData]   = useState(null);
-  const [showInvoiceModal, setShowInvoiceModal]         = useState(false);
-  const [showCNBadDebtModal, setShowCNBadDebtModal]     = useState(false);
-  const [showBounceHistory, setShowBounceHistory]       = useState(false);
-  const [showCNHistory, setShowCNHistory]               = useState(false);
-  const [showPaymentMadeHistory, setShowPaymentMadeHistory]       = useState(false);
-  const [paymentMadeHistoryInvoice, setPaymentMadeHistoryInvoice] = useState(null);
+  const [paymentMadeInvoice, setPaymentMadeInvoice] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+  const [selectedInvoiceData, setSelectedInvoiceData] = useState(null);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showCNBadDebtModal, setShowCNBadDebtModal] = useState(false);
+  const [showBounceHistory, setShowBounceHistory] = useState(false);
+  const [showCNHistory, setShowCNHistory] = useState(false);
+  const [showPaymentMadeHistory, setShowPaymentMadeHistory] = useState(false);
+  const [paymentMadeHistoryInvoice, setPaymentMadeHistoryInvoice] =
+    useState(null);
 
   const [selectedDepartments, setSelectedDepartments] = useState([]);
-  const [selectedClients, setSelectedClients]         = useState([]);
-  const [selectedEntities, setSelectedEntities]       = useState([]);
-  const [selectedStatuses, setSelectedStatuses]       = useState([]);
-  const [minInvoiceValue, setMinInvoiceValue]         = useState("");
-  const [maxInvoiceValue, setMaxInvoiceValue]         = useState("");
+  const [selectedClients, setSelectedClients] = useState([]);
+  const [selectedEntities, setSelectedEntities] = useState([]);
+  const [selectedStatuses, setSelectedStatuses] = useState([]);
+  const [minInvoiceValue, setMinInvoiceValue] = useState("");
+  const [maxInvoiceValue, setMaxInvoiceValue] = useState("");
 
   // ✅ FIX 1: fetchInvoices defined at component scope with useCallback
   // so it is always the same stable reference — no stale closures.
@@ -428,61 +474,68 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
       .select("*")
       .order("invoice_date", { ascending: false });
 
-    if (error) { console.error("Fetch error:", error); return; }
+    if (error) {
+      console.error("Fetch error:", error);
+      return;
+    }
 
     const formatted = rows.map((row) => {
-      const outstanding      = Number(row.outstanding ?? 0);
-      const receivableAmount = Number(row.receivable_amount ?? row.invoice_value ?? 0);
+      const outstanding = Number(row.outstanding ?? 0);
+      const receivableAmount = Number(
+        row.receivable_amount ?? row.invoice_value ?? 0
+      );
 
       return {
-        dbId:                   row.id,
-        id:                     row.invoice_number,
-        invoice_number:         row.invoice_number,
-        client_name:            row.client_name,
-        dept_code:              row.dept_code,
-        entity_name:            row.entity_name,
-        ledger_name:            row.ledger_name,
-        invoice_date:           row.invoice_date ?? "",
+        dbId: row.id,
+        id: row.invoice_number,
+        invoice_number: row.invoice_number,
+        client_name: row.client_name,
+        dept_code: row.dept_code,
+        entity_name: row.entity_name,
+        ledger_name: row.ledger_name,
+        invoice_date: row.invoice_date ?? "",
         expected_collection_date: row.expected_collection_date ?? "",
-        impact_month:           row.impact_month ?? "",
-        invDate:                row.invoice_date ?? "",
-        invDateObj:             row.invoice_date ? new Date(row.invoice_date) : new Date(),
-        impactMonth:            row.impact_month ?? "",
-        pay:                    Number(row.pay ?? 0),
-        pay_head:               row.pay_head ?? "",
-        verto_fee:              Number(row.verto_fee ?? 0),
-        gst:                    Number(row.gst ?? 0),
-        tds:                    Number(row.tds ?? 0),
-        invoice_value:          Number(row.invoice_value ?? 0),
-        receivable_amount:      receivableAmount,
-        totalReceived:          Number(row.total_paid ?? row.amount_received ?? 0),
-        totalBillableExpenses:  Number(row.total_billable_expenses ?? 0),
-        bounce:                 Number(row.total_bounce ?? 0),
-        cnBadDebt:              Number(row.total_cn ?? 0),
-        netReceived:            Number(row.net_received ?? 0),
-        dept:                   row.dept_name,
-        client:                 row.client_name,
-        entity:                 row.entity_name,
-        invValue:               Number(row.invoice_value ?? 0),
-        vertoFee:               Number(row.verto_fee ?? 0),
-        notRecvd:               outstanding,  // ✅ always from view
-        delayDays:              Number(row.delay_days ?? 0),
-        employee_count:         row.employee_count ?? 0,
-        gross_value:            row.gross_value ?? 0,
-        net_in_hand:            row.net_in_hand ?? 0,
-        co_pf:                  row.co_pf ?? 0,
-        co_esi:                 row.co_esi ?? 0,
-        lwf_tax:                row.lwf_tax ?? 0,
-        pt_tax:                 row.pt_tax ?? 0,
-        other_ded:              row.other_ded ?? 0,
-        ctc:                    row.ctc ?? 0,
-        status: outstanding <= 0
-          ? "paid"
-          : Number(row.delay_days ?? 0) > 30
-          ? "overdue"
-          : Number(row.delay_days ?? 0) > 0
-          ? "pending"
-          : "fresh",
+        impact_month: row.impact_month ?? "",
+        invDate: row.invoice_date ?? "",
+        invDateObj: row.invoice_date ? new Date(row.invoice_date) : new Date(),
+        impactMonth: row.impact_month ?? "",
+        pay: Number(row.pay ?? 0),
+        pay_head: row.pay_head ?? "",
+        verto_fee: Number(row.verto_fee ?? 0),
+        gst: Number(row.gst ?? 0),
+        tds: Number(row.tds ?? 0),
+        invoice_value: Number(row.invoice_value ?? 0),
+        receivable_amount: receivableAmount,
+        totalReceived: Number(row.total_paid ?? row.amount_received ?? 0),
+        totalBillableExpenses: Number(row.total_billable_expenses ?? 0),
+        bounce: Number(row.total_bounce ?? 0),
+        cnBadDebt: Number(row.total_cn ?? 0),
+        netReceived: Number(row.net_received ?? 0),
+        dept: row.dept_name,
+        client: row.client_name,
+        entity: row.entity_name,
+        invValue: Number(row.invoice_value ?? 0),
+        vertoFee: Number(row.verto_fee ?? 0),
+        notRecvd: outstanding,
+        delayDays: Number(row.days_overdue ?? 0),
+        osDiff: Number(row.os_amt_difference ?? 0),
+        employee_count: row.employee_count ?? 0,
+        gross_value: row.gross_value ?? 0,
+        net_in_hand: row.net_in_hand ?? 0,
+        co_pf: row.co_pf ?? 0,
+        co_esi: row.co_esi ?? 0,
+        lwf_tax: row.lwf_tax ?? 0,
+        pt_tax: row.pt_tax ?? 0,
+        other_ded: row.other_ded ?? 0,
+        ctc: row.ctc ?? 0,
+        status:
+          outstanding <= 0
+            ? "paid"
+            : Number(row.delay_days ?? 0) > 30
+            ? "overdue"
+            : Number(row.delay_days ?? 0) > 0
+            ? "pending"
+            : "fresh",
       };
     });
 
@@ -501,62 +554,117 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
 
     // Expose globally for any legacy child that still uses window.refreshDashboard
     window.refreshDashboard = fetchInvoices;
-    window.refreshBanks     = fetchBanks;
+    window.refreshBanks = fetchBanks;
 
     // ✅ FIX 3: payments_made + advance_payments now subscribed
     const channel = supabase
       .channel("realtime-all")
-      .on("postgres_changes", { event: "*", schema: "public", table: "payments_received" },   () => fetchInvoices())
-      .on("postgres_changes", { event: "*", schema: "public", table: "payments_made" },        () => fetchInvoices()) // ← was missing
-      .on("postgres_changes", { event: "*", schema: "public", table: "advance_payments" },     () => fetchInvoices()) // ← was missing
-      .on("postgres_changes", { event: "*", schema: "public", table: "bounce_back" },          () => fetchInvoices())
-      .on("postgres_changes", { event: "*", schema: "public", table: "bank_entries" },         () => fetchInvoices())
-      .on("postgres_changes", { event: "*", schema: "public", table: "software_entries" },     () => fetchInvoices())
-      .on("postgres_changes", { event: "*", schema: "public", table: "invoices" },             () => fetchInvoices())
-      .on("postgres_changes", { event: "*", schema: "public", table: "credit_note_bad_debt" }, () => fetchInvoices())
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "payments_received" },
+        () => fetchInvoices()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "payments_made" },
+        () => fetchInvoices()
+      ) // ← was missing
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "advance_payments" },
+        () => fetchInvoices()
+      ) // ← was missing
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bounce_back" },
+        () => fetchInvoices()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bank_entries" },
+        () => fetchInvoices()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "software_entries" },
+        () => fetchInvoices()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "invoices" },
+        () => fetchInvoices()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "credit_note_bad_debt" },
+        () => fetchInvoices()
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [refreshFlag, fetchInvoices, fetchBanks]);
 
-  const source      = dbData.length ? dbData : data;
+  const source = dbData.length ? dbData : data;
   const departments = [...new Set(source.map((d) => d.dept))];
-  const clients     = [...new Set(source.map((d) => d.client))];
-  const entities    = [...new Set(source.map((d) => d.entity).filter(Boolean))];
+  const clients = [...new Set(source.map((d) => d.client))];
+  const entities = [...new Set(source.map((d) => d.entity).filter(Boolean))];
 
   const filteredData = useMemo(() => {
     let sourceData = dbData.length > 0 ? dbData : data;
     let filtered = sourceData.filter((row) => {
       const matchesSearch =
         (row.client || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (row.dept   || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (row.id     || "").toLowerCase().includes(searchTerm.toLowerCase());
+        (row.dept || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (row.id || "").toLowerCase().includes(searchTerm.toLowerCase());
 
       const from = dateFrom ? new Date(dateFrom + "T00:00:00") : null;
-      const to   = dateTo   ? new Date(dateTo   + "T23:59:59") : null;
+      const to = dateTo ? new Date(dateTo + "T23:59:59") : null;
       const matchesDateFrom = !from || row.invDateObj >= from;
-      const matchesDateTo   = !to   || row.invDateObj <= to;
+      const matchesDateTo = !to || row.invDateObj <= to;
 
-      const matchesDept   = selectedDepartments.length === 0 || selectedDepartments.includes(row.dept);
-      const matchesClient = selectedClients.length     === 0 || selectedClients.includes(row.client);
-      const matchesEntity = selectedEntities.length    === 0 || selectedEntities.includes(row.entity);
-      const matchesStatus = selectedStatuses.length    === 0 || selectedStatuses.includes(row.status);
-      const matchesMinValue = !minInvoiceValue || row.invValue >= Number(minInvoiceValue);
-      const matchesMaxValue = !maxInvoiceValue || row.invValue <= Number(maxInvoiceValue);
+      const matchesDept =
+        selectedDepartments.length === 0 ||
+        selectedDepartments.includes(row.dept);
+      const matchesClient =
+        selectedClients.length === 0 || selectedClients.includes(row.client);
+      const matchesEntity =
+        selectedEntities.length === 0 || selectedEntities.includes(row.entity);
+      const matchesStatus =
+        selectedStatuses.length === 0 || selectedStatuses.includes(row.status);
+      const matchesMinValue =
+        !minInvoiceValue || row.invValue >= Number(minInvoiceValue);
+      const matchesMaxValue =
+        !maxInvoiceValue || row.invValue <= Number(maxInvoiceValue);
 
-      return matchesSearch && matchesDateFrom && matchesDateTo && matchesDept &&
-             matchesClient && matchesEntity && matchesStatus && matchesMinValue && matchesMaxValue;
+      return (
+        matchesSearch &&
+        matchesDateFrom &&
+        matchesDateTo &&
+        matchesDept &&
+        matchesClient &&
+        matchesEntity &&
+        matchesStatus &&
+        matchesMinValue &&
+        matchesMaxValue
+      );
     });
 
     if (sortConfig.key) {
       filtered.sort((a, b) => {
         let aVal = a[sortConfig.key] ?? 0;
         let bVal = b[sortConfig.key] ?? 0;
-        if (sortConfig.key === "invDate") { aVal = a.invDateObj; bVal = b.invDateObj; }
+        if (sortConfig.key === "invDate") {
+          aVal = a.invDateObj;
+          bVal = b.invDateObj;
+        }
         if (typeof aVal === "number" && typeof bVal === "number")
           return sortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
         if (typeof aVal === "string" && typeof bVal === "string")
-          return sortConfig.direction === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+          return sortConfig.direction === "asc"
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal);
         if (aVal instanceof Date && bVal instanceof Date)
           return sortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
         return 0;
@@ -564,27 +672,50 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
     }
 
     return filtered;
-  }, [data, dbData, searchTerm, dateFrom, dateTo, selectedDepartments, selectedClients,
-      selectedEntities, selectedStatuses, minInvoiceValue, maxInvoiceValue, sortConfig]);
+  }, [
+    data,
+    dbData,
+    searchTerm,
+    dateFrom,
+    dateTo,
+    selectedDepartments,
+    selectedClients,
+    selectedEntities,
+    selectedStatuses,
+    minInvoiceValue,
+    maxInvoiceValue,
+    sortConfig,
+  ]);
 
-  const totals = useMemo(() => filteredData.reduce(
-    (acc, row) => ({
-      invValue:  acc.invValue  + row.invValue,
-      vertoFee:  acc.vertoFee  + row.vertoFee,
-      notRecvd:  acc.notRecvd  + row.notRecvd,
-      cnBadDebt: acc.cnBadDebt + row.cnBadDebt,
-    }),
-    { invValue: 0, vertoFee: 0, notRecvd: 0, cnBadDebt: 0 }
-  ), [filteredData]);
+  const totals = useMemo(
+    () =>
+      filteredData.reduce(
+        (acc, row) => ({
+          invValue: acc.invValue + row.invValue,
+          vertoFee: acc.vertoFee + row.vertoFee,
+          notRecvd: acc.notRecvd + row.notRecvd,
+          cnBadDebt: acc.cnBadDebt + row.cnBadDebt,
+        }),
+        { invValue: 0, vertoFee: 0, notRecvd: 0, cnBadDebt: 0 }
+      ),
+    [filteredData]
+  );
 
-  const toggleRow  = (id) => setExpandedRow(expandedRow === id ? null : id);
-  const handleSort = (key) => setSortConfig((prev) => ({
-    key, direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
-  }));
+  const toggleRow = (id) => setExpandedRow(expandedRow === id ? null : id);
+  const handleSort = (key) =>
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
 
   const SortIcon = ({ columnKey }) => {
-    if (sortConfig.key !== columnKey) return <ChevronDown className="w-3 h-3 opacity-30" />;
-    return sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
+    if (sortConfig.key !== columnKey)
+      return <ChevronDown className="w-3 h-3 opacity-30" />;
+    return sortConfig.direction === "asc" ? (
+      <ChevronUp className="w-3 h-3" />
+    ) : (
+      <ChevronDown className="w-3 h-3" />
+    );
   };
 
   const formatCurrency = (val) => {
@@ -594,7 +725,14 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
 
   const formatDateDisplay = () => {
     if (dateFrom && dateTo) {
-      return `${new Date(dateFrom).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })} – ${new Date(dateTo).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`;
+      return `${new Date(dateFrom).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+      })} – ${new Date(dateTo).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })}`;
     }
     return "Select Date Range";
   };
@@ -605,17 +743,26 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
   };
 
   const clearAllFilters = () => {
-    setSelectedDepartments([]); setSelectedClients([]);
-    setSelectedEntities([]); setSelectedStatuses([]);
-    setMinInvoiceValue(""); setMaxInvoiceValue("");
-    setDateFrom(""); setDateTo(""); setSearchTerm("");
+    setSelectedDepartments([]);
+    setSelectedClients([]);
+    setSelectedEntities([]);
+    setSelectedStatuses([]);
+    setMinInvoiceValue("");
+    setMaxInvoiceValue("");
+    setDateFrom("");
+    setDateTo("");
+    setSearchTerm("");
   };
 
   const activeFiltersCount =
-    selectedDepartments.length + selectedClients.length +
-    selectedEntities.length + selectedStatuses.length +
-    (minInvoiceValue ? 1 : 0) + (maxInvoiceValue ? 1 : 0) +
-    (dateFrom ? 1 : 0) + (dateTo ? 1 : 0);
+    selectedDepartments.length +
+    selectedClients.length +
+    selectedEntities.length +
+    selectedStatuses.length +
+    (minInvoiceValue ? 1 : 0) +
+    (maxInvoiceValue ? 1 : 0) +
+    (dateFrom ? 1 : 0) +
+    (dateTo ? 1 : 0);
 
   const handleEdit = async (type, row) => {
     const { data, error } = await supabase
@@ -624,7 +771,10 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
       .eq("id", row.dbId)
       .single();
 
-    if (error) { alert("Failed to fetch invoice details"); return; }
+    if (error) {
+      alert("Failed to fetch invoice details");
+      return;
+    }
 
     setSelectedInvoiceData({ ...data, dbId: data.id });
     if (type === "CN") setShowCNBadDebtModal(true);
@@ -634,43 +784,96 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
   const delayClass = (d) => (d > 30 ? "high" : d > 0 ? "med" : "low");
 
   return (
-    <div className="dash-root" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+    <div
+      className="dash-root"
+      style={{ display: "flex", flexDirection: "column", gap: 24 }}
+    >
       <style>{dashboardStyles}</style>
 
       {/* ── Header Stats ── */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <motion.div className="stat-card emerald" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
-          <div className="stat-icon" style={{ background: "#d1fae5" }}><FileText size={18} color="#059669" /></div>
+        <motion.div
+          className="stat-card emerald"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0 }}
+        >
+          <div className="stat-icon" style={{ background: "#d1fae5" }}>
+            <FileText size={18} color="#059669" />
+          </div>
           <div className="stat-label">Total Invoiced</div>
           <div className="stat-value">₹{formatCurrency(totals.invValue)}</div>
-          <div className="stat-meta" style={{ color: "#059669" }}><ArrowUpRight size={13} /><span>+12% from last period</span></div>
-        </motion.div>
-
-        <motion.div className="stat-card blue" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }}>
-          <div className="stat-icon" style={{ background: "#dbeafe" }}><TrendingUp size={18} color="#2563eb" /></div>
-          <div className="stat-label">Verto Fees</div>
-          <div className="stat-value" style={{ color: "#059669" }}>₹{formatCurrency(totals.vertoFee)}</div>
-          <div className="stat-meta" style={{ color: "#6b7280" }}>
-            <span>{totals.invValue ? ((totals.vertoFee / totals.invValue) * 100).toFixed(1) : 0}% avg margin</span>
+          <div className="stat-meta" style={{ color: "#059669" }}>
+            <ArrowUpRight size={13} />
+            <span>+12% from last period</span>
           </div>
         </motion.div>
 
-        <motion.div className="stat-card rose" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
-          <div className="stat-icon" style={{ background: "#ffe4e6" }}><AlertCircle size={18} color="#e11d48" /></div>
+        <motion.div
+          className="stat-card blue"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06 }}
+        >
+          <div className="stat-icon" style={{ background: "#dbeafe" }}>
+            <TrendingUp size={18} color="#2563eb" />
+          </div>
+          <div className="stat-label">Verto Fees</div>
+          <div className="stat-value" style={{ color: "#059669" }}>
+            ₹{formatCurrency(totals.vertoFee)}
+          </div>
+          <div className="stat-meta" style={{ color: "#6b7280" }}>
+            <span>
+              {totals.invValue
+                ? ((totals.vertoFee / totals.invValue) * 100).toFixed(1)
+                : 0}
+              % avg margin
+            </span>
+          </div>
+        </motion.div>
+
+        <motion.div
+          className="stat-card rose"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+        >
+          <div className="stat-icon" style={{ background: "#ffe4e6" }}>
+            <AlertCircle size={18} color="#e11d48" />
+          </div>
           <div className="stat-label">Outstanding</div>
-          <div className="stat-value" style={{ color: "#e11d48" }}>₹{formatCurrency(totals.notRecvd)}</div>
+          <div className="stat-value" style={{ color: "#e11d48" }}>
+            ₹{formatCurrency(totals.notRecvd)}
+          </div>
           <div className="stat-meta" style={{ color: "#e11d48" }}>
             <ArrowDownLeft size={13} />
-            <span>{totals.invValue ? ((totals.notRecvd / totals.invValue) * 100).toFixed(1) : 0}% of total</span>
+            <span>
+              {totals.invValue
+                ? ((totals.notRecvd / totals.invValue) * 100).toFixed(1)
+                : 0}
+              % of total
+            </span>
           </div>
         </motion.div>
 
-        <motion.div className="stat-card amber" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
-          <div className="stat-icon" style={{ background: "#fef3c7" }}><Clock size={18} color="#d97706" /></div>
+        <motion.div
+          className="stat-card amber"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+        >
+          <div className="stat-icon" style={{ background: "#fef3c7" }}>
+            <Clock size={18} color="#d97706" />
+          </div>
           <div className="stat-label">CN / Bad Debt</div>
-          <div className="stat-value" style={{ color: "#d97706" }}>₹{formatCurrency(totals.cnBadDebt)}</div>
+          <div className="stat-value" style={{ color: "#d97706" }}>
+            ₹{formatCurrency(totals.cnBadDebt)}
+          </div>
           <div className="stat-meta" style={{ color: "#6b7280" }}>
-            <span>{filteredData.filter((d) => d.cnBadDebt > 0).length} invoices affected</span>
+            <span>
+              {filteredData.filter((d) => d.cnBadDebt > 0).length} invoices
+              affected
+            </span>
           </div>
         </motion.div>
       </div>
@@ -678,8 +881,16 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
       <AgingReport />
 
       {/* ── All Drawers & Modals ── */}
-      <PaymentHistoryDrawer invoice={historyInvoice} isOpen={showPaymentHistory} onClose={() => setShowPaymentHistory(false)} />
-      <InvoiceDetailsDrawer invoice={detailsInvoice} isOpen={showInvoiceDetails} onClose={() => setShowInvoiceDetails(false)} />
+      <PaymentHistoryDrawer
+        invoice={historyInvoice}
+        isOpen={showPaymentHistory}
+        onClose={() => setShowPaymentHistory(false)}
+      />
+      <InvoiceDetailsDrawer
+        invoice={detailsInvoice}
+        isOpen={showInvoiceDetails}
+        onClose={() => setShowInvoiceDetails(false)}
+      />
 
       {/* ✅ FIX 4: onSaved calls fetchInvoices directly — never via window reference */}
       <AddPaymentMadeModal
@@ -696,11 +907,22 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
         invoices={dbData.map((d) => d.id)}
         invoicesData={dbData}
       />
-      <BounceHistoryDrawer invoice={historyInvoice} isOpen={showBounceHistory} onClose={() => setShowBounceHistory(false)} />
-      <CNHistoryDrawer     invoice={historyInvoice} isOpen={showCNHistory}     onClose={() => setShowCNHistory(false)} />
+      <BounceHistoryDrawer
+        invoice={historyInvoice}
+        isOpen={showBounceHistory}
+        onClose={() => setShowBounceHistory(false)}
+      />
+      <CNHistoryDrawer
+        invoice={historyInvoice}
+        isOpen={showCNHistory}
+        onClose={() => setShowCNHistory(false)}
+      />
       <AddInvoiceModal
         isOpen={showInvoiceModal}
-        onClose={() => { setShowInvoiceModal(false); setSelectedInvoiceData(null); }}
+        onClose={() => {
+          setShowInvoiceModal(false);
+          setSelectedInvoiceData(null);
+        }}
         selectedInvoice={selectedInvoiceData}
         entities={entities}
         clients={clients}
@@ -708,67 +930,172 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
       <PaymentMadeHistoryDrawer
         invoice={paymentMadeHistoryInvoice}
         isOpen={showPaymentMadeHistory}
-        onClose={() => { setShowPaymentMadeHistory(false); setPaymentMadeHistoryInvoice(null); }}
+        onClose={() => {
+          setShowPaymentMadeHistory(false);
+          setPaymentMadeHistoryInvoice(null);
+        }}
       />
 
       {/* ── Filter Bar ── */}
       <div className="filter-card">
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div
+            style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}
+          >
             <div className="search-wrap">
               <Search className="search-icon" size={15} />
-              <input type="text" className="search-input" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search by Client, Dept, or Invoice ID..." />
+              <input
+                type="text"
+                className="search-input"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by Client, Dept, or Invoice ID..."
+              />
             </div>
 
             <div style={{ position: "relative" }}>
-              <button className={`date-btn${dateFrom || dateTo ? " active" : ""}`} onClick={() => setShowDatePicker(!showDatePicker)}>
+              <button
+                className={`date-btn${dateFrom || dateTo ? " active" : ""}`}
+                onClick={() => setShowDatePicker(!showDatePicker)}
+              >
                 <Calendar size={14} />
                 <span style={{ minWidth: 148 }}>{formatDateDisplay()}</span>
-                <ChevronDown size={13} style={{ transition: "transform 0.2s", transform: showDatePicker ? "rotate(180deg)" : "none" }} />
+                <ChevronDown
+                  size={13}
+                  style={{
+                    transition: "transform 0.2s",
+                    transform: showDatePicker ? "rotate(180deg)" : "none",
+                  }}
+                />
               </button>
               <AnimatePresence>
                 {showDatePicker && (
-                  <motion.div className="date-dropdown" initial={{ opacity: 0, y: -10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.95 }} transition={{ duration: 0.2 }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <motion.div
+                    className="date-dropdown"
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 12,
+                      }}
+                    >
                       <div>
                         <span className="input-label">From Date</span>
-                        <input type="date" className="date-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                        <input
+                          type="date"
+                          className="date-input"
+                          value={dateFrom}
+                          onChange={(e) => setDateFrom(e.target.value)}
+                        />
                       </div>
                       <div>
                         <span className="input-label">To Date</span>
-                        <input type="date" className="date-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                        <input
+                          type="date"
+                          className="date-input"
+                          value={dateTo}
+                          onChange={(e) => setDateTo(e.target.value)}
+                        />
                       </div>
                     </div>
                     <hr className="divider" />
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <button className="clear-link" onClick={() => { setDateFrom(""); setDateTo(""); }}>Clear</button>
-                      <button className="apply-btn" onClick={() => setShowDatePicker(false)}>Apply</button>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <button
+                        className="clear-link"
+                        onClick={() => {
+                          setDateFrom("");
+                          setDateTo("");
+                        }}
+                      >
+                        Clear
+                      </button>
+                      <button
+                        className="apply-btn"
+                        onClick={() => setShowDatePicker(false)}
+                      >
+                        Apply
+                      </button>
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
-            <button className={`filter-toggle-btn${showFilters ? " active" : ""}`} onClick={() => setShowFilters(!showFilters)}>
+            <button
+              className={`filter-toggle-btn${showFilters ? " active" : ""}`}
+              onClick={() => setShowFilters(!showFilters)}
+            >
               <Filter size={15} />
-              {activeFiltersCount > 0 && <span className="filter-badge">{activeFiltersCount}</span>}
+              {activeFiltersCount > 0 && (
+                <span className="filter-badge">{activeFiltersCount}</span>
+              )}
             </button>
           </div>
 
-          <button className="export-btn" onClick={() => exportToExcel(filteredData)}>
+          <button
+            className="export-btn"
+            onClick={() => exportToExcel(filteredData)}
+          >
             <Download size={14} /> Export Excel
           </button>
         </div>
 
         <AnimatePresence>
           {showFilters && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3 }} style={{ overflow: "hidden" }}>
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              style={{ overflow: "hidden" }}
+            >
               <div className="filter-panel">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#374151", display: "flex", alignItems: "center", gap: 6 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 16,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.07em",
+                      color: "#374151",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
                     <Filter size={13} color="#059669" /> Advanced Filters
                   </span>
-                  {activeFiltersCount > 0 && <button className="clear-link" onClick={clearAllFilters}>Clear All ({activeFiltersCount})</button>}
+                  {activeFiltersCount > 0 && (
+                    <button className="clear-link" onClick={clearAllFilters}>
+                      Clear All ({activeFiltersCount})
+                    </button>
+                  )}
                 </div>
 
                 <div className="filter-panel-grid">
@@ -776,7 +1103,23 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
                     <span className="input-label">Department</span>
                     <div className="chip-group">
                       {departments.map((dept) => (
-                        <button key={dept} className={`chip${selectedDepartments.includes(dept) ? " active-emerald" : ""}`} onClick={() => toggleFilter(selectedDepartments, setSelectedDepartments, dept)}>{dept}</button>
+                        <button
+                          key={dept}
+                          className={`chip${
+                            selectedDepartments.includes(dept)
+                              ? " active-emerald"
+                              : ""
+                          }`}
+                          onClick={() =>
+                            toggleFilter(
+                              selectedDepartments,
+                              setSelectedDepartments,
+                              dept
+                            )
+                          }
+                        >
+                          {dept}
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -784,7 +1127,23 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
                     <span className="input-label">Client</span>
                     <div className="chip-group">
                       {clients.map((client) => (
-                        <button key={client} className={`chip${selectedClients.includes(client) ? " active-blue" : ""}`} onClick={() => toggleFilter(selectedClients, setSelectedClients, client)}>{client}</button>
+                        <button
+                          key={client}
+                          className={`chip${
+                            selectedClients.includes(client)
+                              ? " active-blue"
+                              : ""
+                          }`}
+                          onClick={() =>
+                            toggleFilter(
+                              selectedClients,
+                              setSelectedClients,
+                              client
+                            )
+                          }
+                        >
+                          {client}
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -792,7 +1151,23 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
                     <span className="input-label">Entity</span>
                     <div className="chip-group">
                       {entities.map((entity) => (
-                        <button key={entity} className={`chip${selectedEntities.includes(entity) ? " active-purple" : ""}`} onClick={() => toggleFilter(selectedEntities, setSelectedEntities, entity)}>{entity ? entity.split(" ")[1] : "Unknown"}</button>
+                        <button
+                          key={entity}
+                          className={`chip${
+                            selectedEntities.includes(entity)
+                              ? " active-purple"
+                              : ""
+                          }`}
+                          onClick={() =>
+                            toggleFilter(
+                              selectedEntities,
+                              setSelectedEntities,
+                              entity
+                            )
+                          }
+                        >
+                          {entity ? entity.split(" ")[1] : "Unknown"}
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -800,16 +1175,44 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
                     <span className="input-label">Status</span>
                     <div className="chip-group">
                       {["paid", "pending", "overdue", "fresh"].map((s) => (
-                        <button key={s} className={`chip${selectedStatuses.includes(s) ? " active-amber" : ""}`} onClick={() => toggleFilter(selectedStatuses, setSelectedStatuses, s)}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
+                        <button
+                          key={s}
+                          className={`chip${
+                            selectedStatuses.includes(s) ? " active-amber" : ""
+                          }`}
+                          onClick={() =>
+                            toggleFilter(
+                              selectedStatuses,
+                              setSelectedStatuses,
+                              s
+                            )
+                          }
+                        >
+                          {s.charAt(0).toUpperCase() + s.slice(1)}
+                        </button>
                       ))}
                     </div>
                   </div>
                   <div style={{ gridColumn: "span 2" }}>
                     <span className="input-label">Invoice Value Range</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <input type="number" className="range-input" value={minInvoiceValue} onChange={(e) => setMinInvoiceValue(e.target.value)} placeholder="Min (₹)" />
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 10 }}
+                    >
+                      <input
+                        type="number"
+                        className="range-input"
+                        value={minInvoiceValue}
+                        onChange={(e) => setMinInvoiceValue(e.target.value)}
+                        placeholder="Min (₹)"
+                      />
                       <span style={{ color: "#9ca3af", fontSize: 13 }}>to</span>
-                      <input type="number" className="range-input" value={maxInvoiceValue} onChange={(e) => setMaxInvoiceValue(e.target.value)} placeholder="Max (₹)" />
+                      <input
+                        type="number"
+                        className="range-input"
+                        value={maxInvoiceValue}
+                        onChange={(e) => setMaxInvoiceValue(e.target.value)}
+                        placeholder="Max (₹)"
+                      />
                     </div>
                   </div>
                 </div>
@@ -825,38 +1228,106 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
           <table className="dash-table">
             <thead>
               <tr>
-                {[["invDate","Invoice Date"],["impactMonth","Impact Month"],["dept","Department"],["client","Client Name"]].map(([key, label]) => (
+                {[
+                  ["invDate", "Invoice Date"],
+                  ["impactMonth", "Impact Month"],
+                  ["dept", "Department"],
+                  ["client", "Client Name"],
+                ].map(([key, label]) => (
                   <th key={key} onClick={() => handleSort(key)}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span>{label}</span><SortIcon columnKey={key} />
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <span>{label}</span>
+                      <SortIcon columnKey={key} />
                     </div>
                   </th>
                 ))}
-                {[["invValue","Invoice Value"],["vertoFee","Verto Fee"],["notRecvd","Not Recvd Amt"]].map(([key, label]) => (
-                  <th key={key} style={{ textAlign: "right" }} onClick={() => handleSort(key)}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
-                      <span>{label}</span><SortIcon columnKey={key} />
+                {[
+                  ["invValue", "Invoice Value"],
+                  ["vertoFee", "Verto Fee"],
+                  ["notRecvd", "Not Recvd Amt"],
+                ].map(([key, label]) => (
+                  <th
+                    key={key}
+                    style={{ textAlign: "right" }}
+                    onClick={() => handleSort(key)}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        gap: 6,
+                      }}
+                    >
+                      <span>{label}</span>
+                      <SortIcon columnKey={key} />
                     </div>
                   </th>
                 ))}
-                <th style={{ textAlign: "center" }} onClick={() => handleSort("delayDays")}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    <span>Delay Days</span><SortIcon columnKey="delayDays" />
+                <th
+                  style={{ textAlign: "center" }}
+                  onClick={() => handleSort("delayDays")}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span>Delay Days</span>
+                    <SortIcon columnKey="delayDays" />
                   </div>
                 </th>
-                <th style={{ textAlign: "right" }} onClick={() => handleSort("osDiff")}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
-                    <span>OS Amt Difference</span><SortIcon columnKey="osDiff" />
+                <th
+                  style={{ textAlign: "right" }}
+                  onClick={() => handleSort("osDiff")}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "flex-end",
+                      gap: 6,
+                    }}
+                  >
+                    <span>OS Amt Difference</span>
+                    <SortIcon columnKey="osDiff" />
                   </div>
                 </th>
-                <th style={{ textAlign: "right" }} onClick={() => handleSort("cnBadDebt")}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
-                    <span>CN / Bad Debt</span><SortIcon columnKey="cnBadDebt" />
+                <th
+                  style={{ textAlign: "right" }}
+                  onClick={() => handleSort("cnBadDebt")}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "flex-end",
+                      gap: 6,
+                    }}
+                  >
+                    <span>CN / Bad Debt</span>
+                    <SortIcon columnKey="cnBadDebt" />
                   </div>
                 </th>
                 <th onClick={() => handleSort("entity")}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span>Invoice Entity</span><SortIcon columnKey="entity" />
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span>Invoice Entity</span>
+                    <SortIcon columnKey="entity" />
                   </div>
                 </th>
                 <th style={{ textAlign: "center" }}>GST</th>
@@ -876,54 +1347,135 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.03 }}
                     className={expandedRow === row.id ? "row-expanded" : ""}
-                    onClick={(e) => { if (e.target.closest("button")) return; toggleRow(row.id); }}
+                    onClick={(e) => {
+                      if (e.target.closest("button")) return;
+                      toggleRow(row.id);
+                    }}
                   >
-                    <td style={{ color: "#6b7280", fontSize: 12.5 }}>{row.invDate}</td>
+                    <td style={{ color: "#6b7280", fontSize: 12.5 }}>
+                      {row.invDate}
+                    </td>
                     <td style={{ color: "#374151" }}>{row.impactMonth}</td>
-                    <td><span className={`dept-pill ${row.dept === "Outsourcing" ? "os" : "normal"}`}>{row.dept}</span></td>
+                    <td>
+                      <span
+                        className={`dept-pill ${
+                          row.dept === "Outsourcing" ? "os" : "normal"
+                        }`}
+                      >
+                        {row.dept}
+                      </span>
+                    </td>
                     <td style={{ fontWeight: 500 }}>{row.client}</td>
-                    <td className="mono">₹{formatCurrency(row.invValue ?? 0)}</td>
+                    <td className="mono">
+                      ₹{formatCurrency(row.invValue ?? 0)}
+                    </td>
                     <td className="mono">₹{formatCurrency(row.vertoFee)}</td>
-                    <td className="mono" style={{ color: row.notRecvd > 0 ? "#e11d48" : "inherit" }}>₹{formatCurrency(row.notRecvd)}</td>
-                    <td className="center"><span className={`delay-pill ${delayClass(row.delayDays)}`}>{row.delayDays}d</span></td>
-                    <td className="mono" style={{ color: row.osDiff >= 0 ? "#059669" : "#e11d48" }}>
-                      {row.osDiff >= 0 ? "+" : ""}{formatCurrency(row.osDiff)}
+                    <td
+                      className="mono"
+                      style={{
+                        color: row.notRecvd > 0 ? "#e11d48" : "inherit",
+                      }}
+                    >
+                      ₹{formatCurrency(row.notRecvd)}
+                    </td>
+                    <td className="center">
+                      <span
+                        className={`delay-pill ${delayClass(row.delayDays)}`}
+                      >
+                        {row.delayDays}d
+                      </span>
+                    </td>
+                    <td
+                      className="mono"
+                      style={{ color: row.osDiff >= 0 ? "#059669" : "#e11d48" }}
+                    >
+                      {row.osDiff >= 0 ? "+" : ""}
+                      {formatCurrency(row.osDiff)}
                     </td>
                     <td className="mono">
-                      {row.cnBadDebt > 0
-                        ? <span style={{ color: "#d97706" }}>₹{formatCurrency(row.cnBadDebt)}</span>
-                        : <span style={{ color: "#d1d5db" }}>—</span>}
+                      {row.cnBadDebt > 0 ? (
+                        <span style={{ color: "#d97706" }}>
+                          ₹{formatCurrency(row.cnBadDebt)}
+                        </span>
+                      ) : (
+                        <span style={{ color: "#d1d5db" }}>—</span>
+                      )}
                     </td>
-                    <td style={{ fontSize: 12, color: "#6b7280" }}>{row.entity}</td>
-                    <td className="center">
-                      {row.gstMismatch
-                        ? <span className="text-red-600 font-bold">🔴</span>
-                        : <span style={{ fontSize: 12, color: "#059669", fontFamily: "'Space Grotesk', sans-serif" }}>₹ {row.gst ?? 0}</span>}
+                    <td style={{ fontSize: 12, color: "#6b7280" }}>
+                      {row.entity}
                     </td>
                     <td className="center">
-                      <span className={`type-pill ${row.dept === "Outsourcing" ? "os" : "normal"}`}>
+                      {row.gstMismatch ? (
+                        <span className="text-red-600 font-bold">🔴</span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: "#059669",
+                            fontFamily: "'Space Grotesk', sans-serif",
+                          }}
+                        >
+                          ₹ {row.gst ?? 0}
+                        </span>
+                      )}
+                    </td>
+                    <td className="center">
+                      <span
+                        className={`type-pill ${
+                          row.dept === "Outsourcing" ? "os" : "normal"
+                        }`}
+                      >
                         {row.dept === "Outsourcing" ? "OS" : "Normal"}
                       </span>
                     </td>
                     <td className="center">
-                      {row.tdsMismatch
-                        ? <span className="text-red-600 font-bold">🔴</span>
-                        : <span style={{ fontSize: 12, color: "#059669", fontFamily: "'Space Grotesk', sans-serif" }}>₹ {row.tds ?? 0}</span>}
+                      {row.tdsMismatch ? (
+                        <span className="text-red-600 font-bold">🔴</span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: "#059669",
+                            fontFamily: "'Space Grotesk', sans-serif",
+                          }}
+                        >
+                          ₹ {row.tds ?? 0}
+                        </span>
+                      )}
                     </td>
                     <td className="center">
-                      {row.gstMismatch || row.tdsMismatch
-                        ? <span className="status-pill mismatch">Mismatch</span>
-                        : <span className="status-pill ok">OK</span>}
+                      {row.gstMismatch || row.tdsMismatch ? (
+                        <span className="status-pill mismatch">Mismatch</span>
+                      ) : (
+                        <span className="status-pill ok">OK</span>
+                      )}
                     </td>
                     <td className="center">
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                        <button className="icon-btn" title="View Ledger" onClick={(e) => { e.stopPropagation(); window.ledgerInvoice = row; window.setActiveTab?.("ledger"); }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <button
+                          className="icon-btn"
+                          title="View Ledger"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.ledgerInvoice = row;
+                            window.setActiveTab?.("ledger");
+                          }}
+                        >
                           <Eye size={14} />
                         </button>
                         <button className="icon-btn expand">
-                          {expandedRow === row.id
-                            ? <ChevronUp size={14} style={{ color: "#2563eb" }} />
-                            : <ChevronDown size={14} />}
+                          {expandedRow === row.id ? (
+                            <ChevronUp size={14} style={{ color: "#2563eb" }} />
+                          ) : (
+                            <ChevronDown size={14} />
+                          )}
                         </button>
                       </div>
                     </td>
@@ -931,52 +1483,177 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
 
                   <AnimatePresence>
                     {expandedRow === row.id && (
-                      <motion.tr initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
-                        <td colSpan="16" style={{ padding: 0, borderBottom: "1px solid #e8eaed" }}>
-                          <motion.div initial={{ y: -10 }} animate={{ y: 0 }} className="expand-panel">
-                            <div className="expand-title"><FileText size={13} />Invoice Details: {row.id}</div>
+                      <motion.tr
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <td
+                          colSpan="16"
+                          style={{
+                            padding: 0,
+                            borderBottom: "1px solid #e8eaed",
+                          }}
+                        >
+                          <motion.div
+                            initial={{ y: -10 }}
+                            animate={{ y: 0 }}
+                            className="expand-panel"
+                          >
+                            <div className="expand-title">
+                              <FileText size={13} />
+                              Invoice Details: {row.id}
+                            </div>
                             <div className="expand-grid">
-
                               <div className="action-card">
-                                <p className="action-card-label">Invoice Details</p>
-                                <button className="action-btn view" onClick={(e) => { e.stopPropagation(); setDetailsInvoice(row); setShowInvoiceDetails(true); }}>View</button>
-                                <button className="action-btn edit" onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const { data, error } = await supabase.from("invoice_finance_view").select("*").eq("id", row.dbId).single();
-                                  if (error) { alert("Error fetching invoice"); return; }
-                                  setSelectedInvoiceData({ ...data, dbId: data.id });
-                                  setShowInvoiceModal(true);
-                                }}>Edit</button>
+                                <p className="action-card-label">
+                                  Invoice Details
+                                </p>
+                                <button
+                                  className="action-btn view"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDetailsInvoice(row);
+                                    setShowInvoiceDetails(true);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="action-btn edit"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const { data, error } = await supabase
+                                      .from("invoice_finance_view")
+                                      .select("*")
+                                      .eq("id", row.dbId)
+                                      .single();
+                                    if (error) {
+                                      alert("Error fetching invoice");
+                                      return;
+                                    }
+                                    setSelectedInvoiceData({
+                                      ...data,
+                                      dbId: data.id,
+                                    });
+                                    setShowInvoiceModal(true);
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               </div>
 
                               <div className="action-card">
-                                <p className="action-card-label">Payment Received</p>
-                                <button className="action-btn view" onClick={(e) => { e.stopPropagation(); setHistoryInvoice(row); setShowPaymentHistory(true); }}>View</button>
-                                <button className="action-btn edit" onClick={(e) => { e.stopPropagation(); setSelectedInvoice(row); setShowPaymentModal(true); }}>Edit</button>
+                                <p className="action-card-label">
+                                  Payment Received
+                                </p>
+                                <button
+                                  className="action-btn view"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setHistoryInvoice(row);
+                                    setShowPaymentHistory(true);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="action-btn edit"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedInvoice(row);
+                                    setShowPaymentModal(true);
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               </div>
 
                               <div className="action-card">
-                                <p className="action-card-label">Payment Made</p>
-                                <button className="action-btn view" onClick={(e) => { e.stopPropagation(); setPaymentMadeHistoryInvoice(row); setShowPaymentMadeHistory(true); }}>View</button>
-                                <button className="action-btn edit" onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPaymentMadeInvoice({ ...row, dbId: row.dbId || row.id, invoice_number: row.invoice_number || row.id, bank_id: row.bank_id || "", entity: row.entity || row.entity_name || "Pvt Ltd" });
-                                  setShowPaymentMadeModal(true);
-                                }}>Edit</button>
+                                <p className="action-card-label">
+                                  Payment Made
+                                </p>
+                                <button
+                                  className="action-btn view"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPaymentMadeHistoryInvoice(row);
+                                    setShowPaymentMadeHistory(true);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="action-btn edit"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPaymentMadeInvoice({
+                                      ...row,
+                                      dbId: row.dbId || row.id,
+                                      invoice_number:
+                                        row.invoice_number || row.id,
+                                      bank_id: row.bank_id || "",
+                                      entity:
+                                        row.entity ||
+                                        row.entity_name ||
+                                        "Pvt Ltd",
+                                    });
+                                    setShowPaymentMadeModal(true);
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               </div>
 
                               <div className="action-card">
                                 <p className="action-card-label">Bounce Back</p>
-                                <button className="action-btn view" onClick={(e) => { e.stopPropagation(); setHistoryInvoice(row); setShowBounceHistory(true); }}>View</button>
-                                <button className="action-btn edit" onClick={(e) => { e.stopPropagation(); setShowBounceBackModal(true); }}>Edit</button>
+                                <button
+                                  className="action-btn view"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setHistoryInvoice(row);
+                                    setShowBounceHistory(true);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="action-btn edit"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowBounceBackModal(true);
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               </div>
 
                               <div className="action-card">
-                                <p className="action-card-label">CN / Bad Debt</p>
-                                <button className="action-btn view" onClick={(e) => { e.stopPropagation(); setHistoryInvoice(row); setShowCNHistory(true); }}>View</button>
-                                <button className="action-btn edit" onClick={(e) => { e.stopPropagation(); setSelectedInvoiceData(row); setShowCNBadDebtModal(true); }}>Edit</button>
+                                <p className="action-card-label">
+                                  CN / Bad Debt
+                                </p>
+                                <button
+                                  className="action-btn view"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setHistoryInvoice(row);
+                                    setShowCNHistory(true);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="action-btn edit"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedInvoiceData(row);
+                                    setShowCNBadDebtModal(true);
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               </div>
-
                             </div>
                           </motion.div>
                         </td>
@@ -989,13 +1666,53 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
 
             <tfoot>
               <tr className="align-bottom">
-                <td colSpan="4" style={{ textAlign: "right", color: "#9ca3af", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", verticalAlign: "bottom" }}>TOTALS</td>
-                <td className="mono" style={{ verticalAlign: "bottom" }}>₹{formatCurrency(totals.invValue)}</td>
-                <td className="mono" style={{ verticalAlign: "bottom" }}>₹{formatCurrency(totals.vertoFee)}</td>
-                <td className="mono" style={{ color: "#e11d48", verticalAlign: "bottom" }}>₹{formatCurrency(totals.notRecvd)}</td>
-                <td style={{ textAlign: "center", color: "#d1d5db", verticalAlign: "bottom" }}>—</td>
-                <td style={{ textAlign: "center", color: "#d1d5db", verticalAlign: "bottom" }}>—</td>
-                <td className="mono" style={{ verticalAlign: "bottom" }}>₹{formatCurrency(totals.cnBadDebt)}</td>
+                <td
+                  colSpan="4"
+                  style={{
+                    textAlign: "right",
+                    color: "#9ca3af",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    verticalAlign: "bottom",
+                  }}
+                >
+                  TOTALS
+                </td>
+                <td className="mono" style={{ verticalAlign: "bottom" }}>
+                  ₹{formatCurrency(totals.invValue)}
+                </td>
+                <td className="mono" style={{ verticalAlign: "bottom" }}>
+                  ₹{formatCurrency(totals.vertoFee)}
+                </td>
+                <td
+                  className="mono"
+                  style={{ color: "#e11d48", verticalAlign: "bottom" }}
+                >
+                  ₹{formatCurrency(totals.notRecvd)}
+                </td>
+                <td
+                  style={{
+                    textAlign: "center",
+                    color: "#d1d5db",
+                    verticalAlign: "bottom",
+                  }}
+                >
+                  —
+                </td>
+                <td
+                  style={{
+                    textAlign: "center",
+                    color: "#d1d5db",
+                    verticalAlign: "bottom",
+                  }}
+                >
+                  —
+                </td>
+                <td className="mono" style={{ verticalAlign: "bottom" }}>
+                  ₹{formatCurrency(totals.cnBadDebt)}
+                </td>
                 <td colSpan="6" />
               </tr>
             </tfoot>
@@ -1005,7 +1722,9 @@ const Dashboard = ({ refreshFlag, setShowPaymentModal, setShowBounceBackModal, s
         {filteredData.length === 0 && (
           <div className="empty-state">
             <Search size={48} />
-            <p style={{ fontSize: 14 }}>No records found matching your search criteria</p>
+            <p style={{ fontSize: 14 }}>
+              No records found matching your search criteria
+            </p>
           </div>
         )}
       </div>
