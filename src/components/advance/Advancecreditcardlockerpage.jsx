@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Users, Building2, CreditCard, ChevronRight, TrendingUp, AlertCircle, CheckCircle2 } from "lucide-react";
 import EmployeeAdvanceTracker from "./Employeeadvancetracker";
-import ClientAdvanceTracker from "verto-dashboard/src/components/advance/Clientadvancetracker";
+import ClientAdvanceTracker from "./Clientadvancetracker";
 import CreditCardTracker from "./CreditCardTracker";
 
 const tabs = [
