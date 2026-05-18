@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Users, Building2, CreditCard, ChevronRight, TrendingUp, AlertCircle, CheckCircle2 } from "lucide-react";
 import EmployeeAdvanceTracker from "./Employeeadvancetracker";
 import ClientAdvanceTracker from "./Clientadvancetracker";
-import CreditCardTracker from "/Users/kunikabhadra/Movies/verto/verto-dashboard/src/components/advance/Creditcardtracker.jsx";
+import CreditCardTracker from "./Creditcardtracker.jsx";
 
 const tabs = [
   {
