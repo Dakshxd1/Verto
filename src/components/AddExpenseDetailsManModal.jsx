@@ -2167,19 +2167,7 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
             <div
               className={`flex items-center justify-between px-6 py-4 bg-gradient-to-r ${hc.gradient} text-white flex-shrink-0`}
             >
-              <div className="flex items-center gap-3">
-                {/* VIEW RECORDS BUTTON — left of header, near close */}
-                <button
-                  onClick={() => setShowViewPage(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl
-                    bg-blue-500/15 hover:bg-blue-500/25
-                    border border-blue-500/20
-                    text-white transition-all text-sm font-semibold"
-                >
-                  <FileText className="w-4 h-4" />
-                  View Records
-                </button>
-              </div>
+            
 
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/20 rounded-xl">
@@ -2204,15 +2192,27 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
                   </p>
                 </div>
               </div>
-
-              <button
-                onClick={onClose}
-                className="text-white/70 hover:text-white transition p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowViewPage(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl
+                    bg-white/10 hover:bg-white/20
+                    border border-white/10
+                    backdrop-blur-md
+                    text-white transition-all duration-200
+                    text-sm font-semibold shadow-lg hover:scale-[1.02]"
+                >
+                  <FileText className="w-4 h-4" />
+                  View Records
+                </button>
+                <button
+                  onClick={onClose}
+                  className="text-white/70 hover:text-white transition p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
-
             {/* ── Content ── */}
             <div className="flex-1 overflow-hidden">
               <AnimatePresence mode="wait">

@@ -523,7 +523,7 @@ const AddExpenseDetailsModal = ({ isOpen, onClose, onSaved, editData, invoice })
                           <input type="text" placeholder="Search invoice number..."
                             value={invoiceSearch}
                             onChange={(e) => { setInvoiceSearch(e.target.value); setSelectedInvoice(null); }}
-                            className={`w-full border rounded-lg pl-9 pr-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 ${errors.invoiceId ? "border-red-400" : "border-gray-200"}`}
+                            className={`w-full border rounded-lg pl-9 pr-4 py-2.5 text-sm text-black bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 ${errors.invoiceId ? "border-red-400" : "border-gray-200"}`}
                           />
                           {searching && <p className="text-xs text-gray-400 mt-1">Searching...</p>}
                           {invoiceResults.length > 0 && (
@@ -704,7 +704,7 @@ const AddExpenseDetailsModal = ({ isOpen, onClose, onSaved, editData, invoice })
                             <input type="number" value={form[f.key]}
                               onChange={(e) => !f.readOnly && setField(f.key, e.target.value)}
                               readOnly={f.readOnly} placeholder="0"
-                              className={`w-full border rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400
+                             className={`w-full border rounded-lg pl-7 pr-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-orange-400
                                 ${f.readOnly
                                   ? "cursor-not-allowed " + (f.style || "bg-gray-50")
                                   : errors.dueAmount && f.key === "dueAmount"
