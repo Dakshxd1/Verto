@@ -22,7 +22,7 @@ import {
   FileSpreadsheet,
   CheckCheck,
 } from "lucide-react";
-import ExpenseRecordsView from "./ExpenseRecordsView.";
+import ExpenseRecordsView from "./ExpenseRecordsView";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const Select = ({ value, onChange, options, placeholder, error, disabled }) => (
