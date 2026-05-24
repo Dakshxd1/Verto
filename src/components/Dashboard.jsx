@@ -517,6 +517,7 @@ const Dashboard = ({
         invValue: Number(row.invoice_value ?? 0),
         vertoFee: Number(row.verto_fee ?? 0),
         notRecvd: outstanding,
+        excessPayment: Number(row.excess_payment ?? 0),
         delayDays: Number(row.days_overdue ?? 0),
         osDiff: Number(row.os_amt_difference ?? 0),
         employee_count: row.employee_count ?? 0,
@@ -1376,7 +1377,30 @@ const Dashboard = ({
                         color: row.notRecvd > 0 ? "#e11d48" : "inherit",
                       }}
                     >
-                      ₹{formatCurrency(row.notRecvd)}
+                      {row.excessPayment > 0 ? (
+                        <span
+                          title={`Client overpaid by ₹${formatCurrency(
+                            row.excessPayment
+                          )}`}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            background: "#f0fdf4",
+                            color: "#16a34a",
+                            border: "1px solid #bbf7d0",
+                            borderRadius: 6,
+                            padding: "1px 7px",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: "default",
+                          }}
+                        >
+                          ↑ +₹{formatCurrency(row.excessPayment)} overpaid
+                        </span>
+                      ) : (
+                        <>₹{formatCurrency(row.notRecvd)}</>
+                      )}
                     </td>
                     <td className="center">
                       <span
