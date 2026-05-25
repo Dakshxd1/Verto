@@ -12,6 +12,7 @@ import {
   FileX,
   ArrowLeftRight,
   Trash2,
+  CheckCircle2,
 } from "lucide-react";
 
 // ─── TYPE CONFIG ───────────────────────────────────────────────────────────────
@@ -113,6 +114,8 @@ const LedgerPage = () => {
   const [loading, setLoading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [completeLoading, setCompleteLoading] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
 
   // ── Get invoice from global state ──
   useEffect(() => {
@@ -129,7 +132,13 @@ const LedgerPage = () => {
     try {
       const { data: inv, error: invErr } = await supabase
         .from("invoices")
-        .select("id, invoice_value, receivable_amount, invoice_number")
+        .select(`
+          id,
+          invoice_value,
+          receivable_amount,
+          invoice_number,
+          is_completed
+        `)
         .eq("id", invoice.dbId)
         .single();
 
@@ -139,6 +148,7 @@ const LedgerPage = () => {
       }
 
       setOpening(inv.invoice_value);
+      setIsCompleted(inv.is_completed || false);
 
       const [
         { data: payments },
@@ -235,6 +245,46 @@ const LedgerPage = () => {
     }
   };
 
+  // ── COMPLETE/UNCOMPLETE INVOICE ─────────────────────────────────────────────
+  const handleCompleteInvoice = async () => {
+    if (!invoice?.dbId) return;
+
+    setCompleteLoading(true);
+
+    try {
+      const rpc = isCompleted
+        ? "uncomplete_invoice"
+        : "complete_invoice";
+
+      const { error } = await supabase.rpc(rpc, {
+        p_invoice_id: invoice.dbId,
+      });
+
+      if (error) throw error;
+
+      setIsCompleted(!isCompleted);
+
+      alert(
+        isCompleted
+          ? "Invoice moved back to active."
+          : "Invoice marked completed."
+      );
+
+      fetchLedger();
+
+      if (window.refreshDashboard) {
+        window.refreshDashboard();
+      }
+
+    } catch (err) {
+      console.error(err);
+
+      alert(err.message);
+    } finally {
+      setCompleteLoading(false);
+    }
+  };
+
   // ── DELETE INVOICE ──────────────────────────────────────────────────────────
   const handleDeleteInvoice = async () => {
     if (!invoice?.dbId) return;
@@ -304,6 +354,24 @@ const LedgerPage = () => {
 
         {/* ── Action Buttons ── */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleCompleteInvoice}
+            disabled={completeLoading}
+            className={`flex items-center gap-2 px-3 py-2 text-sm text-white rounded-xl transition disabled:opacity-50 ${
+              isCompleted
+                ? "bg-amber-500 hover:bg-amber-600"
+                : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+
+            {completeLoading
+              ? "Updating..."
+              : isCompleted
+              ? "Move To Active"
+              : "Mark Complete"}
+          </button>
+
           <button
             onClick={fetchLedger}
             disabled={loading}

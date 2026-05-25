@@ -242,6 +242,7 @@ const dashboardStyles = `
   .status-pill.fresh    { background: var(--c-blue-light); color: var(--c-blue); }
   .status-pill.ok       { background: var(--c-emerald-light); color: var(--c-emerald); }
   .status-pill.mismatch { background: var(--c-rose-light); color: var(--c-rose); }
+  .status-pill.completed { background: var(--c-purple-light); color: var(--c-purple); }
 
   .delay-pill {
     display: inline-block; padding: 2px 9px; border-radius: 20px;
@@ -354,6 +355,17 @@ const dashboardStyles = `
   }
   .icon-btn:hover { background: #eff6ff; color: var(--c-blue); }
   .icon-btn.expand:hover { background: #f3f4f6; color: var(--c-text-primary); }
+
+  .pagination-btn {
+    padding: 6px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    border: 1.5px solid transparent; transition: all 0.15s;
+    background: #f3f4f6; color: #4b5563;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .pagination-btn:hover:not(:disabled) { background: #e5e7eb; }
+  .pagination-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pagination-btn.active-emerald { background: var(--c-emerald-light); color: var(--c-emerald); border-color: var(--c-emerald-mid); }
 `;
 
 // ─── Mock Data Generator ─────────────────────────────────────────────────────
@@ -464,9 +476,11 @@ const Dashboard = ({
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [minInvoiceValue, setMinInvoiceValue] = useState("");
   const [maxInvoiceValue, setMaxInvoiceValue] = useState("");
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
 
   // ✅ FIX 1: fetchInvoices defined at component scope with useCallback
-  // so it is always the same stable reference — no stale closures.
   const fetchInvoices = useCallback(async () => {
     console.log("🔥 FETCH RUNNING...");
     const { data: rows, error } = await supabase
@@ -529,6 +543,7 @@ const Dashboard = ({
         pt_tax: row.pt_tax ?? 0,
         other_ded: row.other_ded ?? 0,
         ctc: row.ctc ?? 0,
+        is_completed: row.is_completed || false,
         status:
           outstanding <= 0
             ? "paid"
@@ -541,23 +556,20 @@ const Dashboard = ({
     });
 
     setDbData(formatted);
-  }, []); // no deps — reads from supabase every time, never goes stale
+  }, []);
 
   const fetchBanks = useCallback(async () => {
     const { data, error } = await supabase.from("bank_master").select("*");
     if (!error) setBanks(data);
   }, []);
 
-  // ✅ FIX 2: useEffect just calls the stable functions; realtime includes payments_made
   React.useEffect(() => {
     fetchInvoices();
     fetchBanks();
 
-    // Expose globally for any legacy child that still uses window.refreshDashboard
     window.refreshDashboard = fetchInvoices;
     window.refreshBanks = fetchBanks;
 
-    // ✅ FIX 3: payments_made + advance_payments now subscribed
     const channel = supabase
       .channel("realtime-all")
       .on(
@@ -569,12 +581,12 @@ const Dashboard = ({
         "postgres_changes",
         { event: "*", schema: "public", table: "payments_made" },
         () => fetchInvoices()
-      ) // ← was missing
+      )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "advance_payments" },
         () => fetchInvoices()
-      ) // ← was missing
+      )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bounce_back" },
@@ -614,6 +626,13 @@ const Dashboard = ({
 
   const filteredData = useMemo(() => {
     let sourceData = dbData.length > 0 ? dbData : data;
+
+    sourceData = sourceData.filter((row) =>
+      showCompleted
+        ? row.is_completed === true
+        : row.is_completed !== true
+    );
+
     let filtered = sourceData.filter((row) => {
       const matchesSearch =
         (row.client || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -686,7 +705,30 @@ const Dashboard = ({
     minInvoiceValue,
     maxInvoiceValue,
     sortConfig,
+    showCompleted,
   ]);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    searchTerm,
+    dateFrom,
+    dateTo,
+    selectedDepartments,
+    selectedClients,
+    selectedEntities,
+    selectedStatuses,
+    minInvoiceValue,
+    maxInvoiceValue,
+    showCompleted,
+  ]);
+
+  const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
+
+  const paginatedData = filteredData.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   const totals = useMemo(
     () =>
@@ -893,7 +935,6 @@ const Dashboard = ({
         onClose={() => setShowInvoiceDetails(false)}
       />
 
-      {/* ✅ FIX 4: onSaved calls fetchInvoices directly — never via window reference */}
       <AddPaymentMadeModal
         isOpen={showPaymentMadeModal}
         onClose={() => setShowPaymentMadeModal(false)}
@@ -1049,6 +1090,22 @@ const Dashboard = ({
               {activeFiltersCount > 0 && (
                 <span className="filter-badge">{activeFiltersCount}</span>
               )}
+            </button>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => setShowCompleted(false)}
+              className={`chip ${!showCompleted ? "active-emerald" : ""}`}
+            >
+              Active Invoices
+            </button>
+
+            <button
+              onClick={() => setShowCompleted(true)}
+              className={`chip ${showCompleted ? "active-purple" : ""}`}
+            >
+              Completed Invoices
             </button>
           </div>
 
@@ -1340,7 +1397,7 @@ const Dashboard = ({
             </thead>
 
             <tbody>
-              {filteredData.map((row, index) => (
+              {paginatedData.map((row, index) => (
                 <React.Fragment key={row.id}>
                   <motion.tr
                     layout
@@ -1466,10 +1523,14 @@ const Dashboard = ({
                       )}
                     </td>
                     <td className="center">
-                      {row.gstMismatch || row.tdsMismatch ? (
+                      {row.is_completed ? (
+                        <span className="status-pill completed">
+                          Completed
+                        </span>
+                      ) : row.gstMismatch || row.tdsMismatch ? (
                         <span className="status-pill mismatch">Mismatch</span>
                       ) : (
-                        <span className="status-pill ok">OK</span>
+                        <span className="status-pill ok">Active</span>
                       )}
                     </td>
                     <td className="center">
@@ -1749,6 +1810,51 @@ const Dashboard = ({
             </p>
           </div>
         )}
+      </div>
+
+      {/* ── Pagination ── */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "16px 20px",
+          borderTop: "1px solid #e5e7eb",
+          background: "#fff",
+          borderRadius: "0 0 var(--radius-xl) var(--radius-xl)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 13,
+            color: "#6b7280",
+          }}
+        >
+          Showing page {currentPage} of {totalPages || 1}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+          }}
+        >
+          <button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+            className="pagination-btn"
+          >
+            Previous
+          </button>
+
+          <button
+            disabled={currentPage >= totalPages}
+            onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+            className="pagination-btn active-emerald"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );
