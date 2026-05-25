@@ -506,10 +506,10 @@ const Dashboard = ({
         tds: Number(row.tds ?? 0),
         invoice_value: Number(row.invoice_value ?? 0),
         receivable_amount: receivableAmount,
-        totalReceived: Number(row.total_paid ?? row.amount_received ?? 0),
-        totalBillableExpenses: Number(row.total_billable_expenses ?? 0),
+        totalReceived: Number(row.amount_received ?? 0),
+        totalBillableExpenses: Number(row.total_billable_expense ?? 0),
         bounce: Number(row.total_bounce ?? 0),
-        cnBadDebt: Number(row.total_cn ?? 0),
+        cnBadDebt: Number(row.cn_amount ?? 0),
         netReceived: Number(row.net_received ?? 0),
         dept: row.dept_name,
         client: row.client_name,
@@ -1374,14 +1374,29 @@ const Dashboard = ({
                     <td
                       className="mono"
                       style={{
-                        color: row.notRecvd > 0 ? "#e11d48" : "inherit",
+                        color: row.notRecvd > 0 ? "#e11d48" : "#059669",
                       }}
                     >
-                      {row.excessPayment > 0 ? (
+                      {row.notRecvd > 0
+                        ? `₹${formatCurrency(row.notRecvd)}`
+                        : "✓ Paid"}
+                    </td>
+                    <td className="center">
+                      <span
+                        className={`delay-pill ${delayClass(row.delayDays)}`}
+                      >
+                        {row.delayDays}d
+                      </span>
+                    </td>
+                    <td className="mono">
+                      {row.osDiff === 0 ? (
+                        <span style={{ color: "#d1d5db" }}>—</span>
+                      ) : row.osDiff > 0 ? (
+                        <span style={{ color: "#e11d48" }}>
+                          ₹{formatCurrency(row.osDiff)}
+                        </span>
+                      ) : (
                         <span
-                          title={`Client overpaid by ₹${formatCurrency(
-                            row.excessPayment
-                          )}`}
                           style={{
                             display: "inline-flex",
                             alignItems: "center",
@@ -1393,28 +1408,11 @@ const Dashboard = ({
                             padding: "1px 7px",
                             fontSize: 11,
                             fontWeight: 600,
-                            cursor: "default",
                           }}
                         >
-                          ↑ +₹{formatCurrency(row.excessPayment)} overpaid
+                          ↑ ₹{formatCurrency(Math.abs(row.osDiff))} excess
                         </span>
-                      ) : (
-                        <>₹{formatCurrency(row.notRecvd)}</>
                       )}
-                    </td>
-                    <td className="center">
-                      <span
-                        className={`delay-pill ${delayClass(row.delayDays)}`}
-                      >
-                        {row.delayDays}d
-                      </span>
-                    </td>
-                    <td
-                      className="mono"
-                      style={{ color: row.osDiff >= 0 ? "#059669" : "#e11d48" }}
-                    >
-                      {row.osDiff >= 0 ? "+" : ""}
-                      {formatCurrency(row.osDiff)}
                     </td>
                     <td className="mono">
                       {row.cnBadDebt > 0 ? (
