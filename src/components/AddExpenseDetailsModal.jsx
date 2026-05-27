@@ -168,6 +168,7 @@ const AddExpenseDetailsModal = ({ isOpen, onClose, onSaved, editData, invoice })
   const [invoiceResults, setInvoiceResults] = useState([]);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [searching, setSearching]           = useState(false);
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
 
   // ── Fetch masters ──
   useEffect(() => {
@@ -466,17 +467,19 @@ const AddExpenseDetailsModal = ({ isOpen, onClose, onSaved, editData, invoice })
                         <div className="relative flex-1 min-w-[200px]">
                           <input type="text" placeholder="Type client name..."
                             value={form.clientName}
-                            onChange={(e) => setField("clientName", e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                            onChange={(e) => { setField("clientName", e.target.value); setShowClientDropdown(true); }}
+                            onFocus={() => setShowClientDropdown(true)}
+                            onBlur={() => setTimeout(() => setShowClientDropdown(false), 200)}
+                            className="w-full border border-gray-800 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 text-black"
                           />
-                          {form.clientName.length > 0 && (
+                          {showClientDropdown && form.clientName.length > 0 && (
                             <div className="absolute z-20 top-full left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto">
                               {clients
                                 .filter((c) => c.client_name.toLowerCase().includes(form.clientName.toLowerCase()))
                                 .map((c) => (
                                   <button key={c.id} type="button"
-                                    onClick={() => setField("clientName", c.client_name)}
-                                    className="w-full text-left px-4 py-2.5 hover:bg-orange-50 text-sm border-b border-gray-100 last:border-0">
+                                    onClick={() => { setField("clientName", c.client_name); setShowClientDropdown(false); }}
+                                    className="w-full text-left px-4 py-2.5 hover:bg-orange-50 text-sm border-b border-gray-100 last:border-0 text-black">
                                     {c.client_name}
                                   </button>
                                 ))}
