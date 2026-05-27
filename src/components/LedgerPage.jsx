@@ -157,14 +157,24 @@ const LedgerPage = () => {
       const [
         { data: payments },
         { data: paymentsMade },
+        { data: osPayouts },
+        { data: nonSalary },
         { data: bounces },
         { data: cns },
       ] = await Promise.all([
+        //------------------------------------------------
+        // PAYMENTS RECEIVED
+        //------------------------------------------------
+
         supabase
           .from("payments_received")
           .select("*")
           .eq("invoice_id", invoice.dbId)
           .order("payment_date", { ascending: true }),
+
+        //------------------------------------------------
+        // PAYMENTS MADE
+        //------------------------------------------------
 
         supabase
           .from("payments_made")
@@ -172,11 +182,39 @@ const LedgerPage = () => {
           .eq("invoice_id", invoice.dbId)
           .order("payment_date", { ascending: true }),
 
+        //------------------------------------------------
+        // OS PAYOUTS
+        //------------------------------------------------
+
+        supabase
+          .from("os_payouts")
+          .select("*")
+          .eq("invoice_id", invoice.dbId)
+          .order("payment_date", { ascending: true }),
+
+        //------------------------------------------------
+        // NON SALARY EXPENSES
+        //------------------------------------------------
+
+        supabase
+          .from("non_salary_expenses")
+          .select("*")
+          .eq("invoice_id", invoice.dbId)
+          .order("expense_date", { ascending: true }),
+
+        //------------------------------------------------
+        // BOUNCE BACK
+        //------------------------------------------------
+
         supabase
           .from("bounce_back")
           .select("*")
           .eq("invoice_id", invoice.dbId)
           .order("bounce_date", { ascending: true }),
+
+        //------------------------------------------------
+        // CREDIT NOTE / BAD DEBT
+        //------------------------------------------------
 
         supabase
           .from("credit_note_bad_debt")
@@ -197,20 +235,80 @@ const LedgerPage = () => {
         })
       );
 
-      paymentsMade?.forEach((p) =>
+      paymentsMade?.forEach((p) => {
+        const amt = Number(p.transfer_amount || p.amount || 0);
+
         rows.push({
           type: p.is_billable ? "Billable Expense" : "Payment Made",
-          amount: p.is_billable
-            ? +Number(p.transfer_amount || p.amount || 0)
-            : 0,
+
+          amount: p.is_billable ? +amt : 0,
+
+          displayAmount: amt,
+
           date: p.payment_date,
+
           ref: null,
+
           remarks: p.payment_description || p.expense_remarks || p.remarks,
+
           expenseHead: p.pay_head,
+
           isBillable: p.is_billable,
-          displayAmount: Number(p.transfer_amount || p.amount || 0),
-        })
-      );
+        });
+      });
+
+      //------------------------------------------------
+      // OS PAYOUTS
+      //------------------------------------------------
+
+      osPayouts?.forEach((p) => {
+        const netAmount =
+          Number(p.amount_paid || 0) - Number(p.income_tax_deducted || 0);
+
+        rows.push({
+          type: p.is_billable ? "Billable Expense" : "Payment Made",
+
+          amount: p.is_billable ? +Math.max(netAmount, 0) : 0,
+
+          displayAmount: Math.max(netAmount, 0),
+
+          date: p.payment_date,
+
+          ref: p.payout_ref || null,
+
+          remarks: p.payment_details || p.remarks,
+
+          expenseHead: p.pay_head,
+
+          isBillable: p.is_billable,
+        });
+      });
+
+      //------------------------------------------------
+      // NON SALARY EXPENSES
+      //------------------------------------------------
+
+      nonSalary?.forEach((p) => {
+        const amt = Number(p.amount || 0);
+
+        rows.push({
+          type: p.is_billable ? "Billable Expense" : "Payment Made",
+
+          amount: p.is_billable ? +amt : 0,
+
+          displayAmount: amt,
+
+          date: p.expense_date || p.created_at,
+
+          ref: null,
+
+          remarks: p.remarks,
+
+          expenseHead: p.expense_head,
+
+          isBillable: p.is_billable,
+        });
+      });
 
       bounces?.forEach((b) =>
         rows.push({
