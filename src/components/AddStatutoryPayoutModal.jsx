@@ -635,16 +635,33 @@ const AddStatutoryPayoutModal = ({
   ];
 
   const fetchAutoDue = async (entity, month, type) => {
-    if (!entity || !month) return;
-    const { data: dueData } = await supabase.rpc("get_statutory_due", {
-      selected_entity: entity,
-      selected_month: `${month}-01`,
-      selected_type: type,
-    });
-    const totalDue = Number(dueData?.[0]?.total_due || 0);
+    if (!entity || !month || !type) return;
+
+    console.log("🔥 FETCH RUNNING...");
+    console.log(entity, month, type);
+
+    const { data, error } = await supabase.rpc(
+      "get_statutory_due",
+      {
+        selected_entity: entity,
+        selected_month: `${month}-01`,
+        selected_type: type,
+      }
+    );
+
+    console.log("RPC DATA:", data);
+    console.log("RPC ERROR:", error);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    const totalDue = Number(data || 0);
+
     setFormData((prev) => ({
       ...prev,
-      totalDue: totalDue > 0 ? totalDue.toFixed(2) : "0.00",
+      totalDue: totalDue.toFixed(2),
     }));
   };
 
@@ -657,18 +674,6 @@ const AddStatutoryPayoutModal = ({
         if (entered > remaining)
           return { ...prev, totalPaid: remaining.toString() };
         updated.totalPaid = value;
-      }
-      if (
-        ["entity", "forTheMonth", "statutoryPayoutType"].includes(field) &&
-        updated.entity &&
-        updated.forTheMonth &&
-        updated.statutoryPayoutType
-      ) {
-        fetchAutoDue(
-          updated.entity,
-          updated.forTheMonth,
-          updated.statutoryPayoutType
-        );
       }
       return updated;
     });
@@ -684,6 +689,24 @@ const AddStatutoryPayoutModal = ({
       pendingDue: pending >= 0 ? pending.toFixed(2) : "0.00",
     }));
   }, [formData.totalDue, formData.totalPaid]);
+
+  useEffect(() => {
+    if (
+      formData.entity &&
+      formData.forTheMonth &&
+      formData.statutoryPayoutType
+    ) {
+      fetchAutoDue(
+        formData.entity,
+        formData.forTheMonth,
+        formData.statutoryPayoutType
+      );
+    }
+  }, [
+    formData.entity,
+    formData.forTheMonth,
+    formData.statutoryPayoutType,
+  ]);
 
   const calculateTotalPercentage = () =>
     ["ops", "temp", "recruitment", "projects", "others"].reduce(
