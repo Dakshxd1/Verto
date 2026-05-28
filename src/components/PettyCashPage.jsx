@@ -13,8 +13,8 @@ const DEPARTMENTS = [
   "Common","OS","Temp","Rec","BD","Accts","HR","Admin","IT","Legal","Projects","Others",
 ];
 
-const COST_HEADS  = ["ops","temp","recruitment","projects","others"];
-const COST_LABELS = { ops:"Ops", temp:"Temp", recruitment:"Rec", projects:"Projects", others:"Others" };
+const COST_HEADS  = ["OS","temp","recruitment","projects","others"];
+const COST_LABELS = { ops:"OS", temp:"Temp", recruitment:"Rec", projects:"Projects", others:"Others" };
 
 const DEFAULT_EXPENSE = {
   entry_date: "",
