@@ -242,24 +242,6 @@ const excelDateToString = (v) => {
   return null;
 };
 
-// ─── GENERATE BANK REF ────────────────────────────────────────────────────────
-const generateBankRef = async () => {
-  const today = new Date();
-  const dd = String(today.getDate()).padStart(2, "0");
-  const mm = String(today.getMonth() + 1).padStart(2, "0");
-  const yy = String(today.getFullYear()).slice(2);
-  const prefix = `BNK-${dd}${mm}${yy}-`;
-  const { data } = await supabase
-    .from("bank_entries")
-    .select("reference_no")
-    .like("reference_no", `${prefix}%`)
-    .order("reference_no", { ascending: false })
-    .limit(1);
-  const last = data?.[0]?.reference_no;
-  const seq = last ? parseInt(last.replace(prefix, "")) + 1 : 1;
-  return `${prefix}${String(seq).padStart(2, "0")}`;
-};
-
 // ─── DOWNLOAD TEMPLATE ────────────────────────────────────────────────────────
 const downloadTemplate = () => {
   const headers = [
@@ -1627,23 +1609,6 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
         .select()
         .single();
       if (error) throw error;
-
-      // ── Create bank_entry debit (always) ──
-      const bankRef = await generateBankRef();
-      await supabase.from("bank_entries").insert([
-        {
-          bank_id: intForm.bankId || null,
-          date: intForm.dateOfPay,
-          amount: parseFloat(intForm.paymentAmount) || 0,
-          type: "debit",
-          remarks: `${intForm.paymentHeader} – ${intForm.name}`,
-          entry_type: "employee_payout",
-          flow_type: "expense",
-          source_table: "employee_expense_payouts",
-          source_id: savedPayment.id,
-          reference_no: bankRef,
-        },
-      ]);
 
       if ((parseFloat(intForm.incomeTax) || 0) > 0) {
         await supabase.from("statutory_liabilities").insert([
