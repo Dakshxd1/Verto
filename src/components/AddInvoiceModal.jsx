@@ -401,7 +401,7 @@ const AddInvoiceModal = ({
       ...prev,
       expectedOutflowPF: fmt(year, month, 15),
       expectedOutflowESI: fmt(year, month, 15),
-      expectedOutflowGST: fmt(year, month, 21),
+      expectedOutflowGST: fmt(year, month, 20),
       expectedOutflowTax: fmt(year, month, 7),
     }));
   }, [formData.invoiceDate, formData.department]);
