@@ -426,6 +426,10 @@ const AddCNBadDebtModal = ({
         .eq("id", invoiceId)
         .maybeSingle();
 
+      const invoiceBase = num(data.pay) + num(data.verto_fee);
+      const gstRate = invoiceBase ? num(data.gst) / invoiceBase : 0;
+      const tdsRate = invoiceBase ? num(data.tds) / invoiceBase : 0;
+
       setSelectedDetails({
         invoice_id:    data.id,
         invoiceNumber: data.invoice_number,
@@ -438,6 +442,8 @@ const AddCNBadDebtModal = ({
         vertoFee:      data.verto_fee || 0,
         gst:           data.gst || 0,
         tds:           data.tds || 0,
+        gstRate,
+        tdsRate,
         originalAmount: data.receivable_amount || 0,
         amountPayable:  data.outstanding || 0,
         amountReceived: data.amount_received || 0,
@@ -459,6 +465,22 @@ const AddCNBadDebtModal = ({
     : null;
 
   // ── Validation ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedDetails) return;
+
+    const baseCN = num(formData.payCN) + num(formData.vertoFeeCN);
+    if (baseCN <= 0) return;
+
+    const gstCN = +(baseCN * (selectedDetails.gstRate || 0)).toFixed(2);
+    const tdsCN = +(baseCN * (selectedDetails.tdsRate || 0)).toFixed(2);
+
+    setFormData((prev) => ({
+      ...prev,
+      gstCN: gstCN ? gstCN.toString() : "",
+      tdsCN: tdsCN ? tdsCN.toString() : "",
+    }));
+  }, [formData.payCN, formData.vertoFeeCN, selectedDetails]);
+
   const validateForm = () => {
     const e = {};
     if (!formData.invoiceOrRef.trim())
@@ -816,7 +838,9 @@ const AddCNBadDebtModal = ({
                         className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2.5 rounded-lg focus:outline-none focus:border-amber-400"
                         placeholder="₹ 0"
                       />
-                      <p className="text-[10px] text-amber-600 mt-1">Reduces statutory GST liability</p>
+                      <p className="text-[10px] text-amber-600 mt-1">
+                        Auto-calculated from invoice GST % on service fee + Verto Fee
+                      </p>
                     </div>
 
                     {/* TDS CN */}
@@ -837,7 +861,9 @@ const AddCNBadDebtModal = ({
                         className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2.5 rounded-lg focus:outline-none focus:border-rose-400"
                         placeholder="₹ 0"
                       />
-                      <p className="text-[10px] text-rose-600 mt-1">Reduces statutory TDS liability</p>
+                      <p className="text-[10px] text-rose-600 mt-1">
+                        Auto-calculated from invoice TDS % on service fee + Verto Fee
+                      </p>
                     </div>
                   </div>
 
