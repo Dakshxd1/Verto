@@ -394,12 +394,15 @@ const AddInvoiceModal = ({
     nextMonth.setMonth(nextMonth.getMonth() + 1);
     const year = nextMonth.getFullYear();
     const month = nextMonth.getMonth();
+    const fmt = (y, m, d) =>
+      `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
     setFormData((prev) => ({
       ...prev,
-      expectedOutflowPF: new Date(year, month, 15).toISOString().split("T")[0],
-      expectedOutflowESI: new Date(year, month, 15).toISOString().split("T")[0],
-      expectedOutflowGST: new Date(year, month, 21).toISOString().split("T")[0],
-      expectedOutflowTax: new Date(year, month, 7).toISOString().split("T")[0],
+      expectedOutflowPF: fmt(year, month, 15),
+      expectedOutflowESI: fmt(year, month, 15),
+      expectedOutflowGST: fmt(year, month, 21),
+      expectedOutflowTax: fmt(year, month, 7),
     }));
   }, [formData.invoiceDate, formData.department]);
 
