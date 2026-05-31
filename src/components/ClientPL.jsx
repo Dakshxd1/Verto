@@ -1,960 +1,719 @@
-import React, { useState, useEffect } from 'react';
-import ReactDOM from 'react-dom';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  PieChart, 
-  Pie, 
-  Cell, 
-  ResponsiveContainer, 
-  Tooltip, 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid,
-  ComposedChart,
-  Line
-} from 'recharts';
-import { 
-  Search, 
-  Download, 
-  ChevronRight, 
-  ChevronDown,
-  ChevronUp,
-  Info,
-  Users,
-  Wallet,
-  TrendingUp,
-  ArrowRight,
-  ChevronLeft,
-  ChevronRight as ChevronRightIcon,
-  Plus,
-  FileText,
-  AlertCircle,
-  Calendar,
-  Building2,
-  Percent,
-  X
+import supabase from '../lib/supabaseClient';
+import * as XLSX from 'xlsx';
+import {
+  Search, Download, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
+  TrendingUp, TrendingDown, FileText, Users, AlertTriangle, RefreshCw,
+  X, Filter, Building2, Loader2, Calendar, ReceiptText, BadgeDollarSign,
+  Landmark, CircleDollarSign, ShieldAlert, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
-import Card from './ui/Card';
-import Button from './ui/button';
-import Badge from './ui/Badge';
 
-// --- Mock Data Generator for Clientwise ---
-const generateClientData = () => {
-  const clients = ['ABC Corp', 'XYZ Industries', 'Global Tech', 'Smart Solutions', 'Prime Ventures', 'NextGen Labs'];
-  const departments = ['Ops', 'Recruitment', 'Temp', 'Projects'];
-  const months = ['Jan 2023', 'Feb 2023', 'Mar 2023', 'Apr 2023', 'May 2023', 'Jun 2023'];
-  
-  return months.map(month => {
-    return clients.map(client => {
-      const dept = departments[Math.floor(Math.random() * departments.length)];
-      const invoiceValue = Math.floor(200000 + Math.random() * 800000);
-      const vertoFee = Math.floor(invoiceValue * 0.12);
-      const tds = Math.floor(vertoFee * 0.10);
-      const vertoFeePostTds = vertoFee - tds;
-      
-      const maxExpense = vertoFeePostTds * 0.7;
-      const totalExpense = Math.floor(maxExpense * (0.5 + Math.random() * 0.5));
-      const moneyNotRecvd = Math.floor(invoiceValue * (Math.random() * 0.15));
-      
-      const profitPreTds = vertoFeePostTds - totalExpense;
-      const profitPostTds = profitPreTds;
-      const actualProfit = Math.floor(profitPostTds - (moneyNotRecvd * 0.12));
-      
-      return {
-        id: `${month}-${client}`,
-        month,
-        department: dept,
-        clientName: client,
-        invoiceValue,
-        vertoFeeEarned: vertoFee,
-        tds,
-        vertoFeePostTds,
-        moneyNotRecvdAmt: moneyNotRecvd,
-        totalExpense,
-        profitPreTds,
-        profitPostTds,
-        actualProfit: Math.max(actualProfit, 10000),
-        cnBadDebt: Math.random() > 0.9 ? Math.floor(invoiceValue * 0.02) : 0
-      };
-    });
-  }).flat();
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const fmt = (val) => {
+  const n = Number(val) || 0;
+  if (Math.abs(n) >= 10000000) return `₹${(n / 10000000).toFixed(2)}Cr`;
+  if (Math.abs(n) >= 100000)   return `₹${(n / 100000).toFixed(2)}L`;
+  if (Math.abs(n) >= 1000)     return `₹${(n / 1000).toFixed(1)}K`;
+  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 };
 
-// --- Mock Data Generator for Statutory Payouts ---
-const generateStatutoryData = () => {
-  const clients = ['ABC Corp', 'XYZ Industries', 'Global Tech', 'Smart Solutions', 'Prime Ventures', 'NextGen Labs'];
-  const statutoryTypes = ['GST', 'TDS', 'EPF', 'ESI', 'LWF', 'PF', 'Income Tax', 'Others'];
-  const months = ['Jan 2023', 'Feb 2023', 'Mar 2023', 'Apr 2023', 'May 2023', 'Jun 2023'];
-  
-  const data = [];
-  
-  clients.forEach(client => {
-    statutoryTypes.forEach(type => {
-      if (Math.random() > 0.3) {
-        const amountDue = Math.floor(50000 + Math.random() * 200000);
-        const inputCredit = Math.floor(Math.random() > 0.5 ? Math.random() * amountDue * 0.3 : 0);
-        const amountToBePaid = amountDue - inputCredit;
-        const amountPaid = Math.random() > 0.2 ? amountToBePaid : Math.floor(amountToBePaid * (0.5 + Math.random() * 0.5));
-        const difference = amountToBePaid - amountPaid;
-        const hasPenalty = difference > 0 && Math.random() > 0.5;
-        const penaltyAmount = hasPenalty ? Math.floor(difference * 0.18) : 0;
-        
-        data.push({
-          id: `${client}-${type}-${months[0]}`,
-          month: months[Math.floor(Math.random() * months.length)],
-          entity: client,
-          statutoryType: type,
-          amountDue,
-          inputCredit,
-          amountToBePaid,
-          amountPaid,
-          difference,
-          paymentDate: amountPaid > 0 ? '2023-02-15' : '',
-          dueDate: '2023-02-10',
-          delay: amountPaid > 0 ? 5 : 0,
-          penalties: penaltyAmount,
-          hasPenalty,
-          remarks: hasPenalty ? 'Late payment penalty applied' : '',
-          costBreakup: {
-            ops: 40,
-            temp: 20,
-            recruitment: 20,
-            projects: 15,
-            others: 5
-          }
-        });
-      }
-    });
-  });
-  
-  return data;
+const fmtFull = (val) => {
+  const n = Number(val) || 0;
+  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'];
+const profitCls = (v) => {
+  const n = Number(v) || 0;
+  if (n > 0) return 'text-emerald-600 font-bold';
+  if (n < 0) return 'text-rose-600 font-bold';
+  return 'text-gray-400';
+};
 
-const ClientPL = () => {
-  const [data] = useState(() => generateClientData());
-  const [statutoryData, setStatutoryData] = useState(() => generateStatutoryData());
-  const [selectedRow, setSelectedRow] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [clientFilter, setClientFilter] = useState('All');
-  const [vizType, setVizType] = useState('waterfall');
-  const [viewMode, setViewMode] = useState('pnl');
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
-  
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 7;
+const profitBadgeCls = (v) => {
+  const n = Number(v) || 0;
+  if (n > 0) return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+  if (n < 0) return 'bg-rose-50 text-rose-700 border border-rose-200';
+  return 'bg-gray-50 text-gray-500 border border-gray-200';
+};
 
-  const [showStatutoryModal, setShowStatutoryModal] = useState(false);
-  const [statutoryForm, setStatutoryForm] = useState({
-    entity: '',
-    statutoryType: 'GST',
-    month: '',
-    totalDue: 0,
-    totalPaid: 0,
-    pendingDue: 0,
-    hasPenalty: 'No',
-    penaltyAmount: 0,
-    remarks: '',
-    costBreakup: { ops: 0, temp: 0, recruitment: 0, projects: 0, others: 0 }
-  });
+const getCurrentFY = () => {
+  const now = new Date();
+  return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+};
+const fyStart = (fy) => `${fy}-04-01`;
+const fyEnd   = (fy) => `${fy + 1}-03-31`;
+const fyLabel = (fy) => `FY ${String(fy).slice(2)}-${String(fy + 1).slice(2)}`;
 
-  let filteredData = viewMode === 'pnl' 
-    ? data.filter(row => {
-        const matchesSearch = row.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                              row.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                              row.month.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesClient = clientFilter === 'All' || row.clientName === clientFilter;
-        return matchesSearch && matchesClient;
-      })
-    : statutoryData.filter(row => {
-        const matchesSearch = row.entity.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                              row.statutoryType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                              row.month.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesClient = clientFilter === 'All' || row.entity === clientFilter;
-        return matchesSearch && matchesClient;
-      });
+const STATUTORY_COLORS = {
+  GST: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-500' },
+  TDS: { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', dot: 'bg-violet-500' },
+  EPF: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+  ESI: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', dot: 'bg-orange-500' },
+  LWF: { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200', dot: 'bg-pink-500' },
+  PF:  { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-500' },
+  'Income Tax': { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500' },
+  Others: { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200', dot: 'bg-gray-400' },
+};
+const getStatColor = (t) => STATUTORY_COLORS[t] || STATUTORY_COLORS.Others;
 
-  // Apply sorting
-  if (sortConfig.key) {
-    filteredData = [...filteredData].sort((a, b) => {
-      const aVal = a[sortConfig.key];
-      const bVal = b[sortConfig.key];
+const DEPT_COLORS = {
+  Operations:  { bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' },
+  Temporary:   { bg: 'bg-violet-50', text: 'text-violet-700', dot: 'bg-violet-500' },
+  Recruitment: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' },
+  Projects:    { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+};
+const getDeptColor = (d) => DEPT_COLORS[d] || { bg: 'bg-gray-50', text: 'text-gray-600', dot: 'bg-gray-400' };
 
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
-        return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
-      }
+const ITEMS = 10;
 
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        return sortConfig.direction === 'asc' 
-          ? aVal.localeCompare(bVal) 
-          : bVal.localeCompare(aVal);
-      }
+// ─── SORT ICON ─────────────────────────────────────────────────────────────────
+const SortIcon = ({ col, cfg }) =>
+  cfg.key !== col
+    ? <ChevronDown className="w-3 h-3 opacity-25 ml-0.5 inline" />
+    : cfg.dir === 'asc'
+      ? <ChevronUp className="w-3 h-3 ml-0.5 inline text-blue-500" />
+      : <ChevronDown className="w-3 h-3 ml-0.5 inline text-blue-500" />;
 
-      return 0;
-    });
-  }
-
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-  const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, clientFilter, viewMode]);
-
-  const handleSort = (key) => {
-    setSortConfig(prev => ({
-      key,
-      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
-    }));
+// ─── KPI CARD ──────────────────────────────────────────────────────────────────
+const KPI = ({ label, value, sub, color = 'blue', Icon, delay = 0 }) => {
+  const map = {
+    blue:    'bg-blue-50 border-blue-200 text-blue-700',
+    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+    amber:   'bg-amber-50 border-amber-200 text-amber-700',
+    rose:    'bg-rose-50 border-rose-200 text-rose-700',
+    violet:  'bg-violet-50 border-violet-200 text-violet-700',
+    slate:   'bg-slate-50 border-slate-200 text-slate-700',
   };
-
-  const SortIcon = ({ columnKey }) => {
-    if (sortConfig.key !== columnKey) {
-      return <ChevronDown className="w-3 h-3 opacity-30" />;
-    }
-    return sortConfig.direction === 'asc' 
-      ? <ChevronDown className="w-3 h-3 rotate-180" /> 
-      : <ChevronDown className="w-3 h-3" />;
-  };
-
-  const calculateCostTotal = () => {
-    const { ops, temp, recruitment, projects, others } = statutoryForm.costBreakup;
-    return ops + temp + recruitment + projects + others;
-  };
-
-  const handleStatutorySubmit = (e) => {
-    e.preventDefault();
-    const total = calculateCostTotal();
-    if (total !== 100) {
-      alert('Cost head breakup must total 100%');
-      return;
-    }
-    
-    const newRecord = {
-      id: `${statutoryForm.entity}-${statutoryForm.statutoryType}-${Date.now()}`,
-      month: statutoryForm.month,
-      entity: statutoryForm.entity,
-      statutoryType: statutoryForm.statutoryType,
-      amountDue: parseInt(statutoryForm.totalDue),
-      inputCredit: 0,
-      amountToBePaid: parseInt(statutoryForm.totalDue),
-      amountPaid: parseInt(statutoryForm.totalPaid),
-      difference: parseInt(statutoryForm.pendingDue),
-      paymentDate: statutoryForm.totalPaid > 0 ? new Date().toISOString().split('T')[0] : '',
-      dueDate: '',
-      delay: 0,
-      penalties: statutoryForm.hasPenalty === 'Yes' ? parseInt(statutoryForm.penaltyAmount) : 0,
-      hasPenalty: statutoryForm.hasPenalty === 'Yes',
-      remarks: statutoryForm.remarks,
-      costBreakup: statutoryForm.costBreakup
-    };
-    
-    setStatutoryData([...statutoryData, newRecord]);
-    setShowStatutoryModal(false);
-    setStatutoryForm({
-      entity: '',
-      statutoryType: 'GST',
-      month: '',
-      totalDue: 0,
-      totalPaid: 0,
-      pendingDue: 0,
-      hasPenalty: 'No',
-      penaltyAmount: 0,
-      remarks: '',
-      costBreakup: { ops: 0, temp: 0, recruitment: 0, projects: 0, others: 0 }
-    });
-  };
-
-  useEffect(() => {
-    setStatutoryForm(prev => ({
-      ...prev,
-      pendingDue: prev.totalDue - prev.totalPaid
-    }));
-  }, [statutoryForm.totalDue, statutoryForm.totalPaid]);
-
-  const clientAggregation = data.reduce((acc, row) => {
-    if (!acc[row.clientName]) {
-      acc[row.clientName] = {
-        client: row.clientName,
-        invoiceValue: 0,
-        vertoFeeEarned: 0,
-        vertoFeePostTds: 0,
-        totalExpense: 0,
-        profitPreTds: 0,
-        profitPostTds: 0,
-        actualProfit: 0,
-        moneyNotRecvd: 0,
-        count: 0
-      };
-    }
-    acc[row.clientName].invoiceValue += row.invoiceValue;
-    acc[row.clientName].vertoFeeEarned += row.vertoFeeEarned;
-    acc[row.clientName].vertoFeePostTds += row.vertoFeePostTds;
-    acc[row.clientName].totalExpense += row.totalExpense;
-    acc[row.clientName].profitPreTds += row.profitPreTds;
-    acc[row.clientName].profitPostTds += row.profitPostTds;
-    acc[row.clientName].actualProfit += row.actualProfit;
-    acc[row.clientName].moneyNotRecvd += row.moneyNotRecvdAmt;
-    acc[row.clientName].count += 1;
-    return acc;
-  }, {});
-
-  const vizData = Object.values(clientAggregation).sort((a, b) => b.actualProfit - a.actualProfit);
-  const topClients = vizData.slice(0, 5);
-  const otherProfit = vizData.slice(5).reduce((a, b) => a + b.actualProfit, 0);
-  const pieData = otherProfit > 0 ? [...topClients, { client: 'Others', actualProfit: otherProfit }] : topClients;
-
-  const formatCurrency = (val) => `₹ ${(val / 1000).toFixed(0)}K`;
-  const formatCurrencyFull = (val) => `₹ ${val.toLocaleString('en-IN')}`;
-
-  const getStatutoryTypeColor = (type) => {
-    const colors = {
-      'GST': 'bg-blue-100 text-blue-700',
-      'TDS': 'bg-purple-100 text-purple-700',
-      'EPF': 'bg-green-100 text-green-700',
-      'ESI': 'bg-orange-100 text-orange-700',
-      'LWF': 'bg-pink-100 text-pink-700',
-      'PF': 'bg-indigo-100 text-indigo-700',
-      'Income Tax': 'bg-red-100 text-red-700',
-      'Others': 'bg-gray-100 text-gray-700'
-    };
-    return colors[type] || 'bg-gray-100 text-gray-700';
-  };
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-          <p className="font-semibold text-gray-900 mb-2">{label}</p>
-          {payload.map((entry, index) => (
-            <p key={index} className="text-sm flex items-center justify-between space-x-4">
-              <span className="flex items-center">
-                <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: entry.color }}></span>
-                <span className="text-gray-600">{entry.name}</span>
-              </span>
-              <span className="font-mono font-medium">
-                ₹ {(entry.value / 1000).toFixed(0)}K
-              </span>
-            </p>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
-
+  const cls = map[color] || map.blue;
   return (
-    <div className="space-y-4 pb-6">
-      
-      {/* Filter Bar */}
-      <Card className="p-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center space-x-4">
-            <div className="flex bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setViewMode('pnl')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                  viewMode === 'pnl' 
-                    ? 'bg-white text-blue-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <TrendingUp className="w-4 h-4" />
-                  <span>P&L Summary</span>
-                </div>
-              </button>
-              <button
-                onClick={() => setViewMode('statutory')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                  viewMode === 'statutory' 
-                    ? 'bg-white text-blue-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <FileText className="w-4 h-4" />
-                  <span>Statutory Payouts</span>
-                </div>
-              </button>
-            </div>
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+      transition={{ delay, duration: 0.3 }}
+      className={`${cls} border rounded-xl px-4 py-3.5 flex items-start gap-3`}>
+      {Icon && <Icon className="w-4 h-4 mt-0.5 shrink-0 opacity-70" />}
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-current opacity-60 truncate">{label}</p>
+        <p className="text-lg font-bold mt-0.5 text-current truncate">{value}</p>
+        {sub && <p className="text-[10px] opacity-50 mt-0.5 truncate">{sub}</p>}
+      </div>
+    </motion.div>
+  );
+};
 
-            <div className="h-6 w-px bg-gray-300" />
+// ─── MAIN ──────────────────────────────────────────────────────────────────────
+const ClientPL = () => {
+  const [tab, setTab]           = useState('pnl'); // 'pnl' | 'statutory'
+  const [pnlData, setPnlData]   = useState([]);
+  const [statData, setStatData] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(null);
 
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input 
-                type="text" 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder={viewMode === 'pnl' ? "Search Client, Dept or Month..." : "Search Entity, Type or Month..."}
-                className="w-64 bg-gray-50 border border-gray-200 text-gray-900 pl-10 pr-4 py-2 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <select 
-              value={clientFilter}
-              onChange={(e) => setClientFilter(e.target.value)}
-              className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-            >
-              <option value="All">All {viewMode === 'pnl' ? 'Clients' : 'Entities'}</option>
-              {[...new Set(data.map(d => d.clientName))].sort().map(client => (
-                <option key={client} value={client}>{client}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div className="flex items-center space-x-3">
-            {viewMode === 'statutory' && (
-              <Button 
-                onClick={() => setShowStatutoryModal(true)}
-                className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Statutory Payout</span>
-              </Button>
-            )}
-            <Button className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700">
-              <Download className="w-4 h-4" />
-              <span>Export Excel</span>
-            </Button>
-          </div>
+  // Filters — PnL
+  const [search, setSearch]         = useState('');
+  const [deptFilter, setDeptFilter] = useState('All');
+  const [clientFilter, setClientFilter] = useState('All');
+  const [selectedFY, setSelectedFY] = useState(getCurrentFY);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [minProfit, setMinProfit]   = useState('');
+  const [maxProfit, setMaxProfit]   = useState('');
+
+  // Filters — Statutory
+  const [statSearch, setStatSearch]   = useState('');
+  const [statEntity, setStatEntity]   = useState('All');
+  const [statType, setStatType]       = useState('All');
+  const [statStatus, setStatStatus]   = useState('All');
+
+  const [sort, setSort] = useState({ key: 'pl_month', dir: 'desc' });
+  const [statSort, setStatSort] = useState({ key: 'month', dir: 'desc' });
+  const [page, setPage]     = useState(1);
+  const [statPage, setStatPage] = useState(1);
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+  const fetchAll = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const [{ data: pnl, error: e1 }, { data: stat, error: e2 }] = await Promise.all([
+        supabase.from('client_wise_pl_view').select('*').order('pl_month', { ascending: false }),
+        supabase.from('statutory_payments').select('*').order('month', { ascending: false }),
+      ]);
+      if (e1) throw e1;
+      if (e2) throw e2;
+      setPnlData(pnl || []);
+      setStatData(stat || []);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { setPage(1); }, [search, deptFilter, clientFilter, selectedFY, minProfit, maxProfit]);
+  useEffect(() => { setStatPage(1); }, [statSearch, statEntity, statType, statStatus]);
+
+  // ── Derived lists ──────────────────────────────────────────────────────────
+  const allDepts   = useMemo(() => ['All', ...new Set(pnlData.map(r => r.dept_name).filter(Boolean))], [pnlData]);
+  const allClients = useMemo(() => ['All', ...new Set(pnlData.map(r => r.client_name).filter(Boolean)).values()].sort(), [pnlData]);
+  const allEntities = useMemo(() => ['All', ...new Set(statData.map(r => r.entity).filter(Boolean))].sort(), [statData]);
+  const allTypes   = useMemo(() => ['All', ...new Set(statData.map(r => r.type).filter(Boolean))], [statData]);
+
+  // ── PnL filter + sort ──────────────────────────────────────────────────────
+  const filteredPnl = useMemo(() => {
+    let d = pnlData.filter(r => {
+      const term = search.toLowerCase();
+      const matchSearch = !term
+        || r.client_name?.toLowerCase().includes(term)
+        || r.dept_name?.toLowerCase().includes(term)
+        || r.month_label?.toLowerCase().includes(term);
+      const matchDept   = deptFilter === 'All' || r.dept_name === deptFilter;
+      const matchClient = clientFilter === 'All' || r.client_name === clientFilter;
+      const matchFY     = !r.pl_month || (r.pl_month >= fyStart(selectedFY) && r.pl_month <= fyEnd(selectedFY));
+      const matchMin    = !minProfit || Number(r.actual_profit) >= Number(minProfit);
+      const matchMax    = !maxProfit || Number(r.actual_profit) <= Number(maxProfit);
+      return matchSearch && matchDept && matchClient && matchFY && matchMin && matchMax;
+    });
+    if (sort.key) {
+      d = [...d].sort((a, b) => {
+        const av = a[sort.key], bv = b[sort.key];
+        if (typeof av === 'number' || !isNaN(Number(av)))
+          return sort.dir === 'asc' ? Number(av) - Number(bv) : Number(bv) - Number(av);
+        return sort.dir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+      });
+    }
+    return d;
+  }, [pnlData, search, deptFilter, clientFilter, selectedFY, minProfit, maxProfit, sort]);
+
+  // ── Statutory filter + sort ────────────────────────────────────────────────
+  const filteredStat = useMemo(() => {
+    let d = statData.filter(r => {
+      const term = statSearch.toLowerCase();
+      const matchSearch = !term
+        || r.entity?.toLowerCase().includes(term)
+        || r.type?.toLowerCase().includes(term)
+        || r.month?.includes(term);
+      const matchEntity = statEntity === 'All' || r.entity === statEntity;
+      const matchType   = statType === 'All' || r.type === statType;
+      const matchStatus = statStatus === 'All' || r.payment_status === statStatus;
+      return matchSearch && matchEntity && matchType && matchStatus;
+    });
+    if (statSort.key) {
+      d = [...d].sort((a, b) => {
+        const av = a[statSort.key], bv = b[statSort.key];
+        if (!isNaN(Number(av))) return statSort.dir === 'asc' ? Number(av) - Number(bv) : Number(bv) - Number(av);
+        return statSort.dir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+      });
+    }
+    return d;
+  }, [statData, statSearch, statEntity, statType, statStatus, statSort]);
+
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  const pnlKpis = useMemo(() => {
+    const s = (k) => filteredPnl.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+    return {
+      invoice: s('total_invoice_value'), fee: s('verto_fee_earned'),
+      tds: s('tds'), notRecvd: s('money_not_received'),
+      expense: s('total_expense'), cn: s('cn_bad_debt'), actual: s('actual_profit'),
+    };
+  }, [filteredPnl]);
+
+  const statKpis = useMemo(() => {
+    const s = (k) => filteredStat.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+    return { due: s('total_due'), paid: s('total_paid'), pending: s('pending_due'), penalty: s('penalty_amount') };
+  }, [filteredStat]);
+
+  // ── Pagination ─────────────────────────────────────────────────────────────
+  const pnlPages  = Math.ceil(filteredPnl.length / ITEMS);
+  const statPages = Math.ceil(filteredStat.length / ITEMS);
+  const pnlPage   = filteredPnl.slice((page - 1) * ITEMS, page * ITEMS);
+  const statPage2 = filteredStat.slice((statPage - 1) * ITEMS, statPage * ITEMS);
+
+  // ── Sort handlers ──────────────────────────────────────────────────────────
+  const handleSort = (k) => setSort(p => ({ key: k, dir: p.key === k && p.dir === 'asc' ? 'desc' : 'asc' }));
+  const handleStatSort = (k) => setStatSort(p => ({ key: k, dir: p.key === k && p.dir === 'asc' ? 'desc' : 'asc' }));
+
+  // ── Excel export ───────────────────────────────────────────────────────────
+  const exportPnl = () => {
+    const headers = ['Month','Department','Client','Invoice Value','Verto Fee','TDS','Fee Post TDS','Not Received','Expense','CN/Bad Debt','Profit Pre TDS','Profit Post TDS','Actual Profit'];
+    const rows = filteredPnl.map(r => [
+      r.month_label, r.dept_name, r.client_name,
+      r.total_invoice_value, r.verto_fee_earned, r.tds, r.verto_fee_post_tds,
+      r.money_not_received, r.total_expense, r.cn_bad_debt,
+      r.profit_pre_tds, r.profit_post_tds, r.actual_profit
+    ]);
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = headers.map(() => ({ wch: 18 }));
+    XLSX.utils.book_append_sheet(wb, ws, 'Client P&L');
+    XLSX.writeFile(wb, `ClientPL_${fyLabel(selectedFY)}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
+  const exportStat = () => {
+    const headers = ['Month','Entity','Type','Total Due','Total Paid','Pending','Penalty','Status','Remarks'];
+    const rows = filteredStat.map(r => [
+      r.month, r.entity, r.type, r.total_due, r.total_paid,
+      r.pending_due, r.penalty_amount, r.payment_status, r.remarks
+    ]);
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Statutory');
+    XLSX.writeFile(wb, `Statutory_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
+  // ── Totals ─────────────────────────────────────────────────────────────────
+  const pnlTotals = useMemo(() => {
+    const s = (k) => filteredPnl.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+    return {
+      total_invoice_value: s('total_invoice_value'), verto_fee_earned: s('verto_fee_earned'),
+      tds: s('tds'), verto_fee_post_tds: s('verto_fee_post_tds'),
+      money_not_received: s('money_not_received'), total_expense: s('total_expense'),
+      cn_bad_debt: s('cn_bad_debt'), profit_pre_tds: s('profit_pre_tds'),
+      profit_post_tds: s('profit_post_tds'), actual_profit: s('actual_profit'),
+    };
+  }, [filteredPnl]);
+
+  const Pagination = ({ cur, total, onChange }) => (
+    <div className="flex items-center gap-1">
+      <button onClick={() => onChange(Math.max(1, cur - 1))} disabled={cur === 1}
+        className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition">
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      {Array.from({ length: Math.min(total, 7) }, (_, i) => {
+        let p = total <= 7 ? i + 1 : cur <= 4 ? i + 1 : cur >= total - 3 ? total - 6 + i : cur - 3 + i;
+        return (
+          <button key={p} onClick={() => onChange(p)}
+            className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${cur === p ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            {p}
+          </button>
+        );
+      })}
+      <button onClick={() => onChange(Math.min(total, cur + 1))} disabled={cur >= total || total === 0}
+        className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition">
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+
+  // ─── RENDER ────────────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-4 pb-8 bg-gray-50/60 min-h-screen" style={{ fontFamily: "'DM Sans', 'Geist', sans-serif" }}>
+
+      {/* ── TOP BAR ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between pt-1">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <Users className="w-5 h-5 text-blue-600" />
+            {tab === 'pnl' ? 'Client-wise P&L' : 'Statutory Payouts'}
+          </h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {tab === 'pnl' ? 'Per client · per department · per month' : 'GST · TDS · EPF · ESI · LWF'}
+          </p>
         </div>
-      </Card>
-
-      {/* Main Content */}
-      <div className="flex gap-4">
-        
-        {/* Full Width Table View */}
-        <div className="flex-1 space-y-4">
-          <Card className="overflow-hidden">
-            <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-              <h3 className="font-semibold text-gray-900 flex items-center">
-                {viewMode === 'pnl' ? (
-                  <>
-                    <Users className="w-4 h-4 mr-2 text-blue-600" />
-                    Client-wise P&L Summary
-                  </>
-                ) : (
-                  <>
-                    <FileText className="w-4 h-4 mr-2 text-emerald-600" />
-                    Statutory Payout Summary
-                  </>
-                )}
-              </h3>
-              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                {filteredData.length} records
-              </span>
-            </div>
-            
-            <div className="overflow-auto max-h-[600px]">
-              {viewMode === 'pnl' ? (
-                <table className="w-full text-left border-collapse">
-                  <thead className="bg-gray-50 sticky top-0 z-10">
-                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                      <th className="p-3 w-24 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('month')}>
-                        <div className="flex items-center justify-between">
-                          <span>Month</span>
-                          <SortIcon columnKey="month" />
-                        </div>
-                      </th>
-                      <th className="p-3 w-24 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('department')}>
-                        <div className="flex items-center justify-between">
-                          <span>Department</span>
-                          <SortIcon columnKey="department" />
-                        </div>
-                      </th>
-                      <th className="p-3 w-32 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('clientName')}>
-                        <div className="flex items-center justify-between">
-                          <span>Client Name</span>
-                          <SortIcon columnKey="clientName" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-28 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('invoiceValue')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Invoice Value</span>
-                          <SortIcon columnKey="invoiceValue" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-24 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('vertoFeeEarned')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Verto Fee Earned</span>
-                          <SortIcon columnKey="vertoFeeEarned" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-20 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('tds')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>TDS</span>
-                          <SortIcon columnKey="tds" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-28 text-blue-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('vertoFeePostTds')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Verto Fee post TDS</span>
-                          <SortIcon columnKey="vertoFeePostTds" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-28 text-amber-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('moneyNotRecvdAmt')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Money Not Recvd Amt</span>
-                          <SortIcon columnKey="moneyNotRecvdAmt" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-24 text-rose-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('totalExpense')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Total Expense (Client)</span>
-                          <SortIcon columnKey="totalExpense" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-28 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('profitPreTds')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Profit Pre TDS</span>
-                          <SortIcon columnKey="profitPreTds" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-28 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('profitPostTds')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Profit POST TDS</span>
-                          <SortIcon columnKey="profitPostTds" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-28 text-emerald-600 font-bold bg-emerald-50/50 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('actualProfit')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Actual Profit</span>
-                          <SortIcon columnKey="actualProfit" />
-                        </div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm text-gray-700 divide-y divide-gray-100">
-                    {paginatedData.map((row, index) => (
-                      <motion.tr 
-                        key={row.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="hover:bg-blue-50 transition-colors"
-                      >
-                        <td className="p-3 font-medium text-gray-900">{row.month}</td>
-                        <td className="p-3"><Badge variant="secondary" className="text-xs">{row.department}</Badge></td>
-                        <td className="p-3 font-medium text-blue-700">{row.clientName}</td>
-                        <td className="p-3 text-right font-mono text-gray-600">{formatCurrency(row.invoiceValue)}</td>
-                        <td className="p-3 text-right font-mono text-gray-600">{formatCurrency(row.vertoFeeEarned)}</td>
-                        <td className="p-3 text-right font-mono text-rose-500">({formatCurrency(row.tds)})</td>
-                        <td className="p-3 text-right font-mono font-medium text-blue-700 bg-blue-50/30">{formatCurrency(row.vertoFeePostTds)}</td>
-                        <td className="p-3 text-right font-mono text-amber-600 bg-amber-50/30">({formatCurrency(row.moneyNotRecvdAmt)})</td>
-                        <td className="p-3 text-right font-mono text-rose-600 bg-rose-50/30">({formatCurrency(row.totalExpense)})</td>
-                        <td className="p-3 text-right font-mono text-gray-900">{formatCurrency(row.profitPreTds)}</td>
-                        <td className="p-3 text-right font-mono text-gray-900">{formatCurrency(row.profitPostTds)}</td>
-                        <td className="p-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30">{formatCurrency(row.actualProfit)}</td>
-                      </motion.tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-blue-100 font-semibold text-gray-900 border-t-2 border-blue-300">
-                    <tr>
-                      <td colSpan="3" className="p-3 text-right text-gray-900 text-base">TOTAL</td>
-                      <td className="p-3 text-right font-mono text-gray-900 text-base">{formatCurrency(filteredData.reduce((sum, row) => sum + row.invoiceValue, 0))}</td>
-                      <td className="p-3 text-right font-mono text-gray-900 text-base">{formatCurrency(filteredData.reduce((sum, row) => sum + row.vertoFeeEarned, 0))}</td>
-                      <td className="p-3 text-right font-mono text-rose-600 text-base">({formatCurrency(filteredData.reduce((sum, row) => sum + row.tds, 0))})</td>
-                      <td className="p-3 text-right font-mono font-medium text-blue-700 text-base">{formatCurrency(filteredData.reduce((sum, row) => sum + row.vertoFeePostTds, 0))}</td>
-                      <td className="p-3 text-right font-mono text-amber-600 text-base">({formatCurrency(filteredData.reduce((sum, row) => sum + row.moneyNotRecvdAmt, 0))})</td>
-                      <td className="p-3 text-right font-mono text-rose-600 text-base">({formatCurrency(filteredData.reduce((sum, row) => sum + row.totalExpense, 0))})</td>
-                      <td className="p-3 text-right font-mono text-gray-900 text-base">{formatCurrency(filteredData.reduce((sum, row) => sum + row.profitPreTds, 0))}</td>
-                      <td className="p-3 text-right font-mono text-gray-900 text-base">{formatCurrency(filteredData.reduce((sum, row) => sum + row.profitPostTds, 0))}</td>
-                      <td className="p-3 text-right font-mono font-bold text-emerald-700 text-base">{formatCurrency(filteredData.reduce((sum, row) => sum + row.actualProfit, 0))}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              ) : (
-                <table className="w-full text-left border-collapse">
-                  <thead className="bg-gray-50 sticky top-0 z-10">
-                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                      <th className="p-3 w-24 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('month')}>
-                        <div className="flex items-center justify-between">
-                          <span>Month</span>
-                          <SortIcon columnKey="month" />
-                        </div>
-                      </th>
-                      <th className="p-3 w-32 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('entity')}>
-                        <div className="flex items-center justify-between">
-                          <span>Entity</span>
-                          <SortIcon columnKey="entity" />
-                        </div>
-                      </th>
-                      <th className="p-3 w-32 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('statutoryType')}>
-                        <div className="flex items-center justify-between">
-                          <span>Statutory Header</span>
-                          <SortIcon columnKey="statutoryType" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-28 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('amountDue')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Amount Due</span>
-                          <SortIcon columnKey="amountDue" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-24 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('inputCredit')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Input Credit</span>
-                          <SortIcon columnKey="inputCredit" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-28 text-blue-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('amountToBePaid')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Amount to be paid</span>
-                          <SortIcon columnKey="amountToBePaid" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-28 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('amountPaid')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Amount paid</span>
-                          <SortIcon columnKey="amountPaid" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-24 text-rose-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('difference')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Difference</span>
-                          <SortIcon columnKey="difference" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-center w-28 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('paymentDate')}>
-                        <div className="flex items-center justify-center space-x-2">
-                          <span>Payment Date</span>
-                          <SortIcon columnKey="paymentDate" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-20 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('delay')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Delay</span>
-                          <SortIcon columnKey="delay" />
-                        </div>
-                      </th>
-                      <th className="p-3 text-right w-24 text-red-600 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => handleSort('penalties')}>
-                        <div className="flex items-center justify-end space-x-2">
-                          <span>Penalties</span>
-                          <SortIcon columnKey="penalties" />
-                        </div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm text-gray-700 divide-y divide-gray-100">
-                    {paginatedData.map((row, index) => (
-                      <motion.tr 
-                        key={row.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="hover:bg-emerald-50 transition-colors"
-                      >
-                        <td className="p-3 font-medium text-gray-900">{row.month}</td>
-                        <td className="p-3 font-medium text-blue-700">{row.entity}</td>
-                        <td className="p-3">
-                          <Badge className={`text-xs ${getStatutoryTypeColor(row.statutoryType)}`}>
-                            {row.statutoryType}
-                          </Badge>
-                        </td>
-                        <td className="p-3 text-right font-mono text-gray-600">{formatCurrency(row.amountDue)}</td>
-                        <td className="p-3 text-right font-mono text-gray-600">{formatCurrency(row.inputCredit)}</td>
-                        <td className="p-3 text-right font-mono font-medium text-blue-700 bg-blue-50/30">{formatCurrency(row.amountToBePaid)}</td>
-                        <td className="p-3 text-right font-mono text-emerald-600">{formatCurrency(row.amountPaid)}</td>
-                        <td className="p-3 text-right font-mono font-bold text-rose-600">{formatCurrency(row.difference)}</td>
-                        <td className="p-3 text-center text-sm text-gray-600">{row.paymentDate || '-'}</td>
-                        <td className="p-3 text-right">
-                          {row.delay > 0 ? (
-                            <span className="text-amber-600 font-medium">{row.delay} days</span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-right font-mono text-red-600">
-                          {row.penalties > 0 ? formatCurrency(row.penalties) : '-'}
-                        </td>
-                      </motion.tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredData.length)}</span> of <span className="font-medium">{filteredData.length}</span> entries
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <div className="flex items-center space-x-1">
-                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
-                          currentPage === pageNum 
-                            ? 'bg-blue-600 text-white' 
-                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                </div>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages || totalPages === 0}
-                  className="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronRightIcon className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </Card>
+        <div className="flex items-center gap-2">
+          <button onClick={fetchAll} disabled={loading}
+            className="p-2 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition disabled:opacity-40" title="Refresh">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button onClick={tab === 'pnl' ? exportPnl : exportStat} disabled={loading}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition disabled:opacity-40">
+            <Download className="w-4 h-4" /> Export Excel
+          </button>
         </div>
       </div>
 
-      {/* MODAL - Using Portal to render at document root */}
-      {showStatutoryModal && ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[99999]">
-          {/* Backdrop */}
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowStatutoryModal(false)}
-          />
-          
-          {/* Modal Container */}
-          <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ duration: 0.2 }}
-              className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-600 to-teal-700 text-white flex justify-between items-center sticky top-0 z-10">
-                <h3 className="text-lg font-bold flex items-center">
-                  <Plus className="w-5 h-5 mr-2" />
-                  Add Statutory Payout
-                </h3>
-                <button 
-                  onClick={() => setShowStatutoryModal(false)} 
-                  className="text-white/80 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+      {/* ── TAB SWITCHER ────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1 w-fit">
+        {[
+          { id: 'pnl', label: 'P&L Summary', Icon: TrendingUp },
+          { id: 'statutory', label: 'Statutory Payouts', Icon: Landmark },
+        ].map(({ id, label, Icon }) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+              tab === id ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-800'
+            }`}>
+            <Icon className="w-4 h-4" /> {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── ERROR ── */}
+      {error && (
+        <div className="flex items-center gap-3 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-sm">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>Error: {error}</span>
+          <button onClick={fetchAll} className="ml-auto underline text-xs">Retry</button>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          P&L TAB
+      ══════════════════════════════════════════════════════════════════ */}
+      {tab === 'pnl' && (
+        <>
+          {/* Filter bar */}
+          <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Client, dept, month…"
+                  className="pl-9 pr-3 py-2 w-52 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300 transition" />
+                {search && <button onClick={() => setSearch('')} className="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>}
               </div>
-              
-              <form onSubmit={handleStatutorySubmit} className="p-6 space-y-6">
-                {/* Basic Info */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Entity</label>
-                    <select 
-                      required
-                      value={statutoryForm.entity}
-                      onChange={(e) => setStatutoryForm({...statutoryForm, entity: e.target.value})}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    >
-                      <option value="">Select Entity</option>
-                      {[...new Set(data.map(d => d.clientName))].sort().map(client => (
-                        <option key={client} value={client}>{client}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Statutory Payout</label>
-                    <select 
-                      value={statutoryForm.statutoryType}
-                      onChange={(e) => setStatutoryForm({...statutoryForm, statutoryType: e.target.value})}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    >
-                      {['GST', 'TDS', 'EPF', 'ESI', 'LWF', 'PF', 'Income Tax', 'Others'].map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">For The Month</label>
-                  <input 
-                    type="month"
-                    required
-                    value={statutoryForm.month}
-                    onChange={(e) => setStatutoryForm({...statutoryForm, month: e.target.value})}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
+              {/* Client */}
+              <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+                className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                {allClients.map(c => <option key={c} value={c}>{c === 'All' ? 'All Clients' : c}</option>)}
+              </select>
 
-                {/* Payment Details */}
-                <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-                  <h4 className="font-semibold text-gray-900 flex items-center">
-                    <Building2 className="w-4 h-4 mr-2" />
-                    Payment Details
-                  </h4>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Total Due</label>
-                      <input 
-                        type="number"
-                        required
-                        value={statutoryForm.totalDue}
-                        onChange={(e) => setStatutoryForm({...statutoryForm, totalDue: parseInt(e.target.value) || 0})}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        placeholder="Auto Collate"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Total Paid</label>
-                      <input 
-                        type="number"
-                        value={statutoryForm.totalPaid}
-                        onChange={(e) => setStatutoryForm({...statutoryForm, totalPaid: parseInt(e.target.value) || 0})}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Pending Due</label>
-                      <input 
-                        type="number"
-                        readOnly
-                        value={statutoryForm.pendingDue}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100 text-gray-600"
-                      />
-                    </div>
-                  </div>
-                </div>
+              {/* Dept */}
+              <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
+                className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                {allDepts.map(d => <option key={d} value={d}>{d === 'All' ? 'All Departments' : d}</option>)}
+              </select>
 
-                {/* Penalty Section */}
-                <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-                  <h4 className="font-semibold text-gray-900 flex items-center">
-                    <AlertCircle className="w-4 h-4 mr-2" />
-                    Penalty Information
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4">
+              {/* FY Navigator */}
+              <div className="flex items-center gap-1 bg-gray-100 rounded-full px-1 py-1">
+                <button onClick={() => setSelectedFY(y => y - 1)}
+                  className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white text-gray-500 hover:text-gray-800 transition text-sm font-bold">‹</button>
+                <span className="px-2 text-xs font-bold text-gray-700 whitespace-nowrap">{fyLabel(selectedFY)}</span>
+                <button onClick={() => setSelectedFY(y => y + 1)}
+                  className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white text-gray-500 hover:text-gray-800 transition text-sm font-bold">›</button>
+              </div>
+
+              {/* Advanced toggle */}
+              <button onClick={() => setShowAdvanced(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition ${showAdvanced ? 'border-blue-400 text-blue-600 bg-blue-50' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                <Filter className="w-3.5 h-3.5" /> Advanced
+              </button>
+
+              <div className="ml-auto text-xs text-gray-500 font-medium">
+                {loading ? <span className="flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</span>
+                  : <span>{filteredPnl.length} rows</span>}
+              </div>
+            </div>
+
+            {/* Advanced filters */}
+            <AnimatePresence>
+              {showAdvanced && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} style={{ overflow: 'hidden' }}>
+                  <div className="pt-3 border-t border-gray-100 flex flex-wrap gap-4 items-end">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Any Interest/Penalties</label>
-                      <select 
-                        value={statutoryForm.hasPenalty}
-                        onChange={(e) => setStatutoryForm({...statutoryForm, hasPenalty: e.target.value})}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      >
-                        <option value="No">No</option>
-                        <option value="Yes">Yes</option>
-                      </select>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Min Actual Profit</label>
+                      <input type="number" value={minProfit} onChange={e => setMinProfit(e.target.value)}
+                        placeholder="₹ Min" className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-blue-300" />
                     </div>
-                    {statutoryForm.hasPenalty === 'Yes' && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Penalty Amount</label>
-                        <input 
-                          type="number"
-                          value={statutoryForm.penaltyAmount}
-                          onChange={(e) => setStatutoryForm({...statutoryForm, penaltyAmount: parseInt(e.target.value) || 0})}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                          placeholder="Amount"
-                        />
-                      </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Max Actual Profit</label>
+                      <input type="number" value={maxProfit} onChange={e => setMaxProfit(e.target.value)}
+                        placeholder="₹ Max" className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    </div>
+                    {(minProfit || maxProfit || search || deptFilter !== 'All' || clientFilter !== 'All') && (
+                      <button onClick={() => { setMinProfit(''); setMaxProfit(''); setSearch(''); setDeptFilter('All'); setClientFilter('All'); }}
+                        className="flex items-center gap-1 text-xs text-rose-600 hover:text-rose-800 border border-rose-200 px-3 py-2 rounded-lg bg-rose-50 transition">
+                        <X className="w-3 h-3" /> Clear All
+                      </button>
                     )}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
-                    <textarea 
-                      value={statutoryForm.remarks}
-                      onChange={(e) => setStatutoryForm({...statutoryForm, remarks: e.target.value})}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      rows="2"
-                      placeholder="Enter remarks..."
-                    />
-                  </div>
-                </div>
-
-                {/* Cost Head Breakup */}
-                <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h4 className="font-semibold text-gray-900 flex items-center">
-                      <Percent className="w-4 h-4 mr-2" />
-                      Cost Head Break Up for Penalties
-                    </h4>
-                    <span className={`text-sm font-bold ${calculateCostTotal() === 100 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      Total: {calculateCostTotal()}%
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-5 gap-3">
-                    {['ops', 'temp', 'recruitment', 'projects', 'others'].map((head) => (
-                      <div key={head}>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 capitalize">{head}</label>
-                        <div className="relative">
-                          <input 
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={statutoryForm.costBreakup[head]}
-                            onChange={(e) => setStatutoryForm({
-                              ...statutoryForm,
-                              costBreakup: {
-                                ...statutoryForm.costBreakup,
-                                [head]: parseInt(e.target.value) || 0
-                              }
-                            })}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                          />
-                          <span className="absolute right-3 top-2 text-gray-500">%</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {calculateCostTotal() !== 100 && (
-                    <p className="text-sm text-red-600 flex items-center">
-                      <AlertCircle className="w-4 h-4 mr-1" />
-                      Total must equal 100%
-                    </p>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 sticky bottom-0 bg-white">
-                  <button
-                    type="button"
-                    onClick={() => setShowStatutoryModal(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={calculateCostTotal() !== 100}
-                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Save Statutory Payout
-                  </button>
-                </div>
-              </form>
-            </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-        </div>,
-        document.body
+
+          {/* KPIs */}
+          {!loading && filteredPnl.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+              <KPI label="Invoice Value"    value={fmt(pnlKpis.invoice)} color="blue"    Icon={ReceiptText}       delay={0.00} />
+              <KPI label="Verto Fee"        value={fmt(pnlKpis.fee)}     color="blue"    Icon={BadgeDollarSign}   delay={0.04} />
+              <KPI label="TDS"              value={fmt(pnlKpis.tds)}     color="rose"    Icon={ShieldAlert}       delay={0.08} />
+              <KPI label="Not Received"     value={fmt(pnlKpis.notRecvd)} color="amber"  Icon={AlertTriangle}     delay={0.12} sub="Outstanding" />
+              <KPI label="CN / Bad Debt"    value={fmt(pnlKpis.cn)}      color="rose"    Icon={FileText}          delay={0.16} />
+              <KPI label="Expense"          value={fmt(pnlKpis.expense)} color="violet"  Icon={TrendingDown}      delay={0.20} />
+              <KPI label="Actual Profit"    value={fmt(pnlKpis.actual)}
+                color={pnlKpis.actual >= 0 ? 'emerald' : 'rose'} Icon={TrendingUp}  delay={0.24} sub="Post TDS" />
+            </div>
+          )}
+
+          {/* P&L Table */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+                <Users className="w-4 h-4 text-blue-600" /> Client × Department × Month
+              </h3>
+              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{filteredPnl.length} rows</span>
+            </div>
+
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+                <span className="text-sm">Loading P&L data…</span>
+              </div>
+            ) : filteredPnl.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                <Users className="w-12 h-12 opacity-20" />
+                <p className="text-sm font-medium">No data found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse min-w-[1100px]">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {[
+                        ['month_label','Month','left'],['dept_name','Department','left'],['client_name','Client','left'],
+                        ['total_invoice_value','Invoice Value','right'],['verto_fee_earned','Verto Fee','right'],
+                        ['tds','TDS','right'],['verto_fee_post_tds','Fee Post TDS','right'],
+                        ['money_not_received','Not Received','right'],['total_expense','Expense','right'],
+                        ['cn_bad_debt','CN / BD','right'],['profit_pre_tds','Profit Pre TDS','right'],
+                        ['profit_post_tds','Profit Post TDS','right'],['actual_profit','Actual Profit','right'],
+                      ].map(([k, label, align]) => (
+                        <th key={k} onClick={() => handleSort(k)}
+                          className={`px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-gray-500 cursor-pointer select-none hover:bg-gray-100 transition whitespace-nowrap ${align === 'right' ? 'text-right' : 'text-left'} ${sort.key === k ? 'bg-blue-50 text-blue-700' : ''}`}>
+                          {label}<SortIcon col={k} cfg={sort} />
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    <AnimatePresence mode="sync">
+                      {pnlPage.map((row, i) => {
+                        const dc = getDeptColor(row.dept_name);
+                        return (
+                          <motion.tr key={`${row.pl_month}-${row.client_id}-${row.department_id}`}
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
+                            className="hover:bg-blue-50/30 transition-colors">
+                            <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap">{row.month_label}</td>
+                            <td className="px-3 py-2.5">
+                              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${dc.bg} ${dc.text}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${dc.dot}`} />{row.dept_name}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 font-medium text-blue-700 max-w-[160px] truncate">{row.client_name}</td>
+                            <td className="px-3 py-2.5 text-right font-mono text-gray-700">{fmt(row.total_invoice_value)}</td>
+                            <td className="px-3 py-2.5 text-right font-mono text-gray-800 font-medium">{fmt(row.verto_fee_earned)}</td>
+                            <td className="px-3 py-2.5 text-right font-mono text-rose-600">
+                              {Number(row.tds) > 0 ? `-${fmt(row.tds)}` : '—'}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-gray-800">{fmt(row.verto_fee_post_tds)}</td>
+                            <td className="px-3 py-2.5 text-right font-mono">
+                              {Number(row.money_not_received) > 0
+                                ? <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-xs font-semibold">{fmt(row.money_not_received)}</span>
+                                : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-gray-600">
+                              {Number(row.total_expense) > 0 ? `-${fmt(row.total_expense)}` : '—'}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono">
+                              {Number(row.cn_bad_debt) > 0
+                                ? <span className="text-rose-600 text-xs font-semibold">-{fmt(row.cn_bad_debt)}</span>
+                                : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className={`px-3 py-2.5 text-right font-mono ${profitCls(row.profit_pre_tds)}`}>{fmt(row.profit_pre_tds)}</td>
+                            <td className={`px-3 py-2.5 text-right font-mono ${profitCls(row.profit_post_tds)}`}>{fmt(row.profit_post_tds)}</td>
+                            <td className="px-3 py-2.5 text-right">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold ${profitBadgeCls(row.actual_profit)}`}>
+                                {Number(row.actual_profit) > 0 ? <ArrowUpRight className="w-3 h-3" /> : Number(row.actual_profit) < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
+                                {fmt(row.actual_profit)}
+                              </span>
+                            </td>
+                          </motion.tr>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-800 text-white font-bold border-t-2 border-slate-600">
+                      <td colSpan={3} className="px-3 py-3 text-sm text-white/70 uppercase tracking-widest">Total ({filteredPnl.length} rows)</td>
+                      <td className="px-3 py-3 text-right font-mono text-sm">{fmt(pnlTotals.total_invoice_value)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-sm">{fmt(pnlTotals.verto_fee_earned)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-sm text-rose-300">-{fmt(pnlTotals.tds)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-sm">{fmt(pnlTotals.verto_fee_post_tds)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-sm text-amber-300">{fmt(pnlTotals.money_not_received)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-sm text-rose-300">-{fmt(pnlTotals.total_expense)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-sm text-rose-300">-{fmt(pnlTotals.cn_bad_debt)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-sm">{fmt(pnlTotals.profit_pre_tds)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-sm">{fmt(pnlTotals.profit_post_tds)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-sm">
+                        <span className={Number(pnlTotals.actual_profit) >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
+                          {fmt(pnlTotals.actual_profit)}
+                        </span>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+
+            {!loading && filteredPnl.length > 0 && (
+              <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  Showing <span className="font-semibold text-gray-700">{(page - 1) * ITEMS + 1}</span>–<span className="font-semibold text-gray-700">{Math.min(page * ITEMS, filteredPnl.length)}</span> of <span className="font-semibold text-gray-700">{filteredPnl.length}</span>
+                </p>
+                <Pagination cur={page} total={pnlPages} onChange={setPage} />
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          STATUTORY TAB
+      ══════════════════════════════════════════════════════════════════ */}
+      {tab === 'statutory' && (
+        <>
+          {/* Filter bar */}
+          <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input type="text" value={statSearch} onChange={e => setStatSearch(e.target.value)}
+                placeholder="Entity, type, month…"
+                className="pl-9 pr-3 py-2 w-52 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300 transition" />
+              {statSearch && <button onClick={() => setStatSearch('')} className="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>}
+            </div>
+
+            <select value={statEntity} onChange={e => setStatEntity(e.target.value)}
+              className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300">
+              {allEntities.map(e => <option key={e} value={e}>{e === 'All' ? 'All Entities' : e}</option>)}
+            </select>
+
+            <select value={statType} onChange={e => setStatType(e.target.value)}
+              className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300">
+              {allTypes.map(t => <option key={t} value={t}>{t === 'All' ? 'All Types' : t}</option>)}
+            </select>
+
+            <select value={statStatus} onChange={e => setStatStatus(e.target.value)}
+              className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300">
+              {['All','paid','partial','pending'].map(s => <option key={s} value={s}>{s === 'All' ? 'All Status' : s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+            </select>
+
+            <div className="ml-auto text-xs text-gray-500 font-medium">
+              {loading ? <span className="flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</span>
+                : <span>{filteredStat.length} rows</span>}
+            </div>
+          </div>
+
+          {/* Stat KPIs */}
+          {!loading && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <KPI label="Total Due"    value={fmt(statKpis.due)}     color="blue"    Icon={CircleDollarSign} delay={0.00} />
+              <KPI label="Total Paid"   value={fmt(statKpis.paid)}    color="emerald" Icon={BadgeDollarSign}  delay={0.04} />
+              <KPI label="Pending Due"  value={fmt(statKpis.pending)} color="amber"   Icon={AlertTriangle}    delay={0.08} />
+              <KPI label="Penalties"    value={fmt(statKpis.penalty)} color="rose"    Icon={ShieldAlert}      delay={0.12} />
+            </div>
+          )}
+
+          {/* Statutory Table */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+                <Landmark className="w-4 h-4 text-emerald-600" /> Statutory Payment Records
+              </h3>
+              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{filteredStat.length} rows</span>
+            </div>
+
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+                <span className="text-sm">Loading statutory data…</span>
+              </div>
+            ) : filteredStat.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                <Landmark className="w-12 h-12 opacity-20" />
+                <p className="text-sm font-medium">No statutory records found</p>
+                <p className="text-xs">Records will appear here once statutory payments are entered</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse min-w-[900px]">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {[
+                        ['month','Month','left'],['entity','Entity','left'],['type','Type','left'],
+                        ['total_due','Total Due','right'],['total_paid','Total Paid','right'],
+                        ['pending_due','Pending','right'],['payment_status','Status','center'],
+                        ['payment_date','Payment Date','center'],['penalty_amount','Penalty','right'],['remarks','Remarks','left'],
+                      ].map(([k, label, align]) => (
+                        <th key={k} onClick={() => handleStatSort(k)}
+                          className={`px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-gray-500 cursor-pointer select-none hover:bg-gray-100 transition whitespace-nowrap text-${align} ${statSort.key === k ? 'bg-blue-50 text-blue-700' : ''}`}>
+                          {label}<SortIcon col={k} cfg={statSort} />
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    <AnimatePresence mode="sync">
+                      {statPage2.map((row, i) => {
+                        const sc = getStatColor(row.type);
+                        const statusCls = row.payment_status === 'paid'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : row.payment_status === 'partial'
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-rose-50 text-rose-700 border-rose-200';
+                        return (
+                          <motion.tr key={row.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                            transition={{ delay: i * 0.02 }} className="hover:bg-emerald-50/20 transition-colors">
+                            <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap">
+                              {row.month ? new Date(row.month).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '—'}
+                            </td>
+                            <td className="px-3 py-2.5 font-medium text-blue-700">{row.entity || '—'}</td>
+                            <td className="px-3 py-2.5">
+                              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border ${sc.bg} ${sc.text} ${sc.border}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />{row.type}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-gray-700">{fmtFull(row.total_due)}</td>
+                            <td className="px-3 py-2.5 text-right font-mono text-emerald-600 font-medium">{fmtFull(row.total_paid)}</td>
+                            <td className="px-3 py-2.5 text-right font-mono">
+                              {Number(row.pending_due) > 0
+                                ? <span className="text-rose-600 font-bold">{fmtFull(row.pending_due)}</span>
+                                : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold border ${statusCls}`}>
+                                {row.payment_status || 'pending'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-center text-xs text-gray-500">
+                              {row.payment_date ? new Date(row.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono">
+                              {Number(row.penalty_amount) > 0
+                                ? <span className="text-rose-600 text-xs font-semibold">{fmtFull(row.penalty_amount)}</span>
+                                : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-xs text-gray-500 max-w-[140px] truncate">{row.remarks || '—'}</td>
+                          </motion.tr>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {!loading && filteredStat.length > 0 && (
+              <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  Showing <span className="font-semibold text-gray-700">{(statPage - 1) * ITEMS + 1}</span>–<span className="font-semibold text-gray-700">{Math.min(statPage * ITEMS, filteredStat.length)}</span> of <span className="font-semibold text-gray-700">{filteredStat.length}</span>
+                </p>
+                <Pagination cur={statPage} total={statPages} onChange={setStatPage} />
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Legend */}
+      {tab === 'pnl' && !loading && filteredPnl.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl px-5 py-3 flex flex-wrap gap-4 text-xs text-gray-500">
+          <span className="font-semibold text-gray-700 mr-1">Formulas:</span>
+          <span><b className="text-gray-700">Verto Fee Post TDS</b> = Verto Fee − TDS</span>
+          <span><b className="text-amber-600">Not Received</b> = Outstanding per invoice (live)</span>
+          <span><b className="text-gray-700">Profit Pre TDS</b> = Verto Fee Earned − Expense</span>
+          <span><b className="text-gray-700">Profit Post TDS</b> = Fee Post TDS − Expense</span>
+          <span><b className="text-emerald-600">Actual Profit</b> = Fee Received − TDS − Expense (most realistic)</span>
+        </div>
       )}
     </div>
   );
