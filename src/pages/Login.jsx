@@ -31,6 +31,7 @@ const Login = () => {
       setError("Invalid email or password");
       setLoading(false);
     } else {
+      localStorage.setItem("loginDate", new Date().toDateString());
       setSuccess("Login successful! Redirecting...");
       triggerLoginConfetti();
       setLoading(false);
