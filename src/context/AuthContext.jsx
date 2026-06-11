@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef } from "react";
 import supabase from "../lib/supabaseClient";
+import { popupManager } from "../utils/popupManager";
 
 const AuthContext = createContext();
 
@@ -7,6 +8,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showLivePopup, setShowLivePopup] = useState(false);
   const fetchedEmailRef = useRef(null); // ← tracks last fetched email
 
   const fetchRole = async (email) => {
@@ -43,9 +45,19 @@ export const AuthProvider = ({ children }) => {
         // ← only handle actual sign in/out, ignore TOKEN_REFRESHED etc.
         if (event === "SIGNED_OUT") {
           fetchedEmailRef.current = null;
+          popupManager.clearSession();
           setUser(null);
           setRole(null);
+          setShowLivePopup(false);
           return;
+        }
+
+        if (event === "SIGNED_IN" && session?.user) {
+          // Initialize new session and show popup only if not shown yet
+          popupManager.initializeSession(session.user.id);
+          if (popupManager.shouldShowPopup()) {
+            setShowLivePopup(true);
+          }
         }
 
         if (session?.user) {
@@ -60,8 +72,13 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+  const handleClosePopup = () => {
+    popupManager.markPopupShown();
+    setShowLivePopup(false);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, role, loading }}>
+    <AuthContext.Provider value={{ user, role, loading, showLivePopup, setShowLivePopup: handleClosePopup }}>
       {children}
     </AuthContext.Provider>
   );

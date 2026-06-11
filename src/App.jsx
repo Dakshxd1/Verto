@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
 import UserManagement from "./pages/UserManagement";
+import LivePopup from "./components/LivePopup";
 import supabase from "./lib/supabaseClient";
 import {
   LayoutDashboard,
@@ -427,7 +428,7 @@ function App() {
     "PI-SO-250123-01",
   ];
 
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, showLivePopup, setShowLivePopup } = useAuth();
   useEffect(() => {
     if (user?.email) fetchLoggedInEmployee();
   }, [user]);
@@ -1011,6 +1012,11 @@ function App() {
           />
         )}
       </AnimatePresence>
+
+      <LivePopup
+        isOpen={showLivePopup}
+        onClose={() => setShowLivePopup(false)}
+      />
     </div>
   );
 };
