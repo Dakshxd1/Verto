@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import supabase from "../lib/supabaseClient";
+import confetti from "canvas-confetti";
 import { LogIn, AlertCircle, CheckCircle, Loader, Eye, EyeOff } from "lucide-react";
 
 const Login = () => {
@@ -30,8 +31,39 @@ const Login = () => {
       setLoading(false);
     } else {
       setSuccess("Login successful! Redirecting...");
+      triggerLoginConfetti();
       setLoading(false);
     }
+  };
+
+  const triggerLoginConfetti = () => {
+    const end = Date.now() + 3 * 1000;
+    const colors = ["#a786ff", "#fd8bbc", "#eca184", "#f8deb1"];
+
+    const frame = () => {
+      if (Date.now() > end) return;
+
+      confetti({
+        particleCount: 2,
+        angle: 60,
+        spread: 55,
+        startVelocity: 60,
+        origin: { x: 0, y: 0.5 },
+        colors,
+      });
+      confetti({
+        particleCount: 2,
+        angle: 120,
+        spread: 55,
+        startVelocity: 60,
+        origin: { x: 1, y: 0.5 },
+        colors,
+      });
+
+      requestAnimationFrame(frame);
+    };
+
+    frame();
   };
 
   const handleKeyPress = (e) => {
