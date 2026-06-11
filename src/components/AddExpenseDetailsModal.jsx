@@ -388,6 +388,39 @@ const AddExpenseDetailsModal = ({
     if (errors.costHead) setErrors((p) => ({ ...p, costHead: "" }));
   };
 
+  // ── Warn if bank payment exceeds current bank balance (non-blocking) ──
+  const warnIfBankShort = async (bankId, amount) => {
+    if (!bankId) return;
+    try {
+      const { data: bank } = await supabase
+        .from("bank_master")
+        .select("id,opening_balance,bank_name")
+        .eq("id", bankId)
+        .maybeSingle();
+
+      const { data: entries } = await supabase
+        .from("bank_entries")
+        .select("amount,type,is_deleted")
+        .eq("bank_id", bankId)
+        .eq("is_deleted", false);
+
+      const opening = Number(bank?.opening_balance || 0);
+      const movement = (entries || []).reduce((sum, e) => {
+        const amt = Number(e.amount || 0);
+        return String(e.type).toLowerCase() === "debit" ? sum - amt : sum + amt;
+      }, 0);
+      const currentBalance = opening + movement;
+      if (Number(amount || 0) > currentBalance) {
+        alert(
+          `⚠️ Entered bank payment (₹${Number(amount).toLocaleString("en-IN")}) is greater than current bank balance (₹${Number(currentBalance).toLocaleString("en-IN")}). Proceeding anyway.`
+        );
+      }
+    } catch (err) {
+      // ignore errors — non-blocking warning only
+      console.debug("Bank balance check failed:", err.message || err);
+    }
+  };
+
   const costTotal = Object.values(form.costHeadBreakup).reduce(
     (a, b) => a + b,
     0
@@ -431,6 +464,11 @@ const AddExpenseDetailsModal = ({
       const selectedBank = banks.find((b) => b.id === form.bankId);
       const transferAmt = parseFloat(form.transferAmount) || 0;
       const dueAmt = parseFloat(form.dueAmount) || 0;
+
+      // Non-blocking warning if payment exceeds bank balance
+      if (form.paymentMode === "bank" && form.bankId && transferAmt > 0) {
+        await warnIfBankShort(form.bankId, transferAmt);
+      }
 
       const payload = {
         amount: transferAmt,

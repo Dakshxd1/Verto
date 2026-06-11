@@ -224,6 +224,36 @@ const StatutoryRecordsPanel = ({ onClose }) => {
 
       const pending = Math.max(monthTotalDue - otherRowsPaid - newPaid, 0);
 
+      // Non-blocking bank balance warning when paying from a bank
+      if (editForm.bank_id && newPaid > 0) {
+        try {
+          const { data: bank } = await supabase
+            .from("bank_master")
+            .select("id,opening_balance,bank_name")
+            .eq("id", editForm.bank_id)
+            .maybeSingle();
+          const { data: entries } = await supabase
+            .from("bank_entries")
+            .select("amount,type,is_deleted")
+            .eq("bank_id", editForm.bank_id)
+            .eq("is_deleted", false);
+          const opening = Number(bank?.opening_balance || 0);
+          const movement = (entries || []).reduce((sum, e) => {
+            const amt = Number(e.amount || 0);
+            return String(e.type).toLowerCase() === "debit" ? sum - amt : sum + amt;
+          }, 0);
+          const currentBalance = opening + movement;
+          if (newPaid > currentBalance) {
+            showToast(
+              `⚠️ Entered bank payment (₹${newPaid.toLocaleString("en-IN")}) is greater than current bank balance (₹${Number(currentBalance).toLocaleString("en-IN")}). Proceeding anyway.`,
+              "error"
+            );
+          }
+        } catch (err) {
+          console.debug("Bank balance check failed:", err.message || err);
+        }
+      }
+
       const { error } = await supabase
         .from("statutory_payments")
         .update({

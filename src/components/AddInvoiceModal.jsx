@@ -390,19 +390,21 @@ const AddInvoiceModal = ({
   useEffect(() => {
     if (!formData.invoiceDate || formData.department !== "OS") return;
     const invDate = new Date(formData.invoiceDate);
+    const year = invDate.getFullYear();
+    const month = invDate.getMonth();
     const nextMonth = new Date(invDate);
     nextMonth.setMonth(nextMonth.getMonth() + 1);
-    const year = nextMonth.getFullYear();
-    const month = nextMonth.getMonth();
+    const nextYear = nextMonth.getFullYear();
+    const nextMon = nextMonth.getMonth();
     const fmt = (y, m, d) =>
       `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-
+    
     setFormData((prev) => ({
       ...prev,
       expectedOutflowPF: fmt(year, month, 15),
       expectedOutflowESI: fmt(year, month, 15),
-      expectedOutflowGST: fmt(year, month, 20),
-      expectedOutflowTax: fmt(year, month, 7),
+      expectedOutflowGST: fmt(nextYear, nextMon, 20),
+      expectedOutflowTax: fmt(nextYear, nextMon, 7),
     }));
   }, [formData.invoiceDate, formData.department]);
 

@@ -2411,6 +2411,51 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
       return;
     }
 
+    // Non-blocking bank balance warning for bulk upload
+    // Group total payment amount by bank_id
+    const bankPaymentMap = {};
+    for (const row of validRows) {
+      const emp = row._empData;
+      const bankName = (row.bank_name || emp?.bank_master?.bank_name || "")
+        .toLowerCase()
+        .trim();
+      const bankId = bankMap[bankName] || emp?.bank_id || null;
+      const paymentAmount = parseFloat(row.payment_amount) || 0;
+      if (bankId && paymentAmount > 0) {
+        if (!bankPaymentMap[bankId]) bankPaymentMap[bankId] = 0;
+        bankPaymentMap[bankId] += paymentAmount;
+      }
+    }
+
+    // Check each bank's balance against total payment amount
+    for (const [bankId, totalPayment] of Object.entries(bankPaymentMap)) {
+      try {
+        const { data: bank } = await supabase
+          .from("bank_master")
+          .select("id,opening_balance,bank_name")
+          .eq("id", bankId)
+          .maybeSingle();
+        const { data: entries } = await supabase
+          .from("bank_entries")
+          .select("amount,type,is_deleted")
+          .eq("bank_id", bankId)
+          .eq("is_deleted", false);
+        const opening = Number(bank?.opening_balance || 0);
+        const movement = (entries || []).reduce((sum, e) => {
+          const amt = Number(e.amount || 0);
+          return String(e.type).toLowerCase() === "debit" ? sum - amt : sum + amt;
+        }, 0);
+        const currentBalance = opening + movement;
+        if (totalPayment > currentBalance) {
+          alert(
+            `⚠️ Bulk upload for ${bank?.bank_name || "Bank"}: Total payment (₹${totalPayment.toLocaleString("en-IN")}) exceeds current bank balance (₹${Number(currentBalance).toLocaleString("en-IN")}). Proceeding anyway.`
+          );
+        }
+      } catch (err) {
+        console.debug("Bank balance check failed:", err.message || err);
+      }
+    }
+
     for (const row of validRows) {
       try {
         const emp = row._empData;
@@ -2516,6 +2561,35 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
     if (!validateInternal()) return;
     setLoading(true);
     try {
+      // Non-blocking bank balance warning
+      if (intForm.bankId && (parseFloat(intForm.paymentAmount) || 0) > 0) {
+        try {
+          const { data: bank } = await supabase
+            .from("bank_master")
+            .select("id,opening_balance,bank_name")
+            .eq("id", intForm.bankId)
+            .maybeSingle();
+          const { data: entries } = await supabase
+            .from("bank_entries")
+            .select("amount,type,is_deleted")
+            .eq("bank_id", intForm.bankId)
+            .eq("is_deleted", false);
+          const opening = Number(bank?.opening_balance || 0);
+          const movement = (entries || []).reduce((sum, e) => {
+            const amt = Number(e.amount || 0);
+            return String(e.type).toLowerCase() === "debit" ? sum - amt : sum + amt;
+          }, 0);
+          const currentBalance = opening + movement;
+          const payAmt = Number(parseFloat(intForm.paymentAmount) || 0);
+          if (payAmt > currentBalance) {
+            alert(
+              `⚠️ Entered bank payment (₹${payAmt.toLocaleString("en-IN")}) is greater than current bank balance (₹${Number(currentBalance).toLocaleString("en-IN")}). Proceeding anyway.`
+            );
+          }
+        } catch (err) {
+          console.debug("Bank balance check failed:", err.message || err);
+        }
+      }
       const payload = {
         entity_id:
           entities.find((e) => e.entity_name === intForm.entity)?.id || null,
@@ -2652,6 +2726,37 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
           remarks: "",
         };
       }
+
+        // Non-blocking bank balance warning for OS payout
+        try {
+          const bankIdForOs = payload.bank_id;
+          const osAmt = Number(payload.amount_paid || 0);
+          if (bankIdForOs && osAmt > 0) {
+            const { data: bank } = await supabase
+              .from("bank_master")
+              .select("id,opening_balance,bank_name")
+              .eq("id", bankIdForOs)
+              .maybeSingle();
+            const { data: entries } = await supabase
+              .from("bank_entries")
+              .select("amount,type,is_deleted")
+              .eq("bank_id", bankIdForOs)
+              .eq("is_deleted", false);
+            const opening = Number(bank?.opening_balance || 0);
+            const movement = (entries || []).reduce((sum, e) => {
+              const amt = Number(e.amount || 0);
+              return String(e.type).toLowerCase() === "debit" ? sum - amt : sum + amt;
+            }, 0);
+            const currentBalance = opening + movement;
+            if (osAmt > currentBalance) {
+              alert(
+                `⚠️ Entered bank payment (₹${osAmt.toLocaleString("en-IN")}) is greater than current bank balance (₹${Number(currentBalance).toLocaleString("en-IN")}). Proceeding anyway.`
+              );
+            }
+          }
+        } catch (err) {
+          console.debug("Bank balance check failed:", err.message || err);
+        }
 
       const { data: savedPayout, error: payoutErr } = await supabase
         .from("os_payouts")
