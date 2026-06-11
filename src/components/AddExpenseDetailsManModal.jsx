@@ -1910,11 +1910,10 @@ const INTERNAL_PAY_HEADS = [
   "Loan-Advance",
 ];
 const OS_PAY_HEADS = [
-  "Vendor Payment",
-  "Consultant Charges",
-  "Recruitment Payout",
-  "Contract Staffing",
-  "Freelancer Payment",
+  "Salary",
+  "Claim",
+  "Incentive",
+  "Other",
 ];
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
