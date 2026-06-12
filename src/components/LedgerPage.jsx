@@ -150,7 +150,7 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
 
   // CHANGE 1: totalPaid now uses rows with BB deduction
   const totalPaid = rows.reduce((s, r) => s + r.netPaid, 0);
-  const leftAmount = Math.max(netInHand - totalPaid, 0);
+  const leftAmount = netInHand - totalPaid;
   const paidPct =
     netInHand > 0 ? Math.min((totalPaid / netInHand) * 100, 100) : 0;
 
@@ -307,7 +307,7 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
                         : "text-violet-700"
                     }`}
                   >
-                    {fmt(Math.max(row.runningBalance, 0))}
+                    {fmt(row.runningBalance)}
                   </p>
                   {row.runningBalance < 0 && (
                     <p className="text-xs text-emerald-500 mt-0.5">Overpaid</p>
@@ -330,7 +330,11 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
                 leftAmount <= 0 ? "text-emerald-700" : "text-violet-800"
               }`}
             >
-              {leftAmount <= 0 ? "✅ Fully Disbursed" : "Remaining to Disburse"}
+              {leftAmount < 0
+                ? "⚠️ Over Disbursed"
+                : leftAmount === 0
+                ? "✅ Fully Disbursed"
+                : "Remaining to Disburse"}
             </span>
             <span
               className={`font-bold text-base ${
@@ -625,7 +629,7 @@ const LedgerPage = () => {
 
   // CHANGE 3: Pre-calculate OS Paid Total with BB deduction (used in summary cards)
   const osPaidTotal = getOsPaidTotal();
-  const leftToPay = Math.max(netInHand - osPaidTotal, 0);
+  const leftToPay = netInHand - osPaidTotal;
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -777,21 +781,21 @@ const LedgerPage = () => {
           </div>
           <div
             className={`rounded-2xl p-3 text-center border ${
-              leftToPay === 0
+              leftToPay <= 0
                 ? "bg-emerald-50 border-emerald-100"
                 : "bg-amber-50 border-amber-100"
             }`}
           >
             <p
               className={`text-xs font-semibold uppercase tracking-wider mb-1 ${
-                leftToPay === 0 ? "text-emerald-600" : "text-amber-600"
+                leftToPay <= 0 ? "text-emerald-600" : "text-amber-600"
               }`}
             >
               Left to Pay
             </p>
             <p
               className={`text-lg font-bold ${
-                leftToPay === 0 ? "text-emerald-700" : "text-amber-700"
+                leftToPay <= 0 ? "text-emerald-700" : "text-amber-700"
               }`}
             >
               {/* CHANGE 3: Uses helper with BB deduction */}
@@ -799,10 +803,18 @@ const LedgerPage = () => {
             </p>
             <p
               className={`text-xs mt-0.5 ${
-                leftToPay === 0 ? "text-emerald-400" : "text-amber-400"
+                leftToPay < 0
+                  ? "text-red-500"
+                  : leftToPay === 0
+                  ? "text-emerald-400"
+                  : "text-amber-400"
               }`}
             >
-              Pending disbursal
+              {leftToPay < 0
+                ? "Excess Paid"
+                : leftToPay === 0
+                ? "Fully Disbursed"
+                : "Pending Disbursal"}
             </p>
           </div>
         </div>
