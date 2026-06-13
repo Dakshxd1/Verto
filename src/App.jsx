@@ -57,6 +57,8 @@ import AddAdvanceLoanModal from "./components/advance/Addadvanceloanmodal.jsx";
 import AddCreditCardModal from "./components/advance/Addcreditcardmodal.jsx";
 import AddStatutoryPayoutModal from "./components/AddStatutoryPayoutModal";
 import SettingsPage from "./components/Settingspage.jsx";
+import InternModeBanner from "./components/InternModeBanner.jsx";
+import { useInternGuard } from "./hooks/useInternGuard";
 
 // ── Manage Team Modal ──────────────────────────────────────────────────────
 const ManageTeamModal = ({ onClose, role }) => {
@@ -486,6 +488,8 @@ function App() {
     sessionKicked,
   } = useAuth();
 
+  const { isIntern, blockIfIntern } = useInternGuard();
+
   useEffect(() => {
     const checkMidnightLogout = async () => {
       if (typeof window === "undefined") return;
@@ -537,27 +541,20 @@ function App() {
   // ── Shortcut event handlers ──────────────────────────────────
   useEffect(() => {
     const handlers = {
-      // Modals
-      "verto:shortcut:add-invoice": () => setShowInvoiceModal(true),
-      "verto:shortcut:payment-received": () => setShowPaymentModal(true),
-      "verto:shortcut:payment-made": () => setShowPaymentMadeModal(true),
-      "verto:shortcut:os-payout": () => {
-        setShowExpenseDetailsManModal(true);
-      },
-      "verto:shortcut:salary-payment": () => {
-        setShowExpenseDetailsManModal(true);
-      },
-      "verto:shortcut:expense-material": () => setShowExpenseDetailsModal(true),
-      "verto:shortcut:cn-bad-debt": () => setShowCNBadDebtModal(true),
-      "verto:shortcut:bounce-back": () => setShowBounceBackModal(true),
-      "verto:shortcut:advance-loan": () => setShowAdvanceLoanModal(true),
-      "verto:shortcut:statutory-payout": () => setShowStatutoryModal(true),
-      "verto:shortcut:interest-penalty": () => setShowPenaltyModal(true),
-      "verto:shortcut:credit-card": () => setShowCreditCardModal(true),
-      "verto:shortcut:internal-team": () => {
-        setEditingEmployee(null);
-        setShowInternalTeamModal(true);
-      },
+      // Modals — blocked for interns
+      "verto:shortcut:add-invoice": () => { if (blockIfIntern()) return; setShowInvoiceModal(true); },
+      "verto:shortcut:payment-received": () => { if (blockIfIntern()) return; setShowPaymentModal(true); },
+      "verto:shortcut:payment-made": () => { if (blockIfIntern()) return; setShowPaymentMadeModal(true); },
+      "verto:shortcut:os-payout": () => { if (blockIfIntern()) return; setShowExpenseDetailsManModal(true); },
+      "verto:shortcut:salary-payment": () => { if (blockIfIntern()) return; setShowExpenseDetailsManModal(true); },
+      "verto:shortcut:expense-material": () => { if (blockIfIntern()) return; setShowExpenseDetailsModal(true); },
+      "verto:shortcut:cn-bad-debt": () => { if (blockIfIntern()) return; setShowCNBadDebtModal(true); },
+      "verto:shortcut:bounce-back": () => { if (blockIfIntern()) return; setShowBounceBackModal(true); },
+      "verto:shortcut:advance-loan": () => { if (blockIfIntern()) return; setShowAdvanceLoanModal(true); },
+      "verto:shortcut:statutory-payout": () => { if (blockIfIntern()) return; setShowStatutoryModal(true); },
+      "verto:shortcut:interest-penalty": () => { if (blockIfIntern()) return; setShowPenaltyModal(true); },
+      "verto:shortcut:credit-card": () => { if (blockIfIntern()) return; setShowCreditCardModal(true); },
+      "verto:shortcut:internal-team": () => { if (blockIfIntern()) return; setEditingEmployee(null); setShowInternalTeamModal(true); },
       // Navigation
       "verto:shortcut:dashboard": () => setActiveTab("dashboard"),
       "verto:shortcut:internal-team-nav": () => setActiveTab("internal-team"),
@@ -581,7 +578,7 @@ function App() {
       Object.entries(handlers).forEach(([ev, fn]) =>
         window.removeEventListener(ev, fn)
       );
-  }, []);
+  }, [isIntern, blockIfIntern]);
   if (sessionKicked) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#05060f] px-4">
@@ -692,6 +689,7 @@ function App() {
   ];
 
   const handleActionClick = (label) => {
+    if (blockIfIntern()) return;
     ({
       "Add Payment Received": () => setShowPaymentModal(true),
       "Add Invoice Details": () => setShowInvoiceModal(true),
@@ -917,6 +915,9 @@ function App() {
 
       {/* ── MAIN ── */}
       <main className="flex-1 flex flex-col relative overflow-hidden">
+        {/* Intern read-only banner */}
+        {isIntern && <InternModeBanner />}
+
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-32 -right-32 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl" />
           <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-indigo-500/4 rounded-full blur-3xl" />

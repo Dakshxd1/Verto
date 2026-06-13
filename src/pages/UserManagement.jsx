@@ -24,6 +24,15 @@ import {
 // ── Role config ──────────────────────────────────────────────────────────────
 const ROLES = [
   {
+    value: "intern",
+    label: "Intern",
+    icon: Shield,
+    accent: "#d97706",
+    pill: "bg-amber-50 text-amber-700 border border-amber-200",
+    drop: "hover:bg-amber-50",
+    selected: "bg-amber-50 text-amber-800",
+  },
+  {
     value: "employee",
     label: "Employee",
     icon: User,
