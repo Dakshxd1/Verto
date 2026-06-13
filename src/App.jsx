@@ -11,6 +11,7 @@ import MyAccountPage from "./components/Myaccountpage";
 import supabase from "./lib/supabaseClient";
 import CommandPalette from "./components/CommandPalette";
 import ShortcutsHelp from "./components/ShortcutsHelp";
+import FinanceRegisterPage from "./components/Financeregisterpage";
 import {
   LayoutDashboard,
   TrendingUp,
@@ -440,6 +441,7 @@ function App() {
   const [banks, setBanks] = useState([]);
   const [loggedInEmployee, setLoggedInEmployee] = useState(null);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showPaymentCenter, setShowPaymentCenter] = useState(false);
 
   const clients = [
     "Acme Corp",
@@ -1036,6 +1038,16 @@ function App() {
                         <span>Manage Team</span>
                       </button>
                     )}
+                    <button
+                      onClick={() => {
+                        setShowPaymentCenter(true);
+                        setShowProfileMenu(false);
+                      }}
+                      className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                    >
+                      <Activity className="w-4 h-4 text-gray-400" />
+                      <span>Payment Center</span>
+                    </button>
                   </div>
                   <div className="border-t border-gray-100 pt-1">
                     <button
@@ -1236,6 +1248,63 @@ function App() {
                 style={{ maxHeight: "calc(90vh - 90px)" }}
               >
                 <MyAccountPage supabase={supabase} />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* ── PAYMENT CENTER MODAL ── */}
+      <AnimatePresence>
+        {showPaymentCenter && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 24 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl overflow-hidden border border-gray-100"
+              style={{
+                boxShadow:
+                  "0 32px 80px -12px rgba(59,130,246,0.18), 0 0 0 1px rgba(0,0,0,0.04)",
+                maxHeight: "92vh",
+              }}
+            >
+              <div
+                className="relative px-8 py-5 border-b border-gray-100 overflow-hidden flex-shrink-0"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%)",
+                }}
+              >
+                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                <div className="flex items-center justify-between relative">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+                      <Activity className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-900 tracking-tight">
+                        Payment Center
+                      </h2>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        All transactions across the system
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowPaymentCenter(false)}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-700 hover:bg-white/80 transition-all border border-transparent hover:border-gray-200"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className="overflow-y-auto p-6"
+                style={{ maxHeight: "calc(92vh - 90px)" }}
+              >
+                <FinanceRegisterPage />
               </div>
             </motion.div>
           </div>

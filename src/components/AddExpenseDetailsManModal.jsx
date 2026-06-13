@@ -2803,15 +2803,19 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
         }, 0);
         const currentBalance = opening + movement;
         if (totalPayment > currentBalance) {
-          alert(
-            `⚠️ Bulk upload for ${
+          const ok = window.confirm(
+            `⚠️ Bulk upload — ${
               bank?.bank_name || "Bank"
-            }: Total payment (₹${totalPayment.toLocaleString(
+            }: total payment (₹${totalPayment.toLocaleString(
               "en-IN"
-            )}) exceeds current bank balance (₹${Number(
-              currentBalance
-            ).toLocaleString("en-IN")}). Proceeding anyway.`
+            )}) exceeds balance (₹${Number(currentBalance).toLocaleString(
+              "en-IN"
+            )}).\n\nOK to proceed, Cancel to abort.`
           );
+          if (!ok) {
+            setBulkLoading(false);
+            return;
+          }
         }
       } catch (err) {
         console.debug("Bank balance check failed:", err.message || err);
@@ -2946,13 +2950,19 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
           const currentBalance = opening + movement;
           const payAmt = Number(parseFloat(intForm.paymentAmount) || 0);
           if (payAmt > currentBalance) {
-            alert(
-              `⚠️ Entered bank payment (₹${payAmt.toLocaleString(
+            const ok = window.confirm(
+              `⚠️ Payment (₹${payAmt.toLocaleString(
                 "en-IN"
-              )}) is greater than current bank balance (₹${Number(
+              )}) exceeds bank balance (₹${Number(
                 currentBalance
-              ).toLocaleString("en-IN")}). Proceeding anyway.`
+              ).toLocaleString(
+                "en-IN"
+              )}).\n\nClick OK to proceed, or Cancel to go back.`
             );
+            if (!ok) {
+              setLoading(false);
+              return;
+            }
           }
         } catch (err) {
           console.debug("Bank balance check failed:", err.message || err);
@@ -3137,13 +3147,19 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
           }, 0);
           const currentBalance = opening + movement;
           if (osAmt > currentBalance) {
-            alert(
-              `⚠️ Entered bank payment (₹${osAmt.toLocaleString(
+            const ok = window.confirm(
+              `⚠️ Payment (₹${osAmt.toLocaleString(
                 "en-IN"
-              )}) is greater than current bank balance (₹${Number(
+              )}) exceeds bank balance (₹${Number(
                 currentBalance
-              ).toLocaleString("en-IN")}). Proceeding anyway.`
+              ).toLocaleString(
+                "en-IN"
+              )}).\n\nClick OK to proceed, or Cancel to go back.`
             );
+            if (!ok) {
+              setLoading(false);
+              return;
+            }
           }
         }
       } catch (err) {

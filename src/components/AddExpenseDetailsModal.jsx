@@ -390,7 +390,7 @@ const AddExpenseDetailsModal = ({
 
   // ── Warn if bank payment exceeds current bank balance (non-blocking) ──
   const warnIfBankShort = async (bankId, amount) => {
-    if (!bankId) return;
+    if (!bankId) return true;
     try {
       const { data: bank } = await supabase
         .from("bank_master")
@@ -410,16 +410,16 @@ const AddExpenseDetailsModal = ({
         return String(e.type).toLowerCase() === "debit" ? sum - amt : sum + amt;
       }, 0);
       const currentBalance = opening + movement;
-      if (Number(amount || 0) > currentBalance) {
-        alert(
-          `⚠️ Entered bank payment (₹${Number(amount).toLocaleString("en-IN")}) is greater than current bank balance (₹${Number(currentBalance).toLocaleString("en-IN")}). Proceeding anyway.`
-        );
-      }
-    } catch (err) {
-      // ignore errors — non-blocking warning only
-      console.debug("Bank balance check failed:", err.message || err);
+       if (Number(amount || 0) > currentBalance) {
+      return window.confirm(
+        `⚠️ Bank payment (₹${Number(amount).toLocaleString("en-IN")}) exceeds current balance (₹${Number(currentBalance).toLocaleString("en-IN")}).\n\nClick OK to proceed, or Cancel to go back and fix the amount.`
+      );
     }
-  };
+  } catch (err) {
+    return true; // don't block on check failure
+  }
+  return true;
+};
 
   const costTotal = Object.values(form.costHeadBreakup).reduce(
     (a, b) => a + b,
@@ -467,8 +467,9 @@ const AddExpenseDetailsModal = ({
 
       // Non-blocking warning if payment exceeds bank balance
       if (form.paymentMode === "bank" && form.bankId && transferAmt > 0) {
-        await warnIfBankShort(form.bankId, transferAmt);
-      }
+  const proceed = await warnIfBankShort(form.bankId, transferAmt);
+  if (proceed === false) { setLoading(false); return; }
+}
 
       const payload = {
         amount: transferAmt,
