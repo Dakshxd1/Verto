@@ -6,6 +6,7 @@ import UserManagement from "./pages/UserManagement";
 import SessionMonitor from "./components/SessionMonitor";
 import LivePopup from "./components/LivePopup";
 import AuditLogPage from "./components/Auditlogpage";
+import MyAccountPage from "./components/Myaccountpage";
 import supabase from "./lib/supabaseClient";
 import {
   LayoutDashboard,
@@ -110,7 +111,7 @@ const ManageTeamModal = ({ onClose, role }) => {
     { id: "team", label: "Team Members", icon: UserCog },
     { id: "reset", label: "Reset Password", icon: KeyRound },
     { id: "sessions", label: "Active Sessions", icon: Monitor },
-    { id: "audit", label: "Activity Log", icon: Activity }, // ← ADD THIS LINE
+    { id: "audit", label: "Activity Log", icon: Activity },
   ];
 
   return (
@@ -382,7 +383,6 @@ const ManageTeamModal = ({ onClose, role }) => {
 };
 
 // ── Main App ──────────────────────────────────────────────────────────────
-// ── Main App ──────────────────────────────────────────────────────────────
 function App() {
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
@@ -420,6 +420,7 @@ function App() {
   const [selectedExpense, setSelectedExpense] = useState(null);
   const [banks, setBanks] = useState([]);
   const [loggedInEmployee, setLoggedInEmployee] = useState(null);
+  const [showAccountModal, setShowAccountModal] = useState(false);
 
   const clients = [
     "Acme Corp",
@@ -932,7 +933,13 @@ function App() {
                     </div>
                   </div>
                   <div className="py-1">
-                    <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                    <button
+                      onClick={() => {
+                        setShowAccountModal(true);
+                        setShowProfileMenu(false);
+                      }}
+                      className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
                       <Settings className="w-4 h-4 text-gray-400" />
                       <span>Account Settings</span>
                     </button>
@@ -1092,6 +1099,52 @@ function App() {
           </div>
         </nav>
       </main>
+
+      {/* ── ACCOUNT SETTINGS MODAL ── */}
+      <AnimatePresence>
+        {showAccountModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 24 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden border border-gray-100"
+              style={{ boxShadow: "0 32px 80px -12px rgba(59,130,246,0.18), 0 0 0 1px rgba(0,0,0,0.04)", maxHeight: "90vh" }}
+            >
+              {/* Modal Header */}
+              <div
+                className="relative px-8 py-5 border-b border-gray-100 overflow-hidden flex-shrink-0"
+                style={{ background: "linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%)" }}
+              >
+                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                <div className="flex items-center justify-between relative">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+                      <Settings className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-900 tracking-tight">Account Settings</h2>
+                      <p className="text-xs text-gray-500 mt-0.5">Your profile & employment details</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowAccountModal(false)}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-700 hover:bg-white/80 transition-all border border-transparent hover:border-gray-200"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="overflow-y-auto" style={{ maxHeight: "calc(90vh - 90px)" }}>
+                <MyAccountPage supabase={supabase} />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* ── MODALS ── */}
       <AddPaymentReceivedModal
