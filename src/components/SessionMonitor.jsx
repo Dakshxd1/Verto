@@ -70,21 +70,33 @@ const parseDevice = (userAgent) => {
   };
 };
 
-const timeAgo = (dateStr) => {
-  if (!dateStr) return "Never";
-  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (diff < 15) return "Just now";
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-};
-
-const isOnline = (lastSeenStr) => {
-  if (!lastSeenStr) return false;
-  const diff = (Date.now() - new Date(lastSeenStr).getTime()) / 1000;
-  return diff < 30; // active in last 30s = online
-};
+// DB returns "timestamp without time zone" values as UTC strings with no
+// timezone suffix. JS Date() would otherwise parse these as LOCAL time,
+// causing a +5:30 (IST) offset error. Appending "Z" forces correct UTC parsing.
+const toUtcDate = (dateStr) => {
+    if (!dateStr) return null;
+    // already has timezone info (Z or +hh:mm) — leave as-is
+    if (/[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr)) return new Date(dateStr);
+    return new Date(dateStr + "Z");
+  };
+  
+  const timeAgo = (dateStr) => {
+    if (!dateStr) return "Never";
+    const d = toUtcDate(dateStr);
+    const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (diff < 15) return "Just now";
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  };
+  
+  const isOnline = (lastSeenStr) => {
+    if (!lastSeenStr) return false;
+    const d = toUtcDate(lastSeenStr);
+    const diff = (Date.now() - d.getTime()) / 1000;
+    return diff < 30; // active in last 30s = online
+  };
 
 const roleCfg = {
   admin:    { icon: Crown,    pill: "bg-sky-50 text-sky-700 border border-sky-200",         label: "Admin"    },
@@ -104,6 +116,11 @@ const SessionMonitor = () => {
   const [kickResult, setKickResult] = useState(null); // { email, success }
   const [lastRefresh, setLastRefresh] = useState(null);
   const [tick, setTick]             = useState(0);    // drives timeAgo updates
+
+  // Login History state
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyEmail, setHistoryEmail] = useState(null); // null = all users
 
   // Update "x ago" every 10s without re-fetching
   useEffect(() => {
@@ -128,6 +145,14 @@ const SessionMonitor = () => {
     setAllUsers(userData || []);
     setLastRefresh(new Date());
     setLoading(false);
+  }, []);
+
+  const fetchHistory = useCallback(async (email = null) => {
+    const { data } = await supabase.rpc("get_login_history", {
+      p_email: email,
+      p_limit: 50,
+    });
+    setHistory(data || []);
   }, []);
 
   useEffect(() => {
@@ -216,6 +241,17 @@ const SessionMonitor = () => {
           </div>
         ))}
       </div>
+
+      {/* ── Login History Toggle Button ── */}
+      <button
+        onClick={() => {
+          setShowHistory((v) => !v);
+          if (!showHistory) fetchHistory(historyEmail);
+        }}
+        className="text-xs font-semibold text-blue-600 hover:underline mt-2"
+      >
+        {showHistory ? "Hide" : "Show"} Login History
+      </button>
 
       {/* ── Kick result toast ── */}
       <AnimatePresence>
@@ -462,6 +498,58 @@ const SessionMonitor = () => {
           </div>
         )}
       </div>
+
+      {/* ── Login History Table ── */}
+      {showHistory && (
+        <div className="bg-white rounded-2xl border border-gray-100 mt-4 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Login History (last 50)</h3>
+            <RefreshCw
+              className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-gray-600"
+              onClick={() => fetchHistory(historyEmail)}
+            />
+          </div>
+          <div className="max-h-[300px] overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[10px] text-gray-400 uppercase">
+                  <th className="px-4 py-2 text-left">Email</th>
+                  <th className="px-2 py-2 text-left">Logged In</th>
+                  <th className="px-2 py-2 text-left">IP</th>
+                  <th className="px-2 py-2 text-left">Device</th>
+                  <th className="px-2 py-2 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h, i) => {
+                  const dev = parseDevice(h.user_agent);
+                  return (
+                    <tr key={i} className="border-t border-gray-50">
+                      <td className="px-4 py-2 font-medium text-gray-700">{h.email}</td>
+                      <td className="px-2 py-2 text-gray-500">{new Date(h.logged_in_at).toLocaleString()}</td>
+                      <td className="px-2 py-2 text-gray-500">{h.ip_address || "—"}</td>
+                      <td className="px-2 py-2 text-gray-500">{dev.label}{dev.sublabel ? ` · ${dev.sublabel}` : ""}</td>
+                      <td className="px-2 py-2">
+                        {h.kicked_at ? (
+                          <span className="inline-flex items-center gap-1 text-rose-500 font-semibold">
+                            <AlertTriangle className="w-3 h-3" />
+                            {h.kicked_reason === "admin_kick" ? "Kicked by admin" : "Replaced by new login"}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-emerald-500 font-semibold">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Active / Normal
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

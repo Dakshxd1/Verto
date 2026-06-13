@@ -2,7 +2,14 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import supabase from "../lib/supabaseClient";
 import confetti from "canvas-confetti";
-import { LogIn, AlertCircle, CheckCircle, Loader, Eye, EyeOff } from "lucide-react";
+import {
+  LogIn,
+  AlertCircle,
+  CheckCircle,
+  Loader,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import BorderGlow from "../components/ui/BorderGlow";
 
 const Login = () => {
@@ -36,15 +43,24 @@ const Login = () => {
       localStorage.setItem("loginDate", new Date().toDateString());
       localStorage.setItem("verto_session_token", sessionToken);
       localStorage.setItem("verto_user_email", email.toLowerCase().trim());
-    
+
+      // capture real client IP for login history / audit
+      let clientIp = null;
+      try {
+        const ipRes = await fetch("https://api.ipify.org?format=json");
+        clientIp = (await ipRes.json()).ip;
+      } catch {
+        // ignore — IP capture is best-effort
+      }
+
       await supabase.rpc("register_session", {
         p_email: email.toLowerCase().trim(),
         p_token: sessionToken,
-        p_uid: null,         // optional, just for audit
+        p_uid: null,
         p_user_agent: navigator.userAgent,
-        p_ip: null,
+        p_ip: clientIp,
       });
-    
+
       setSuccess("Login successful! Redirecting...");
       triggerLoginConfetti();
       setLoading(false);
@@ -156,7 +172,8 @@ const Login = () => {
         <motion.div
           className="absolute top-[18%] left-[12%] w-16 h-16 rounded-full"
           style={{
-            background: "radial-gradient(circle at 35% 35%, #67e8f9, #1d4ed8 70%)",
+            background:
+              "radial-gradient(circle at 35% 35%, #67e8f9, #1d4ed8 70%)",
             opacity: 0.5,
           }}
           animate={{ y: [0, -20, 0] }}
@@ -165,7 +182,8 @@ const Login = () => {
         <motion.div
           className="absolute bottom-[14%] right-[10%] w-24 h-24 rounded-full"
           style={{
-            background: "radial-gradient(circle at 35% 35%, #f0abfc, #7c3aed 70%)",
+            background:
+              "radial-gradient(circle at 35% 35%, #f0abfc, #7c3aed 70%)",
             opacity: 0.4,
           }}
           animate={{ y: [0, 20, 0] }}
