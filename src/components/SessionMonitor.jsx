@@ -470,7 +470,7 @@ const SessionMonitor = () => {
                             ) : (
                               <LogOut className="w-3 h-3" />
                             )}
-                            Kick
+                            Logout
                           </button>
                         )}
                       </td>
