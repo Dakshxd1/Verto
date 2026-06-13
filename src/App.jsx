@@ -52,6 +52,7 @@ import AdvanceCreditCardLockerPage from "./components/advance/Advancecreditcardl
 import AddAdvanceLoanModal from "./components/advance/Addadvanceloanmodal.jsx";
 import AddCreditCardModal from "./components/advance/Addcreditcardmodal.jsx";
 import AddStatutoryPayoutModal from "./components/AddStatutoryPayoutModal";
+import SettingsPage from "./components/Settingspage.jsx";
 
 // ── Manage Team Modal ──────────────────────────────────────────────────────
 const ManageTeamModal = ({ onClose, role }) => {
@@ -386,12 +387,23 @@ const ManageTeamModal = ({ onClose, role }) => {
 function App() {
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
-
     const tab = params.get("tab");
+    if (tab === "petty-cash") return "petty-cash";
 
-    if (tab === "petty-cash") {
-      return "petty-cash";
-    }
+    // Respect landing page setting
+    try {
+      const saved = JSON.parse(localStorage.getItem("verto_app_settings") || "{}");
+      const landingMap = {
+        dashboard:     "dashboard",
+        pl:            "pl-center",
+        banking:       "bank-reco",
+        invoices:      "dashboard",
+        "internal-cost": "internal-cost",
+      };
+      if (saved.landingPage && landingMap[saved.landingPage]) {
+        return landingMap[saved.landingPage];
+      }
+    } catch {}
 
     return "dashboard";
   };
@@ -594,6 +606,12 @@ function App() {
       icon: Wallet,
       desc: "Petty cash ledger & history",
     },
+    {
+      id: "settings",
+      label: "Settings",
+      icon: Settings,
+      desc: "Appearance, notifications & more",
+    },
   ];
 
   // ── QUICK ACTIONS ────────────────────────────────────────────────────────
@@ -703,6 +721,7 @@ function App() {
             {navItems.map((item) => {
               if (role === "manager" && item.id === "bank-reco") return null;
               if (role === "employee") return null;
+              if (item.id === "settings") return null; // accessed via footer button
               const isActive = activeTab === item.id;
               return (
                 <motion.button
@@ -811,9 +830,12 @@ function App() {
         {/* Sidebar Footer */}
         <div className="p-3 border-t border-gray-100 flex-shrink-0">
           <button
-            className={`w-full flex items-center px-3 py-2.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-slate-100 transition-all ${
-              !isSidebarOpen ? "justify-center" : "space-x-3"
-            }`}
+            onClick={() => setActiveTab("settings")}
+            className={`w-full flex items-center px-3 py-2.5 rounded-xl transition-all ${
+              activeTab === "settings"
+                ? "bg-blue-50 text-blue-600"
+                : "text-gray-400 hover:text-gray-700 hover:bg-slate-100"
+            } ${!isSidebarOpen ? "justify-center" : "space-x-3"}`}
           >
             <Settings className="w-4 h-4 flex-shrink-0" />
             <AnimatePresence>
@@ -1018,6 +1040,7 @@ function App() {
                   {activeTab === "advance-credit-locker" && (
                     <AdvanceCreditCardLockerPage />
                   )}
+                  {activeTab === "settings" && <SettingsPage />}
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
