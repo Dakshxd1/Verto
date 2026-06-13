@@ -3609,7 +3609,7 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
   );
 
   // ─── OS PAYOUT FORM ────────────────────────────────────────────────────────
-  const OSForm = () => {
+  const osFormJSX = (() => {
     const withInvoice = osForm.invoiceAvailable === "Yes";
     return (
       <div className="p-6 space-y-5 overflow-y-auto max-h-[calc(90vh-140px)]">
@@ -4149,7 +4149,7 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
         </div>
       </div>
     );
-  };
+  })();
 
   // ─── MODAL WRAPPER ─────────────────────────────────────────────────────────
   const hc = {
@@ -4291,7 +4291,7 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
                   >
-                    <OSForm />
+                    {osFormJSX}
                   </motion.div>
                 )}
               </AnimatePresence>
