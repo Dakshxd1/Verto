@@ -92,13 +92,13 @@ const KpiCard = ({ label, value, sub, color = 'blue', icon: Icon, delay = 0 }) =
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.3 }}
-      className={`${c.bg} border ${c.border} rounded-xl px-5 py-4 flex items-start gap-3`}
+      className={`${c.bg} border ${c.border} rounded-2xl px-5 py-4 flex items-start gap-3 min-h-24`}
     >
       {Icon && <Icon className={`w-5 h-5 mt-0.5 ${c.icon} shrink-0`} />}
       <div className="min-w-0">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider truncate">{label}</p>
-        <p className={`text-xl font-bold mt-0.5 ${c.text} truncate`}>{value}</p>
-        {sub && <p className="text-xs text-gray-400 mt-0.5 truncate">{sub}</p>}
+        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-600 truncate">{label}</p>
+        <p className={`text-2xl md:text-3xl font-semibold mt-1 ${c.text} truncate`}>{value}</p>
+        {sub && <p className="text-xs text-slate-500 mt-1 truncate">{sub}</p>}
       </div>
     </motion.div>
   );
@@ -143,12 +143,14 @@ const ProfitCenterPL = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // ✅ FIXED: Default date range uses current Financial Year (April–March)
+  // ── Default date range: last 12 months ────────────────────────
   useEffect(() => {
-    const now = new Date();
-    const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-    setDateFrom(`${fyStartYear}-04-01`);
-    setDateTo(`${fyStartYear + 1}-03-31`);
+    const to = new Date();
+    const from = new Date();
+    from.setMonth(from.getMonth() - 11);
+    from.setDate(1);
+    setDateFrom(from.toISOString().slice(0, 10));
+    setDateTo(to.toISOString().slice(0, 10));
   }, []);
 
   // ── Derived lists ──────────────────────────────────────────────
@@ -342,15 +344,15 @@ const ProfitCenterPL = () => {
 
       {/* ── KPI CARDS ── */}
       {!loading && !error && filtered.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           <KpiCard label="Total Invoice"   value={fmt(kpis.totalInvoice)}   color="blue"   icon={Building2}     delay={0.00} />
-          <KpiCard label="Verto Fee Earned" value={fmt(kpis.vertoFeeEarned)} color="blue"   icon={TrendingUp}    delay={0.02} />
-          <KpiCard label="Fee Received"    value={fmt(kpis.feeReceived)}    color="emerald" icon={TrendingUp}   delay={0.04} sub="Proportional" />
-          <KpiCard label="Not Received"    value={fmt(kpis.notReceived)}    color="amber"  icon={AlertTriangle} delay={0.06} sub="Outstanding" />
-          <KpiCard label="Total TDS"       value={fmt(kpis.tds)}            color="rose"   icon={TrendingDown}  delay={0.08} />
-          <KpiCard label="CN / Bad Debt"   value={fmt(kpis.cnBadDebt)}      color="rose"   icon={AlertTriangle} delay={0.10} />
-          <KpiCard label="Monthly Expense" value={fmt(kpis.expense)}        color="violet" icon={TrendingDown}  delay={0.12} sub="Non-billable only" />
-          <KpiCard label="Actual Profit"   value={fmt(kpis.actualProfit)}   color={kpis.actualProfit >= 0 ? 'emerald' : 'rose'} icon={TrendingUp} delay={0.14} sub="Post TDS" />
+          <KpiCard label="Verto Fee Earned" value={fmt(kpis.vertoFeeEarned)} color="blue"   icon={TrendingUp}    delay={0.04} />
+          <KpiCard label="Fee Received"    value={fmt(kpis.feeReceived)}    color="emerald" icon={TrendingUp}   delay={0.08} sub="Proportional" />
+          <KpiCard label="Not Received"    value={fmt(kpis.notReceived)}    color="amber"  icon={AlertTriangle} delay={0.12} sub="Outstanding" />
+          <KpiCard label="Total TDS"       value={fmt(kpis.tds)}            color="rose"   icon={TrendingDown}  delay={0.16} />
+          <KpiCard label="CN / Bad Debt"   value={fmt(kpis.cnBadDebt)}      color="rose"   icon={AlertTriangle} delay={0.20} />
+          <KpiCard label="Monthly Expense" value={fmt(kpis.expense)}        color="violet" icon={TrendingDown}  delay={0.24} sub="Non-billable only" />
+          <KpiCard label="Actual Profit"   value={fmt(kpis.actualProfit)}   color={kpis.actualProfit >= 0 ? 'emerald' : 'rose'} icon={TrendingUp} delay={0.28} sub="Post TDS" />
         </div>
       )}
 
@@ -398,7 +400,7 @@ const ProfitCenterPL = () => {
               <thead>
                 <tr>
                   {/* base: 2 cols, no label */}
-                  <th colSpan={2} className="border-b border-gray-200 bg-white sticky left-0 z-20" />
+                  <th colSpan={2} className="border-b border-gray-200 bg-white" />
                   <th colSpan={7} className={`text-center text-xs font-bold uppercase tracking-widest py-2 border-b ${GROUP_LABELS.revenue.bg}`}>
                     Revenue
                   </th>
@@ -412,7 +414,7 @@ const ProfitCenterPL = () => {
 
                 {/* Column header row */}
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  {COLUMNS.map((col, idx) => (
+                  {COLUMNS.map(col => (
                     <th
                       key={col.key}
                       onClick={() => handleSort(col.key)}
@@ -422,11 +424,9 @@ const ProfitCenterPL = () => {
                         ${col.align === 'right' ? 'text-right' : 'text-left'}
                         ${col.color || ''}
                         ${sortConfig.key === col.key ? 'bg-blue-50 text-blue-700' : ''}
-                        ${idx === 0 ? 'sticky left-0 bg-gray-50 z-10' : ''}
-                        ${idx === 1 ? 'sticky left-[100px] bg-gray-50 z-10' : ''}
                       `}
                     >
-                      <span className={`inline-flex items-center gap-1 w-full ${col.align === 'right' ? 'justify-end' : 'justify-start'}`}>
+                      <span className="inline-flex items-center gap-1 justify-end w-full">
                         {col.align === 'left' ? col.label : null}
                         <SortIcon col={col.key} sortConfig={sortConfig} />
                         {col.align === 'right' ? col.label : null}
@@ -438,111 +438,116 @@ const ProfitCenterPL = () => {
 
               {/* Body */}
               <tbody className="divide-y divide-gray-100">
-                {pageData.map((row, idx) => {
-                  const ds = getDeptStyle(row.dept_name);
-                  const isLoss = Number(row.actual_profit_post_tds) < 0;
-                  return (
-                    <tr
-                      key={`${row.pl_month}-${row.department_id}`}
-                      className={`hover:bg-blue-50/40 transition-colors ${isLoss ? 'bg-rose-50/20' : ''}`}
-                    >
-                      {/* Month */}
-                      <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap sticky left-0 bg-white z-10">
-                        {row.month_label}
-                      </td>
+                <AnimatePresence mode="sync">
+                  {pageData.map((row, idx) => {
+                    const ds = getDeptStyle(row.dept_name);
+                    const isLoss = Number(row.actual_profit_post_tds) < 0;
+                    return (
+                      <motion.tr
+                        key={`${row.pl_month}-${row.department_id}`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: idx * 0.02 }}
+                        className={`hover:bg-blue-50/40 transition-colors ${isLoss ? 'bg-rose-50/20' : ''}`}
+                      >
+                        {/* Month */}
+                        <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap">
+                          {row.month_label}
+                        </td>
 
-                      {/* Dept badge */}
-                      <td className="px-3 py-2.5 sticky left-[100px] bg-white z-10">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${ds.bg} ${ds.text}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${ds.dot}`} />
-                          {row.dept_name}
-                        </span>
-                      </td>
-
-                      {/* Invoice value */}
-                      <td className="px-3 py-2.5 text-right font-mono text-gray-700">{fmt(row.total_invoice_value)}</td>
-
-                      {/* Verto fee earned */}
-                      <td className="px-3 py-2.5 text-right font-mono text-gray-800 font-medium">{fmt(row.verto_fee_earned)}</td>
-
-                      {/* TDS */}
-                      <td className="px-3 py-2.5 text-right font-mono text-rose-600">
-                        {Number(row.tds) > 0 ? `-${fmt(row.tds)}` : '—'}
-                      </td>
-
-                      {/* Fee post TDS */}
-                      <td className="px-3 py-2.5 text-right font-mono text-gray-800">{fmt(row.verto_fee_post_tds)}</td>
-
-                      {/* Money not received */}
-                      <td className="px-3 py-2.5 text-right font-mono">
-                        {Number(row.money_not_received) > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md text-xs font-semibold">
-                            {fmt(row.money_not_received)}
+                        {/* Dept badge */}
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${ds.bg} ${ds.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${ds.dot}`} />
+                            {row.dept_name}
                           </span>
-                        ) : <span className="text-gray-400">—</span>}
-                      </td>
+                        </td>
 
-                      {/* Fee received */}
-                      <td className="px-3 py-2.5 text-right font-mono font-bold text-blue-700">{fmt(row.verto_fee_received)}</td>
+                        {/* Invoice value */}
+                        <td className="px-3 py-2.5 text-right font-mono text-gray-700">{fmt(row.total_invoice_value)}</td>
 
-                      {/* CN / Bad debt */}
-                      <td className="px-3 py-2.5 text-right font-mono">
-                        {Number(row.cn_bad_debt) > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md text-xs font-semibold">
-                            -{fmt(row.cn_bad_debt)}
+                        {/* Verto fee earned */}
+                        <td className="px-3 py-2.5 text-right font-mono text-gray-800 font-medium">{fmt(row.verto_fee_earned)}</td>
+
+                        {/* TDS */}
+                        <td className="px-3 py-2.5 text-right font-mono text-rose-600">
+                          {Number(row.tds) > 0 ? `-${fmt(row.tds)}` : '—'}
+                        </td>
+
+                        {/* Fee post TDS */}
+                        <td className="px-3 py-2.5 text-right font-mono text-gray-800">{fmt(row.verto_fee_post_tds)}</td>
+
+                        {/* Money not received */}
+                        <td className="px-3 py-2.5 text-right font-mono">
+                          {Number(row.money_not_received) > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md text-xs font-semibold">
+                              {fmt(row.money_not_received)}
+                            </span>
+                          ) : <span className="text-gray-400">—</span>}
+                        </td>
+
+                        {/* Fee received */}
+                        <td className="px-3 py-2.5 text-right font-mono font-bold text-blue-700">{fmt(row.verto_fee_received)}</td>
+
+                        {/* CN / Bad debt */}
+                        <td className="px-3 py-2.5 text-right font-mono">
+                          {Number(row.cn_bad_debt) > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md text-xs font-semibold">
+                              -{fmt(row.cn_bad_debt)}
+                            </span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+
+                        {/* Monthly expense */}
+                        <td className="px-3 py-2.5 text-right font-mono text-gray-700">{fmt(row.monthly_expense)}</td>
+
+                        {/* Dedicated resource */}
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-500 text-xs">{fmt(row.dedicated_resource_exp)}</td>
+
+                        {/* Shared resource */}
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-500 text-xs">{fmt(row.shared_resource_exp)}</td>
+
+                        {/* Other expense */}
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-500 text-xs">{fmt(row.other_exp)}</td>
+
+                        {/* Profit pre TDS */}
+                        <td className={`px-3 py-2.5 text-right font-mono ${profitColor(row.profit_pre_tds)}`}>
+                          {fmt(row.profit_pre_tds)}
+                        </td>
+
+                        {/* Profit post TDS */}
+                        <td className={`px-3 py-2.5 text-right font-mono ${profitColor(row.profit_post_tds)}`}>
+                          {fmt(row.profit_post_tds)}
+                        </td>
+
+                        {/* Actual profit post TDS */}
+                        <td className="px-3 py-2.5 text-right">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold
+                            ${Number(row.actual_profit_post_tds) > 0
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : Number(row.actual_profit_post_tds) < 0
+                              ? 'bg-rose-100 text-rose-700'
+                              : 'bg-gray-100 text-gray-500'
+                            }`}>
+                            {Number(row.actual_profit_post_tds) > 0 ? <TrendingUp className="w-3 h-3" /> : Number(row.actual_profit_post_tds) < 0 ? <TrendingDown className="w-3 h-3" /> : null}
+                            {fmt(row.actual_profit_post_tds)}
                           </span>
-                        ) : <span className="text-gray-300">—</span>}
-                      </td>
+                        </td>
 
-                      {/* Monthly expense */}
-                      <td className="px-3 py-2.5 text-right font-mono text-gray-700">{fmt(row.monthly_expense)}</td>
-
-                      {/* Dedicated resource */}
-                      <td className="px-3 py-2.5 text-right font-mono text-slate-500 text-xs">{fmt(row.dedicated_resource_exp)}</td>
-
-                      {/* Shared resource */}
-                      <td className="px-3 py-2.5 text-right font-mono text-slate-500 text-xs">{fmt(row.shared_resource_exp)}</td>
-
-                      {/* Other expense */}
-                      <td className="px-3 py-2.5 text-right font-mono text-slate-500 text-xs">{fmt(row.other_exp)}</td>
-
-                      {/* Profit pre TDS */}
-                      <td className={`px-3 py-2.5 text-right font-mono ${profitColor(row.profit_pre_tds)}`}>
-                        {fmt(row.profit_pre_tds)}
-                      </td>
-
-                      {/* Profit post TDS */}
-                      <td className={`px-3 py-2.5 text-right font-mono ${profitColor(row.profit_post_tds)}`}>
-                        {fmt(row.profit_post_tds)}
-                      </td>
-
-                      {/* Actual profit post TDS */}
-                      <td className="px-3 py-2.5 text-right">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold
-                          ${Number(row.actual_profit_post_tds) > 0
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : Number(row.actual_profit_post_tds) < 0
-                            ? 'bg-rose-100 text-rose-700'
-                            : 'bg-gray-100 text-gray-500'
-                          }`}>
-                          {Number(row.actual_profit_post_tds) > 0 ? <TrendingUp className="w-3 h-3" /> : Number(row.actual_profit_post_tds) < 0 ? <TrendingDown className="w-3 h-3" /> : null}
-                          {fmt(row.actual_profit_post_tds)}
-                        </span>
-                      </td>
-
-                      {/* Actual profit pre TDS */}
-                      <td className={`px-3 py-2.5 text-right font-mono ${profitColor(row.actual_profit_pre_tds)}`}>
-                        {fmt(row.actual_profit_pre_tds)}
-                      </td>
-                    </tr>
-                  );
-                })}
+                        {/* Actual profit pre TDS */}
+                        <td className={`px-3 py-2.5 text-right font-mono ${profitColor(row.actual_profit_pre_tds)}`}>
+                          {fmt(row.actual_profit_pre_tds)}
+                        </td>
+                      </motion.tr>
+                    );
+                  })}
+                </AnimatePresence>
               </tbody>
 
               {/* Totals footer */}
               <tfoot>
                 <tr className="bg-slate-800 text-white font-bold border-t-2 border-slate-600">
-                  <td className="px-3 py-3 text-sm text-white font-semibold uppercase tracking-widest sticky left-0 bg-slate-800 z-10" colSpan={2}>
+                  <td className="px-3 py-3 text-sm text-white/80 uppercase tracking-widest" colSpan={2}>
                     Total ({filtered.length} rows)
                   </td>
                   {COLUMNS.slice(2).map(col => (

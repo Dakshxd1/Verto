@@ -78,23 +78,23 @@ const SortIcon = ({ col, cfg }) =>
 // ─── KPI CARD ──────────────────────────────────────────────────────────────────
 const KPI = ({ label, value, sub, color = 'blue', Icon, delay = 0 }) => {
   const map = {
-    blue:    'bg-blue-50 border-blue-200 text-blue-700',
-    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-    amber:   'bg-amber-50 border-amber-200 text-amber-700',
-    rose:    'bg-rose-50 border-rose-200 text-rose-700',
-    violet:  'bg-violet-50 border-violet-200 text-violet-700',
-    slate:   'bg-slate-50 border-slate-200 text-slate-700',
+    blue:    'bg-blue-50 border-blue-200',
+    emerald: 'bg-emerald-50 border-emerald-200',
+    amber:   'bg-amber-50 border-amber-200',
+    rose:    'bg-rose-50 border-rose-200',
+    violet:  'bg-violet-50 border-violet-200',
+    slate:   'bg-slate-50 border-slate-200',
   };
   const cls = map[color] || map.blue;
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.3 }}
-      className={`${cls} border rounded-xl px-4 py-3.5 flex items-start gap-3`}>
-      {Icon && <Icon className="w-4 h-4 mt-0.5 shrink-0 opacity-70" />}
+      className={`${cls} border rounded-2xl px-4 py-4 flex items-start gap-3 min-h-24`}>
+      {Icon && <Icon className="w-5 h-5 mt-0.5 shrink-0 opacity-80" />}
       <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-current opacity-60 truncate">{label}</p>
-        <p className="text-lg font-bold mt-0.5 text-current truncate">{value}</p>
-        {sub && <p className="text-[10px] opacity-50 mt-0.5 truncate">{sub}</p>}
+        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-600 truncate">{label}</p>
+        <p className="text-2xl md:text-3xl font-semibold mt-1 text-slate-950 truncate">{value}</p>
+        {sub && <p className="text-xs text-slate-500 mt-1 truncate">{sub}</p>}
       </div>
     </motion.div>
   );
@@ -424,7 +424,7 @@ const ClientPL = () => {
 
           {/* KPIs */}
           {!loading && filteredPnl.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
               <KPI label="Invoice Value"    value={fmt(pnlKpis.invoice)} color="blue"    Icon={ReceiptText}       delay={0.00} />
               <KPI label="Verto Fee"        value={fmt(pnlKpis.fee)}     color="blue"    Icon={BadgeDollarSign}   delay={0.04} />
               <KPI label="TDS"              value={fmt(pnlKpis.tds)}     color="rose"    Icon={ShieldAlert}       delay={0.08} />
