@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import UserManagement from "./pages/UserManagement";
 import SessionMonitor from "./components/SessionMonitor";
 import LivePopup from "./components/LivePopup";
+import AuditLogPage from "./components/Auditlogpage";
 import supabase from "./lib/supabaseClient";
 import {
   LayoutDashboard,
@@ -109,6 +110,7 @@ const ManageTeamModal = ({ onClose, role }) => {
     { id: "team", label: "Team Members", icon: UserCog },
     { id: "reset", label: "Reset Password", icon: KeyRound },
     { id: "sessions", label: "Active Sessions", icon: Monitor },
+    { id: "audit", label: "Audit Log", icon: Activity }, // ← ADD THIS LINE
   ];
 
   return (
@@ -348,6 +350,18 @@ const ManageTeamModal = ({ onClose, role }) => {
                 <SessionMonitor />
               </motion.div>
             )}
+            {activeSection === "audit" && (
+              <motion.div
+                key="audit"
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 12 }}
+                transition={{ duration: 0.2 }}
+                className="p-8"
+              >
+                <AuditLogPage />
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
 
@@ -370,9 +384,7 @@ const ManageTeamModal = ({ onClose, role }) => {
 // ── Main App ──────────────────────────────────────────────────────────────
 // ── Main App ──────────────────────────────────────────────────────────────
 function App() {
-
   const getInitialTab = () => {
-
     const params = new URLSearchParams(window.location.search);
 
     const tab = params.get("tab");
@@ -383,7 +395,7 @@ function App() {
 
     return "dashboard";
   };
-  
+
   const [activeTab, setActiveTab] = useState(getInitialTab);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -443,7 +455,14 @@ function App() {
     "PI-SO-250123-01",
   ];
 
-  const { user, role, loading, showLivePopup, setShowLivePopup, sessionKicked } = useAuth();
+  const {
+    user,
+    role,
+    loading,
+    showLivePopup,
+    setShowLivePopup,
+    sessionKicked,
+  } = useAuth();
 
   useEffect(() => {
     const checkMidnightLogout = async () => {
@@ -498,8 +517,8 @@ function App() {
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Signed Out</h2>
           <p className="text-sm text-white/60 mb-6">
-            Your account was signed in from another device or browser.
-            Only one active session is allowed at a time.
+            Your account was signed in from another device or browser. Only one
+            active session is allowed at a time.
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -936,18 +955,20 @@ function App() {
                   </div>
                   <div className="border-t border-gray-100 pt-1">
                     <button
-                     onClick={async () => {
-                      // ── NEW: clear single-session token before signing out
-                      const email = localStorage.getItem("verto_user_email");
-                      if (email) {
-                        await supabase.rpc("logout_session", { p_email: email });
-                      }
-                      localStorage.removeItem("verto_session_token");
-                      localStorage.removeItem("verto_user_email");
-                      localStorage.removeItem("loginDate");
-                      await supabase.auth.signOut();
-                      window.location.reload();
-                    }}
+                      onClick={async () => {
+                        // ── NEW: clear single-session token before signing out
+                        const email = localStorage.getItem("verto_user_email");
+                        if (email) {
+                          await supabase.rpc("logout_session", {
+                            p_email: email,
+                          });
+                        }
+                        localStorage.removeItem("verto_session_token");
+                        localStorage.removeItem("verto_user_email");
+                        localStorage.removeItem("loginDate");
+                        await supabase.auth.signOut();
+                        window.location.reload();
+                      }}
                       className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 transition-colors"
                     >
                       <LogOut className="w-4 h-4" />
@@ -1011,17 +1032,22 @@ function App() {
             </motion.div>
           </AnimatePresence>
         </div>
-      {/* ── MOBILE BOTTOM NAV ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-xl border-t border-gray-100"
+        {/* ── MOBILE BOTTOM NAV ── */}
+        <nav
+          className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-xl border-t border-gray-100"
           style={{ boxShadow: "0 -4px 20px rgba(0,0,0,0.06)" }}
         >
           <div className="flex items-center justify-around px-2 py-2 safe-area-pb">
             {[
-              { id: "dashboard",    icon: LayoutDashboard, label: "Home"    },
-              { id: "pl-center",    icon: TrendingUp,      label: "P&L"     },
-              { id: "bank-reco",    icon: DollarSign,      label: "Bank"    },
-              { id: "petty-cash",   icon: Wallet,          label: "Cash"    },
-              { id: "advance-credit-locker", icon: CreditCard, label: "Advance" },
+              { id: "dashboard", icon: LayoutDashboard, label: "Home" },
+              { id: "pl-center", icon: TrendingUp, label: "P&L" },
+              { id: "bank-reco", icon: DollarSign, label: "Bank" },
+              { id: "petty-cash", icon: Wallet, label: "Cash" },
+              {
+                id: "advance-credit-locker",
+                icon: CreditCard,
+                label: "Advance",
+              },
             ].map((item) => {
               if (role === "manager" && item.id === "bank-reco") return null;
               const isActive = activeTab === item.id;
@@ -1030,13 +1056,20 @@ function App() {
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-2xl transition-all duration-200 min-w-[56px]
-                    ${isActive
-                      ? "bg-blue-50 text-blue-600"
-                      : "text-gray-400 hover:text-gray-600"
+                    ${
+                      isActive
+                        ? "bg-blue-50 text-blue-600"
+                        : "text-gray-400 hover:text-gray-600"
                     }`}
                 >
-                  <item.icon className={`w-5 h-5 ${isActive ? "stroke-[2.5px]" : ""}`} />
-                  <span className={`text-[10px] font-semibold leading-none ${isActive ? "text-blue-600" : ""}`}>
+                  <item.icon
+                    className={`w-5 h-5 ${isActive ? "stroke-[2.5px]" : ""}`}
+                  />
+                  <span
+                    className={`text-[10px] font-semibold leading-none ${
+                      isActive ? "text-blue-600" : ""
+                    }`}
+                  >
                     {item.label}
                   </span>
                 </button>
@@ -1056,7 +1089,9 @@ function App() {
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md shadow-blue-500/30 -mt-4">
                 <Plus className="w-4 h-4 text-white" />
               </div>
-              <span className="text-[10px] font-semibold leading-none mt-0.5">Add</span>
+              <span className="text-[10px] font-semibold leading-none mt-0.5">
+                Add
+              </span>
             </button>
           </div>
         </nav>
@@ -1147,6 +1182,6 @@ function App() {
       />
     </div>
   );
-};
+}
 
 export default App;
