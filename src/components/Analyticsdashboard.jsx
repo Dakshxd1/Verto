@@ -12,13 +12,14 @@ import {
   ChevronLeft, ChevronRight, Maximize2, SlidersHorizontal,
 } from "lucide-react";
 
-// ─── Palette ──────────────────────────────────────────────────────────────────
+// ─── Palette (professional, muted, low-saturation) ────────────────────────────
 const P = {
-  blue:    "#3b82f6", indigo:  "#6366f1", violet:  "#8b5cf6",
-  emerald: "#10b981", amber:   "#f59e0b", rose:    "#f43f5e",
-  sky:     "#0ea5e9", teal:    "#14b8a6", orange:  "#f97316", pink: "#ec4899",
+  blue:    "#3b5b92", indigo:  "#5b6b9e", violet:  "#7c6f9e",
+  emerald: "#3f8f6e", amber:   "#b8924a", rose:    "#b15c5c",
+  sky:     "#5a8aa6", teal:    "#4a8f8a", orange:  "#bb7f4f", pink: "#a17b94",
+  slate:   "#64748b",
 };
-const CC = Object.values(P);
+const CC = [P.blue, P.teal, P.amber, P.violet, P.emerald, P.rose, P.sky, P.indigo, P.orange, P.pink];
 
 const TEAM_DEPT_MAP = {
   OS: "Operations", Rec: "Recruitment", BD: "Business Development",
@@ -39,6 +40,21 @@ const fmtMonth = (ym) => !ym ? "" : new Date(ym+"-01").toLocaleDateString("en-IN
 const fmtDate  = (d) => d ? new Date(d).toLocaleDateString("en-IN") : "";
 const isBankInflow = (b) => b.entry_type === "payment_received" || b.flow_type === "inflow";
 const isSoftwareInflow = (s) => s.flow_type === "inflow" || (s.flow_type==null && Number(s.amount)>0);
+
+// ─── Financial Year helpers (Apr–Mar) ──────────────────────────────────────────
+// Returns {label:"FY 26-27", start:"2026-04-01", end:"2027-03-31"} for a given start year (e.g. 2026)
+const fyRange = (startYear) => {
+  const start = `${startYear}-04-01`;
+  const end   = `${startYear+1}-03-31`;
+  const label = `FY ${String(startYear).slice(-2)}-${String(startYear+1).slice(-2)}`;
+  return { label, start, end, startYear };
+};
+const currentFYStartYear = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth()+1; // 1-12
+  return m >= 4 ? y : y-1;
+};
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 const CT = ({ active, payload, label }) => {
@@ -94,7 +110,7 @@ const ChartCard = ({title,subtitle,children,className="",topN,onTopN,topNOptions
           <div className="flex items-center bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
             {topNOptions.map((n,i)=>(
               <button key={n} onClick={()=>onTopN(n)}
-                className={`px-2 py-1 text-[10px] font-bold transition-colors ${topN===n?"bg-blue-600 text-white":"text-gray-500 hover:text-gray-800"} ${i>0?"border-l border-gray-200":""}`}>
+                className={`px-2 py-1 text-[10px] font-bold transition-colors ${topN===n?"bg-slate-700 text-white":"text-gray-500 hover:text-gray-800"} ${i>0?"border-l border-gray-200":""}`}>
                 {n===999?"All":`Top ${n}`}
               </button>
             ))}
@@ -120,7 +136,6 @@ const ChartCard = ({title,subtitle,children,className="",topN,onTopN,topNOptions
 );
 
 // ─── Scrollable Vertical Bar — for large client/dept lists ───────────────────
-// Shows a fixed-height scrollable container with proper bar height per item
 const VScrollBar = ({data,dataKey,nameKey="name",color,formatter=fmt,height=360,barSize=28}) => {
   const totalH = Math.max(height, data.length * (barSize+12));
   return (
@@ -229,6 +244,28 @@ const FS = ({label,value,onChange,options,placeholder="All"}) => (
   </div>
 );
 
+// ─── FY Selector (matches reference pill: « FY 26-27 ») ───────────────────────
+const FYSelector = ({ startYear, onChange, minYear=2015, maxYear=currentFYStartYear()+1 }) => {
+  const { label } = fyRange(startYear);
+  return (
+    <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-1.5 py-1">
+      <button
+        onClick={()=>onChange(Math.max(minYear, startYear-1))}
+        disabled={startYear<=minYear}
+        className="w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+        <ChevronLeft className="w-3.5 h-3.5"/>
+      </button>
+      <span className="text-xs font-bold text-gray-700 px-2 tracking-wide whitespace-nowrap">{label}</span>
+      <button
+        onClick={()=>onChange(Math.min(maxYear, startYear+1))}
+        disabled={startYear>=maxYear}
+        className="w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+        <ChevronRight className="w-3.5 h-3.5"/>
+      </button>
+    </div>
+  );
+};
+
 // ─── Expand Modal ─────────────────────────────────────────────────────────────
 const Modal = ({title,subtitle,children,onClose}) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -268,6 +305,10 @@ export default function AnalyticsDashboard() {
   const [loading,setLoading]    = useState(true);
   const [lastFetched,setLF]     = useState(null);
   const [modal,setModal]        = useState(null); // {title,subtitle,content}
+
+  // Financial Year selector (Apr–Mar)
+  const [fyStartYear,setFyStartYear] = useState(currentFYStartYear());
+  const fy = useMemo(()=>fyRange(fyStartYear),[fyStartYear]);
 
   // Top-N states per chart category
   const [topNClient,setTopNClient]   = useState(10);
@@ -378,10 +419,13 @@ export default function AnalyticsDashboard() {
     entity_name: s.entity_master?.entity_name||entityById[s.entity_id]||"Unknown",
   })),[salaries,empDeptByCode,entityById]);
 
-  // ── Filters applied ────────────────────────────────────────────────────────
+  // ── Filters applied (date range from filters takes priority; else use FY range) ─
+  const effFrom = filters.dateFrom || fy.start;
+  const effTo   = filters.dateTo   || fy.end;
+
   const fI = useMemo(()=>FI.filter(i=>{
-    if(filters.dateFrom&&i.invoice_date<filters.dateFrom)return false;
-    if(filters.dateTo&&i.invoice_date>filters.dateTo)return false;
+    if(effFrom&&i.invoice_date<effFrom)return false;
+    if(effTo&&i.invoice_date>effTo)return false;
     if(filters.impactMonth&&toYYYYMM(i.impact_month)!==filters.impactMonth)return false;
     if(filters.department&&i.dept_name!==filters.department)return false;
     if(filters.client&&i.client_name!==filters.client)return false;
@@ -390,42 +434,42 @@ export default function AnalyticsDashboard() {
     if(filters.payHead&&i.pay_head!==filters.payHead)return false;
     if(filters.invoiceNumber&&!i.invoice_number?.toLowerCase().includes(filters.invoiceNumber.toLowerCase()))return false;
     return true;
-  }),[FI,filters]);
+  }),[FI,filters,effFrom,effTo]);
 
   const fP = useMemo(()=>FP.filter(p=>{
-    if(filters.dateFrom&&p.payment_date<filters.dateFrom)return false;
-    if(filters.dateTo&&p.payment_date>filters.dateTo)return false;
+    if(effFrom&&p.payment_date<effFrom)return false;
+    if(effTo&&p.payment_date>effTo)return false;
     if(filters.client&&p.client_name!==filters.client)return false;
     if(filters.invoiceNumber&&!p.invoice_number?.toLowerCase().includes(filters.invoiceNumber.toLowerCase()))return false;
     return true;
-  }),[FP,filters]);
+  }),[FP,filters,effFrom,effTo]);
 
   const fO = useMemo(()=>FO.filter(o=>{
-    if(filters.dateFrom&&o.payment_date&&o.payment_date<filters.dateFrom)return false;
-    if(filters.dateTo&&o.payment_date&&o.payment_date>filters.dateTo)return false;
+    if(effFrom&&o.payment_date&&o.payment_date<effFrom)return false;
+    if(effTo&&o.payment_date&&o.payment_date>effTo)return false;
     if(filters.department&&o.dept_name!==filters.department)return false;
     if(filters.client&&o.client_name!==filters.client)return false;
     return true;
-  }),[FO,filters]);
+  }),[FO,filters,effFrom,effTo]);
 
   const fC = useMemo(()=>FC.filter(cn=>{
-    if(filters.dateFrom&&cn.issue_date<filters.dateFrom)return false;
-    if(filters.dateTo&&cn.issue_date>filters.dateTo)return false;
+    if(effFrom&&cn.issue_date<effFrom)return false;
+    if(effTo&&cn.issue_date>effTo)return false;
     if(filters.department&&cn.dept_name!==filters.department)return false;
     if(filters.client&&cn.client_name!==filters.client)return false;
     if(filters.invoiceNumber&&!cn.invoice_number?.toLowerCase().includes(filters.invoiceNumber.toLowerCase()))return false;
     return true;
-  }),[FC,filters]);
+  }),[FC,filters,effFrom,effTo]);
 
   const fSal = useMemo(()=>FSal.filter(s=>{
-    if(filters.dateFrom&&s.date_of_pay&&s.date_of_pay<filters.dateFrom)return false;
-    if(filters.dateTo&&s.date_of_pay&&s.date_of_pay>filters.dateTo)return false;
+    if(effFrom&&s.date_of_pay&&s.date_of_pay<effFrom)return false;
+    if(effTo&&s.date_of_pay&&s.date_of_pay>effTo)return false;
     if(filters.department&&s.dept_name!==filters.department)return false;
     if(filters.entity&&s.entity_name!==filters.entity)return false;
     if(filters.payHead&&s.pay_head!==filters.payHead)return false;
     if(filters.employee&&!s.employee_name?.toLowerCase().includes(filters.employee.toLowerCase()))return false;
     return true;
-  }),[FSal,filters]);
+  }),[FSal,filters,effFrom,effTo]);
 
   const fTeam = useMemo(()=>team.filter(t=>{
     const fd = TEAM_DEPT_MAP[t.department]||t.department;
@@ -435,16 +479,16 @@ export default function AnalyticsDashboard() {
   }),[team,filters]);
 
   const fBank = useMemo(()=>bankEntries.filter(b=>{
-    if(filters.dateFrom&&b.date<filters.dateFrom)return false;
-    if(filters.dateTo&&b.date>filters.dateTo)return false;
+    if(effFrom&&b.date<effFrom)return false;
+    if(effTo&&b.date>effTo)return false;
     return true;
-  }),[bankEntries,filters]);
+  }),[bankEntries,filters,effFrom,effTo]);
 
   const fSw = useMemo(()=>softwareEntries.filter(s=>{
-    if(filters.dateFrom&&s.date<filters.dateFrom)return false;
-    if(filters.dateTo&&s.date>filters.dateTo)return false;
+    if(effFrom&&s.date<effFrom)return false;
+    if(effTo&&s.date>effTo)return false;
     return true;
-  }),[softwareEntries,filters]);
+  }),[softwareEntries,filters,effFrom,effTo]);
 
   // ── KPIs ───────────────────────────────────────────────────────────────────
   const kpis = useMemo(()=>{
@@ -744,7 +788,7 @@ export default function AnalyticsDashboard() {
   if(loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center animate-pulse">
+        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center animate-pulse">
           <BarChart2 className="w-5 h-5 text-white"/>
         </div>
         <p className="text-sm text-gray-400 font-medium">Loading analytics…</p>
@@ -762,22 +806,23 @@ export default function AnalyticsDashboard() {
       )}
 
       {/* ── Header ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-black text-gray-900 tracking-tight">Analytics</h1>
           <p className="text-xs text-gray-400 mt-0.5">
             Live · Supabase
             {lastFetched&&` · ${lastFetched.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}`}
-            {AFC>0&&<span className="ml-2 text-blue-500 font-semibold">{AFC} filter{AFC>1?"s":""} active</span>}
+            {AFC>0&&<span className="ml-2 text-slate-500 font-semibold">{AFC} filter{AFC>1?"s":""} active</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <FYSelector startYear={fyStartYear} onChange={setFyStartYear}/>
           <button onClick={()=>setFO(v=>!v)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${filtersOpen?"bg-blue-600 text-white border-blue-600":"bg-white text-gray-600 border-gray-200 hover:border-blue-300"}`}>
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${filtersOpen?"bg-slate-700 text-white border-slate-700":"bg-white text-gray-600 border-gray-200 hover:border-slate-300"}`}>
             <SlidersHorizontal className="w-3.5 h-3.5"/> Filters
-            {AFC>0&&<span className="w-4 h-4 rounded-full bg-white text-blue-600 text-[10px] font-black flex items-center justify-center">{AFC}</span>}
+            {AFC>0&&<span className="w-4 h-4 rounded-full bg-white text-slate-700 text-[10px] font-black flex items-center justify-center">{AFC}</span>}
           </button>
-          <button onClick={fetchAll} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-600 hover:border-blue-300 transition-all">
+          <button onClick={fetchAll} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-600 hover:border-slate-300 transition-all">
             <RefreshCw className="w-3.5 h-3.5"/> Refresh
           </button>
         </div>
@@ -790,20 +835,25 @@ export default function AnalyticsDashboard() {
             <span className="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-2">
               <Filter className="w-3.5 h-3.5"/> Filters
             </span>
-            {AFC>0&&<button onClick={clearF} className="flex items-center gap-1 text-xs text-rose-500 hover:text-rose-700 font-semibold">
-              <X className="w-3 h-3"/> Clear all ({AFC})
-            </button>}
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-gray-400">
+                Date range defaults to <span className="font-semibold text-gray-600">{fy.label}</span> unless overridden below
+              </span>
+              {AFC>0&&<button onClick={clearF} className="flex items-center gap-1 text-xs text-rose-500 hover:text-rose-700 font-semibold">
+                <X className="w-3 h-3"/> Clear all ({AFC})
+              </button>}
+            </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Date From</label>
               <input type="date" value={filters.dateFrom} onChange={e=>setF("dateFrom",e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:border-blue-400"/>
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:border-slate-400"/>
             </div>
             <div>
               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Date To</label>
               <input type="date" value={filters.dateTo} onChange={e=>setF("dateTo",e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:border-blue-400"/>
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:border-slate-400"/>
             </div>
             <FS label="Impact Month"   value={filters.impactMonth} onChange={v=>setF("impactMonth",v)} options={impMonthOpts}/>
             <FS label="Department"     value={filters.department}  onChange={v=>setF("department",v)}  options={deptOpts}/>
@@ -816,7 +866,7 @@ export default function AnalyticsDashboard() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300"/>
                 <input type="text" value={filters.invoiceNumber} onChange={e=>setF("invoiceNumber",e.target.value)} placeholder="Search…"
-                  className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:border-blue-400"/>
+                  className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:border-slate-400"/>
               </div>
             </div>
             <div>
@@ -824,7 +874,7 @@ export default function AnalyticsDashboard() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300"/>
                 <input type="text" value={filters.employee} onChange={e=>setF("employee",e.target.value)} placeholder="Search…"
-                  className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:border-blue-400"/>
+                  className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:border-slate-400"/>
               </div>
             </div>
           </div>
@@ -982,7 +1032,7 @@ export default function AnalyticsDashboard() {
                   <YAxis tick={{fontSize:10}} tickFormatter={v=>`${v}%`} domain={[0,100]}/>
                   <Tooltip content={<CT/>}/>
                   <Bar dataKey="Collection %" fill={P.teal} radius={[4,4,0,0]}>
-                    <LabelList dataKey="Collection %" position="top" formatter={v=>`${v}%`} style={{fontSize:9,fill:"#14b8a6"}}/>
+                    <LabelList dataKey="Collection %" position="top" formatter={v=>`${v}%`} style={{fontSize:9,fill:P.teal}}/>
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -1129,7 +1179,7 @@ export default function AnalyticsDashboard() {
                 <Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/>
                 <Bar dataKey="active" name="Active" fill={P.emerald} radius={[0,4,4,0]} stackId="a"/>
                 <Bar dataKey="count" name="Total" fill={P.teal} radius={[0,4,4,0]} opacity={0.35} stackId="b">
-                  <LabelList dataKey="count" position="right" style={{fontSize:9,fill:"#14b8a6"}}/>
+                  <LabelList dataKey="count" position="right" style={{fontSize:9,fill:P.teal}}/>
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -1145,7 +1195,7 @@ export default function AnalyticsDashboard() {
                 <YAxis dataKey="dept" type="category" tick={{fontSize:10}} width={120}/>
                 <Tooltip content={<CT/>}/>
                 <Bar dataKey="ctc" name="Total CTC" fill={P.indigo} radius={[0,4,4,0]}>
-                  <LabelList dataKey="ctc" position="right" formatter={fmt} style={{fontSize:9,fill:"#6366f1"}}/>
+                  <LabelList dataKey="ctc" position="right" formatter={fmt} style={{fontSize:9,fill:P.indigo}}/>
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -1264,7 +1314,7 @@ export default function AnalyticsDashboard() {
       )}
 
       <div className="text-center py-4 text-[11px] text-gray-300">
-        Analytics · {new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"})}
+        Analytics · {fy.label} · {new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"})}
       </div>
     </div>
   );
