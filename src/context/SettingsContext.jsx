@@ -207,19 +207,16 @@ export function SettingsProvider({ children }) {
   // ── Keyboard shortcuts: per-user, synced via Supabase ─────────────────
   const [shortcuts, setShortcuts] = useState({ ...DEFAULT_SHORTCUT_MAP });
   const [shortcutsLoaded, setShortcutsLoaded] = useState(false);
+  const [shortcutEmail, setShortcutEmail] = useState(null);
 
-  const getEmail = useCallback(() => {
-    return localStorage.getItem("verto_user_email") || null;
-  }, []);
-
-  // Load custom shortcuts (if any) on mount
-  useEffect(() => {
-    (async () => {
-      const email = getEmail();
-      if (!email) {
-        setShortcutsLoaded(true);
-        return;
-      }
+  // Get email reliably from Supabase session (works on reload, not localStorage-dependent)
+  const loadShortcutsForEmail = useCallback(async (email) => {
+    if (!email) {
+      setShortcuts({ ...DEFAULT_SHORTCUT_MAP });
+      setShortcutsLoaded(true);
+      return;
+    }
+    try {
       const { data } = await supabase
         .from("user_shortcuts")
         .select("shortcuts")
@@ -228,19 +225,46 @@ export function SettingsProvider({ children }) {
 
       if (data?.shortcuts) {
         setShortcuts({ ...DEFAULT_SHORTCUT_MAP, ...data.shortcuts });
+      } else {
+        setShortcuts({ ...DEFAULT_SHORTCUT_MAP });
       }
-      setShortcutsLoaded(true);
-    })();
-  }, [getEmail]);
+    } catch {
+      setShortcuts({ ...DEFAULT_SHORTCUT_MAP });
+    }
+    setShortcutsLoaded(true);
+  }, []);
+
+  // On mount: get session from Supabase directly (reliable on page reload)
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!active) return;
+      const email = session?.user?.email || null;
+      setShortcutEmail(email);
+      loadShortcutsForEmail(email);
+    });
+
+    // Also listen for auth state changes (login/logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const email = session?.user?.email || null;
+      setShortcutEmail(email);
+      loadShortcutsForEmail(email);
+    });
+
+    return () => {
+      active = false;
+      subscription?.unsubscribe();
+    };
+  }, [loadShortcutsForEmail]);
 
   // Persist the full current map to Supabase (upsert)
   const persistShortcuts = useCallback(async (map) => {
-    const email = getEmail();
+    const email = shortcutEmail;
     if (!email) return;
     await supabase
       .from("user_shortcuts")
       .upsert({ email, shortcuts: map }, { onConflict: "email" });
-  }, [getEmail]);
+  }, [shortcutEmail]);
 
   // Rebind a single action to a new combo
   const updateShortcut = useCallback((actionId, combo) => {
