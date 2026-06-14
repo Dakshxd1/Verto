@@ -3,6 +3,7 @@ import ReactDOM from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import supabase from "../lib/supabaseClient";
 import * as XLSX from "xlsx";
+import { logExport, EXPORT_ACTIONS } from "../utils/auditLog";
 import {
   X,
   Plus,
@@ -280,6 +281,12 @@ const downloadTemplate = () => {
   ws["!cols"] = headers.map(() => ({ wch: 22 }));
   XLSX.utils.book_append_sheet(wb, ws, "Employee Payouts");
   XLSX.writeFile(wb, "employee_payout_template.xlsx");
+  logExport({
+    action:      EXPORT_ACTIONS.TEMPLATE,
+    category:    "Expense",
+    description: "Downloaded Employee Payout Upload Template",
+    meta:        { file: "employee_payout_template.xlsx" },
+  });
 };
 
 // ─── BULK UPLOAD RESULT MODAL ─────────────────────────────────────────────────

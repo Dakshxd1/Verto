@@ -3,6 +3,7 @@ import supabase from "../lib/supabaseClient";
 import Card from "./ui/Card";
 import { X, CreditCard, Calendar, Building2, Download, RefreshCw } from "lucide-react";
 import * as XLSX from "xlsx";
+import { logExport, EXPORT_ACTIONS } from "../utils/auditLog";
 
 const PaymentMadeHistoryDrawer = ({ invoice, isOpen, onClose }) => {
   const [payments, setPayments] = useState([]);
@@ -134,6 +135,13 @@ const PaymentMadeHistoryDrawer = ({ invoice, isOpen, onClose }) => {
       wb,
       `Payment_Made_${invoiceNum}_${new Date().toISOString().slice(0, 10)}.xlsx`
     );
+    logExport({
+      action:       EXPORT_ACTIONS.EXCEL,
+      category:     "Payments",
+      description:  `Downloaded Payment Made History — ${invoiceNum}`,
+      reference_no: invoiceNum,
+      meta:         { invoice: invoiceNum },
+    });
   };
 
   const handleExport = () => {

@@ -1,3 +1,4 @@
+import { logExport, EXPORT_ACTIONS } from '../utils/auditLog';
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
@@ -671,6 +672,12 @@ const InternalCost = () => {
       wb,
       `Internal_Cost_${new Date().toISOString().slice(0, 10)}.xlsx`
     );
+    logExport({
+      action:      EXPORT_ACTIONS.EXCEL,
+      category:    "Internal Cost",
+      description: "Downloaded Internal Cost Excel",
+      meta:        { rows: rows.length },
+    });
   };
 
   // ── Part B1 Template Download ─────────────────────────────────────────────────
@@ -759,6 +766,12 @@ const InternalCost = () => {
     XLSX.utils.book_append_sheet(wb, wsInstr, "Instructions");
 
     XLSX.writeFile(wb, "Part_B1_Upload_Template.xlsx");
+    logExport({
+      action:      EXPORT_ACTIONS.TEMPLATE,
+      category:    "Internal Cost",
+      description: "Downloaded Part B1 Upload Template",
+      meta:        { file: "Part_B1_Upload_Template.xlsx" },
+    });
   };
 
   // ── Part B1 Excel Upload ───────────────────────────────────────────────────────

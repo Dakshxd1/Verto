@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import supabase from '../lib/supabaseClient';
 import * as XLSX from 'xlsx';
+import { logExport, EXPORT_ACTIONS } from '../utils/auditLog';
 import {
   Search, Download, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
   TrendingUp, TrendingDown, FileText, Users, AlertTriangle, RefreshCw,
@@ -245,6 +246,12 @@ const ClientPL = () => {
     ws['!cols'] = headers.map(() => ({ wch: 18 }));
     XLSX.utils.book_append_sheet(wb, ws, 'Client P&L');
     XLSX.writeFile(wb, `ClientPL_${fyLabel(selectedFY)}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    logExport({
+      action:      EXPORT_ACTIONS.EXCEL,
+      category:    "Reports",
+      description: `Downloaded Client P&L Excel — FY ${fyLabel(selectedFY)}`,
+      meta:        { fy: fyLabel(selectedFY) },
+    });
   };
 
   const exportStat = () => {
@@ -257,6 +264,11 @@ const ClientPL = () => {
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     XLSX.utils.book_append_sheet(wb, ws, 'Statutory');
     XLSX.writeFile(wb, `Statutory_${new Date().toISOString().slice(0,10)}.xlsx`);
+    logExport({
+      action:      EXPORT_ACTIONS.EXCEL,
+      category:    "Reports",
+      description: "Downloaded Statutory Report Excel",
+    });
   };
 
   // ── Totals ─────────────────────────────────────────────────────────────────

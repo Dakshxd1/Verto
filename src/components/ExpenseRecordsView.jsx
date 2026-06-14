@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printSalarySlip, downloadBulkSlipsZip } from "../utils/salarySlip";
+import { logExport, EXPORT_ACTIONS } from "../utils/auditLog";
 
 const ExpenseRecordsView = ({ onClose }) => {
   const { canEdit, canDelete, canExport } = usePerms();
@@ -306,6 +307,12 @@ const ExpenseRecordsView = ({ onClose }) => {
         wb,
         `bulk_export_${new Date().toISOString().slice(0, 10)}.xlsx`
       );
+      logExport({
+        action:      EXPORT_ACTIONS.EXCEL,
+        category:    "Expense",
+        description: `Downloaded Bulk Expense Excel (${data.length} employees)`,
+        meta:        { batch_id: batchId, rows: data.length },
+      });
     } catch (err) {
       alert("Export failed: " + err.message);
     }
@@ -337,6 +344,12 @@ const ExpenseRecordsView = ({ onClose }) => {
       }
 
       await downloadBulkSlipsZip(data, folder.batchCode || folder.batchId);
+      logExport({
+        action:      EXPORT_ACTIONS.ZIP,
+        category:    "Expense",
+        description: `Downloaded Bulk Salary Slips ZIP — ${folder.batchCode} (${data.length} employees)`,
+        meta:        { batch_code: folder.batchCode, count: data.length },
+      });
       showToast(`${data.length} slips downloaded as ZIP`);
     } catch (err) {
       console.error(err);
@@ -353,6 +366,13 @@ const ExpenseRecordsView = ({ onClose }) => {
     setSlipLoading(row.id);
     try {
       printSalarySlip(row);
+      logExport({
+        action:       EXPORT_ACTIONS.SALARY_SLIP,
+        category:     "Expense",
+        description:  `Downloaded Salary Slip — ${row.employee_name || row.emp_code}`,
+        reference_no: row.emp_code || null,
+        meta:         { emp_code: row.emp_code, pay_head: row.pay_head },
+      });
       showToast("Salary slip opened for printing/saving");
     } catch (err) {
       showToast("Slip generation failed", "error");
