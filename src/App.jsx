@@ -32,6 +32,7 @@ import {
   ChevronDown,
   Wallet,
   Monitor,
+  BarChart2,
 } from "lucide-react";
 
 // Import Components
@@ -57,6 +58,7 @@ import AddAdvanceLoanModal from "./components/advance/Addadvanceloanmodal.jsx";
 import AddCreditCardModal from "./components/advance/Addcreditcardmodal.jsx";
 import AddStatutoryPayoutModal from "./components/AddStatutoryPayoutModal";
 import SettingsPage from "./components/Settingspage.jsx";
+import AnalyticsDashboard from "./components/AnalyticsDashboard.jsx";
 import InternModeBanner from "./components/InternModeBanner.jsx";
 import { useInternGuard } from "./hooks/useInternGuard";
 import { PermissionsContext } from "./context/PermissionsContext";
@@ -158,12 +160,29 @@ const ManageTeamModal = ({ onClose, role }) => {
                 </p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-700 hover:bg-white/80 transition-all border border-transparent hover:border-gray-200"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  onClose();
+                  setTimeout(() => window.setActiveTab?.("analytics"), 50);
+                }}
+                title="Open Analytics Dashboard"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl
+                  text-transparent hover:text-blue-700
+                  bg-transparent hover:bg-blue-50
+                  border border-transparent hover:border-blue-200
+                  transition-all duration-200 group text-xs font-semibold"
+              >
+                <BarChart2 className="w-3.5 h-3.5 text-gray-300 group-hover:text-blue-600 transition-colors" />
+                <span className="whitespace-nowrap">Analytics</span>
+              </button>
+              <button
+                onClick={onClose}
+                className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-700 hover:bg-white/80 transition-all border border-transparent hover:border-gray-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1118,6 +1137,7 @@ function App() {
                     <AdvanceCreditCardLockerPage />
                   )}
                   {activeTab === "settings" && <SettingsPage />}
+                  {activeTab === "analytics" && role === "admin" && <AnalyticsDashboard />}
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
