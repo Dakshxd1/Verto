@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import supabase from "../lib/supabaseClient";
 import * as XLSX from "xlsx";
+import { logExport, EXPORT_ACTIONS } from "../utils/auditLog";
 import {
   X, Search, Download, SlidersHorizontal, ChevronUp, ChevronDown,
   TrendingUp, TrendingDown, Loader2, Wallet, Filter, Eye, EyeOff,
@@ -147,6 +148,12 @@ const PettyCashHistoryModal = ({ open, onClose, selectedBox }) => {
     a.href = url;
     a.download = `petty_cash_${selectedBox?.cash_name || "history"}_${new Date().toISOString().slice(0,10)}.xlsx`;
     a.click();
+    logExport({
+      action:      EXPORT_ACTIONS.EXCEL,
+      category:    "Petty Cash",
+      description: `Downloaded Petty Cash History — ${selectedBox?.cash_name || ""}`,
+      meta:        { cash_name: selectedBox?.cash_name },
+    });
     URL.revokeObjectURL(url);
   };
 

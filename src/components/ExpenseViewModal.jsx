@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
+import { logExport, EXPORT_ACTIONS } from "../utils/auditLog";
 import {
   X,
   Loader2,
@@ -112,6 +113,12 @@ const exportToExcel = (rows) => {
   );
   XLSX.utils.book_append_sheet(wb, ws, "Expenses");
   XLSX.writeFile(wb, `Expenses_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  logExport({
+    action:      EXPORT_ACTIONS.EXCEL,
+    category:    "Expense",
+    description: `Downloaded Expenses Excel (${rows.length} records)`,
+    meta:        { rows: rows.length },
+  });
 };
 
 /* ─── Confirm Delete Dialog ────────────────────────────────────────────────── */

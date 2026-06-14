@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
+import { logExport, EXPORT_ACTIONS } from "./auditLog";
 
 export const exportToExcel = (data) => {
   const formattedData = data.map((row) => ({
@@ -31,4 +32,10 @@ export const exportToExcel = (data) => {
   });
 
   saveAs(file, "Finance_Report.xlsx");
+  logExport({
+    action:      EXPORT_ACTIONS.EXCEL,
+    category:    "Invoice",
+    description: `Downloaded Finance Report Excel (${formattedData.length} invoices)`,
+    meta:        { file: "Finance_Report.xlsx", rows: formattedData.length },
+  });
 };

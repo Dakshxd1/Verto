@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
+import { logExport, EXPORT_ACTIONS } from "../utils/auditLog";
 import {
   X,
   Plus,
@@ -152,6 +153,12 @@ const downloadTemplate = () => {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Internal Team");
   XLSX.writeFile(wb, "internal_team_template.xlsx");
+  logExport({
+    action:      EXPORT_ACTIONS.TEMPLATE,
+    category:    "Internal Cost",
+    description: "Downloaded Internal Team Upload Template",
+    meta:        { file: "internal_team_template.xlsx" },
+  });
 };
 
 const AddInternalTeamModal = ({

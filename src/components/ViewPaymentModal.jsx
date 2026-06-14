@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import supabase from "../lib/supabaseClient";
 import * as XLSX from "xlsx";
+import { logExport, EXPORT_ACTIONS } from "../utils/auditLog";
 import { usePerms } from "../context/PermissionsContext";
 import {
   X,
@@ -229,6 +230,12 @@ const exportToExcel = (rows) => {
   XLSX.utils.book_append_sheet(wb, detailWs, "Payment Details");
   XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
   XLSX.writeFile(wb, `Payments_Made_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  logExport({
+    action:      EXPORT_ACTIONS.EXCEL,
+    category:    "Payments",
+    description: `Downloaded Payments Made Excel (${rows.length} records)`,
+    meta:        { rows: rows.length },
+  });
 };
 
 /* ─────────────────────────────────────────────

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import supabase from '../lib/supabaseClient';
 import * as XLSX from 'xlsx';
+import { logExport, EXPORT_ACTIONS } from '../utils/auditLog';
 import {
   Search, Download, Filter, ChevronRight, ChevronLeft,
   ChevronDown, ChevronUp, Building2, TrendingUp, TrendingDown,
@@ -234,6 +235,12 @@ const ProfitCenterPL = () => {
     ws['!cols'] = COLUMNS.map(() => ({ wch: 20 }));
     XLSX.utils.book_append_sheet(wb, ws, 'P&L');
     XLSX.writeFile(wb, `Verto_PL_${new Date().toISOString().slice(0,10)}.xlsx`);
+    logExport({
+      action:      EXPORT_ACTIONS.EXCEL,
+      category:    "Reports",
+      description: `Downloaded Profit & Loss Excel (${filtered.length} rows)`,
+      meta:        { rows: filtered.length },
+    });
   };
 
   // ── Totals row ─────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import ReactDOM from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
+import { logExport, EXPORT_ACTIONS } from "../utils/auditLog";
 import { usePerms } from "../context/PermissionsContext";
 import {
   X,
@@ -326,6 +327,12 @@ const exportToExcel = (rows) => {
     wb,
     `Payments_Received_${new Date().toISOString().slice(0, 10)}.xlsx`
   );
+  logExport({
+    action:      EXPORT_ACTIONS.EXCEL,
+    category:    "Payments",
+    description: `Downloaded Payments Received Excel (${rows.length} records)`,
+    meta:        { rows: rows.length },
+  });
 };
 
 /* ─────────────────────────────────────────────
@@ -381,6 +388,11 @@ const exportMonthlyReport = (reportData) => {
     wb,
     `Monthly_Client_Report_${new Date().toISOString().slice(0, 10)}.xlsx`
   );
+  logExport({
+    action:      EXPORT_ACTIONS.EXCEL,
+    category:    "Reports",
+    description: "Downloaded Monthly Client Report Excel",
+  });
 };
 
 /* ─────────────────────────────────────────────

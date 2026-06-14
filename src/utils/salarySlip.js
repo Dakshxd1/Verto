@@ -13,6 +13,7 @@
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+import { logExport, EXPORT_ACTIONS } from "./auditLog";
 
 const fmtINR = (val) =>
     "\u20b9 " +
@@ -239,6 +240,13 @@ const fmtINR = (val) =>
         win.print();
       }, 400);
     };
+    logExport({
+      action:      EXPORT_ACTIONS.SALARY_SLIP,
+      category:    "Expense",
+      description: `Downloaded Salary Slip — ${row.employee_name || row.emp_code}`,
+      reference_no: row.emp_code || null,
+      meta: { emp_code: row.emp_code, pay_head: row.pay_head, date_of_pay: row.date_of_pay },
+    });
   }
   
   // ---------------------------------------------------------------------------
@@ -290,5 +298,11 @@ const fmtINR = (val) =>
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    logExport({
+      action:      EXPORT_ACTIONS.ZIP,
+      category:    "Expense",
+      description: `Downloaded Bulk Salary Slips ZIP — ${label} (${rows.length} employees)`,
+      meta:        { batch: label, count: rows.length },
+    });
     setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
   }

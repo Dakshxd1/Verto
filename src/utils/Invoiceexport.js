@@ -6,6 +6,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import * as XLSX from "xlsx";
+import { logExport, EXPORT_ACTIONS } from "./auditLog";
 
 const INR = (val) =>
   `₹ ${Number(val || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -232,6 +233,15 @@ export function exportInvoiceLedgerXlsx({
   // ── Download ─────────────────────────────────────────────────────────────
   const fileName = `Invoice_${invoiceData.invoice_number || invoiceData.id}_Ledger.xlsx`;
   XLSX.writeFile(wb, fileName);
+  logExport({
+    action:       EXPORT_ACTIONS.EXCEL,
+    category:     "Invoice",
+    description:  `Downloaded Invoice Ledger Excel — ${invoiceData.invoice_number || invoiceData.id}`,
+    reference_no: invoiceData.invoice_number || null,
+    client_name:  invoiceData.client_name    || null,
+    amount:       invoiceData.invoice_value  || null,
+    meta: { file: fileName, os_payouts: osPayouts.length, payments: paymentsRaw.length },
+  });
 }
 
 
@@ -461,5 +471,14 @@ ${ledgerTable}
   win.focus();
   setTimeout(() => {
     win.print();
+    logExport({
+      action:       EXPORT_ACTIONS.PDF,
+      category:     "Invoice",
+      description:  `Downloaded Invoice PDF — ${inv.invoice_number || inv.id}`,
+      reference_no: inv.invoice_number || null,
+      client_name:  inv.client_name    || null,
+      amount:       inv.invoice_value  || null,
+      meta: { outstanding: Number(outstanding || 0), ledger_rows: ledgerRows.length },
+    });
   }, 600);
 }

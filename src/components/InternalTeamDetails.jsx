@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactDOM from "react-dom";
 import * as XLSX from "xlsx";
+import { logExport, EXPORT_ACTIONS } from "../utils/auditLog";
 import { useAuth } from "../context/AuthContext";
 import supabase from "../lib/supabaseClient";
 import {
@@ -131,6 +132,11 @@ const exportToExcel = (mergedData, formatDate) => {
     workbook,
     `Internal_Team_${new Date().toISOString().slice(0, 10)}.xlsx`
   );
+  logExport({
+    action:      EXPORT_ACTIONS.EXCEL,
+    category:    "Internal Cost",
+    description: "Downloaded Internal Team Excel",
+  });
 };
 
 /* ─────────────────────────────────────────────
