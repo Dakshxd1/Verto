@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  FileDown,
   RefreshCw,
   AlertTriangle,
   FolderOpen,
@@ -23,6 +24,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import { printSalarySlip, downloadBulkSlipsZip } from "../utils/salarySlip";
 
 const ExpenseRecordsView = ({ onClose }) => {
   const { canEdit, canDelete, canExport } = usePerms();
@@ -40,6 +42,7 @@ const ExpenseRecordsView = ({ onClose }) => {
   const [deletingBatchId, setDeletingBatchId] = useState(null);
   const [confirmDeleteBatch, setConfirmDeleteBatch] = useState(null);
   const [toast, setToast] = useState(null);
+  const [slipLoading, setSlipLoading] = useState(null); // batchId or rowId being processed
 
   // =====================================================
   // TOAST
@@ -113,14 +116,9 @@ const ExpenseRecordsView = ({ onClose }) => {
         setSingleRecords(singleData);
       }
 
-      // ── Fetch all for stats ──
-      const allBulkCount = bulkData?.length || 0;
       setRecords([
         ...(singleData || []),
-        ...(bulkData || []).map(r => ({
-          ...r,
-          _isBulk: true,
-        })),
+        ...(bulkData || []).map((r) => ({ ...r, _isBulk: true })),
       ]);
     } catch (err) {
       console.error(err);
@@ -171,7 +169,6 @@ const ExpenseRecordsView = ({ onClose }) => {
   const deleteBatch = async (batchId) => {
     setDeletingBatchId(batchId);
     try {
-      // Delete all payouts in the batch
       const { error: payoutErr } = await supabase
         .from("employee_expense_payouts")
         .delete()
@@ -179,7 +176,6 @@ const ExpenseRecordsView = ({ onClose }) => {
 
       if (payoutErr) throw payoutErr;
 
-      // Also delete the batch record
       await supabase
         .from("bulk_upload_batches")
         .delete()
@@ -261,7 +257,7 @@ const ExpenseRecordsView = ({ onClose }) => {
   };
 
   // =====================================================
-  // EXPORT BATCH
+  // EXPORT BATCH (Excel)
   // =====================================================
   const exportBatch = async (batchId) => {
     try {
@@ -316,6 +312,56 @@ const ExpenseRecordsView = ({ onClose }) => {
   };
 
   // =====================================================
+  // DOWNLOAD BATCH SLIPS (ZIP)
+  // =====================================================
+  const downloadBatchSlips = async (folder) => {
+    setSlipLoading(folder.batchId);
+    try {
+      // Always fetch full data with joins for slip generation
+      const { data, error } = await supabase
+        .from("employee_expense_payouts")
+        .select(
+          `
+          *,
+          entity_master(entity_name),
+          departments_master(dept_name)
+        `
+        )
+        .eq("bulk_batch_id", folder.batchId)
+        .order("emp_code", { ascending: true });
+
+      if (error) throw error;
+      if (!data?.length) {
+        showToast("No records found", "error");
+        return;
+      }
+
+      await downloadBulkSlipsZip(data, folder.batchCode || folder.batchId);
+      showToast(`${data.length} slips downloaded as ZIP`);
+    } catch (err) {
+      console.error(err);
+      showToast("Slip download failed: " + err.message, "error");
+    } finally {
+      setSlipLoading(null);
+    }
+  };
+
+  // =====================================================
+  // SINGLE SLIP DOWNLOAD
+  // =====================================================
+  const handleSingleSlip = (row) => {
+    setSlipLoading(row.id);
+    try {
+      printSalarySlip(row);
+      showToast("Salary slip opened for printing/saving");
+    } catch (err) {
+      showToast("Slip generation failed", "error");
+    } finally {
+      setTimeout(() => setSlipLoading(null), 800);
+    }
+  };
+
+  // =====================================================
   // FILTER
   // =====================================================
   const filteredBulkFolders = bulkFolders.filter(
@@ -357,8 +403,7 @@ const ExpenseRecordsView = ({ onClose }) => {
 
   const netPayout = totalAmount - totalTax;
 
-  const formatINR = (val) =>
-    `₹ ${Number(val).toLocaleString("en-IN")}`;
+  const formatINR = (val) => `₹ ${Number(val).toLocaleString("en-IN")}`;
 
   const fmtDate = (d) => {
     if (!d) return "—";
@@ -484,7 +529,10 @@ const ExpenseRecordsView = ({ onClose }) => {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* ── BULK UPLOAD FOLDERS ── */}
+
+            {/* ─────────────────────────────────────────────────────────
+                BULK UPLOAD FOLDERS
+            ───────────────────────────────────────────────────────── */}
             {viewTab === "bulk" && (
               <>
                 {filteredBulkFolders.length > 0 ? (
@@ -544,9 +592,7 @@ const ExpenseRecordsView = ({ onClose }) => {
                               <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-2">
                                 <span className="flex items-center gap-1.5 text-[11px] text-slate-600">
                                   <Users className="w-3 h-3 text-slate-400" />
-                                  <span className="font-semibold">
-                                    {folder.count}
-                                  </span>{" "}
+                                  <span className="font-semibold">{folder.count}</span>{" "}
                                   employees
                                 </span>
                                 <span className="flex items-center gap-1.5 text-[11px] text-slate-600">
@@ -575,6 +621,32 @@ const ExpenseRecordsView = ({ onClose }) => {
 
                           {/* Action Buttons */}
                           <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+
+                            {/* ── BULK SLIP DOWNLOAD (ZIP) ── */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadBatchSlips(folder);
+                              }}
+                              disabled={slipLoading === folder.batchId}
+                              className={`h-8 px-3 rounded-lg border flex items-center gap-1.5 text-[11px] font-semibold transition-colors ${
+                                slipLoading === folder.batchId
+                                  ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                                  : "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                              }`}
+                              title="Download all salary slips as ZIP"
+                            >
+                              {slipLoading === folder.batchId ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <FileDown className="w-3 h-3" />
+                              )}
+                              {slipLoading === folder.batchId
+                                ? "Packing…"
+                                : "Slips ZIP"}
+                            </button>
+
+                            {/* ── EXCEL EXPORT ── */}
                             {canExport && (
                               <button
                                 onClick={(e) => {
@@ -587,6 +659,8 @@ const ExpenseRecordsView = ({ onClose }) => {
                                 <Download className="w-3.5 h-3.5" />
                               </button>
                             )}
+
+                            {/* ── DELETE BATCH ── */}
                             {canDelete && (
                               <button
                                 onClick={(e) => {
@@ -612,6 +686,8 @@ const ExpenseRecordsView = ({ onClose }) => {
                                 )}
                               </button>
                             )}
+
+                            {/* Expand chevron */}
                             <div className="text-slate-400">
                               {expandingId === folder.batchId ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -669,10 +745,13 @@ const ExpenseRecordsView = ({ onClose }) => {
                                   "Bank",
                                   "Date",
                                   "Remarks",
+                                  "Slip",
                                 ].map((h) => (
                                   <th
                                     key={h}
-                                    className="px-3 py-2.5 text-[10px] font-medium text-emerald-800 uppercase tracking-wide whitespace-nowrap text-left"
+                                    className={`px-3 py-2.5 text-[10px] font-medium text-emerald-800 uppercase tracking-wide whitespace-nowrap ${
+                                      h === "Slip" ? "text-center" : "text-left"
+                                    }`}
                                   >
                                     {h}
                                   </th>
@@ -722,6 +801,26 @@ const ExpenseRecordsView = ({ onClose }) => {
                                   <td className="px-3 py-2.5 text-slate-400 text-[10px] max-w-[120px] truncate italic">
                                     {row.remarks || "—"}
                                   </td>
+                                  {/* ── Per-row slip button ── */}
+                                  <td className="px-3 py-2.5 text-center">
+                                    <button
+                                      onClick={() => handleSingleSlip(row)}
+                                      disabled={slipLoading === row.id}
+                                      className={`h-7 px-2.5 rounded-lg border flex items-center gap-1 text-[10px] font-semibold mx-auto transition-colors ${
+                                        slipLoading === row.id
+                                          ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                                          : "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                                      }`}
+                                      title="Download salary slip"
+                                    >
+                                      {slipLoading === row.id ? (
+                                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                      ) : (
+                                        <FileDown className="w-2.5 h-2.5" />
+                                      )}
+                                      Slip
+                                    </button>
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -754,7 +853,9 @@ const ExpenseRecordsView = ({ onClose }) => {
               </>
             )}
 
-            {/* ── SINGLE / MANUAL RECORDS ── */}
+            {/* ─────────────────────────────────────────────────────────
+                SINGLE / MANUAL RECORDS
+            ───────────────────────────────────────────────────────── */}
             {viewTab === "single" && (
               <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
                 <div className="overflow-x-auto">
@@ -770,12 +871,15 @@ const ExpenseRecordsView = ({ onClose }) => {
                           "Tax",
                           "Description",
                           "Remarks",
+                          "Slip",
                           "Actions",
                         ].map((h) => (
                           <th
                             key={h}
                             className={`px-4 py-3 text-[11.5px] font-medium text-slate-400 uppercase tracking-wide whitespace-nowrap ${
-                              h === "Actions" ? "text-center" : "text-left"
+                              h === "Actions" || h === "Slip"
+                                ? "text-center"
+                                : "text-left"
                             }`}
                           >
                             {h}
@@ -789,7 +893,9 @@ const ExpenseRecordsView = ({ onClose }) => {
                         <tr
                           key={row.id}
                           className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
-                            idx === filteredSingleRecords.length - 1 ? "border-b-0" : ""
+                            idx === filteredSingleRecords.length - 1
+                              ? "border-b-0"
+                              : ""
                           }`}
                         >
                           {/* Emp Code */}
@@ -894,6 +1000,27 @@ const ExpenseRecordsView = ({ onClose }) => {
                                 {row.remarks || "—"}
                               </span>
                             )}
+                          </td>
+
+                          {/* ── SINGLE SLIP BUTTON ── */}
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleSingleSlip(row)}
+                              disabled={slipLoading === row.id}
+                              className={`h-7 px-2.5 rounded-lg border flex items-center gap-1 text-[10px] font-semibold mx-auto transition-colors ${
+                                slipLoading === row.id
+                                  ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                                  : "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                              }`}
+                              title="Download salary slip"
+                            >
+                              {slipLoading === row.id ? (
+                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                              ) : (
+                                <FileDown className="w-2.5 h-2.5" />
+                              )}
+                              Slip
+                            </button>
                           </td>
 
                           {/* Actions */}
