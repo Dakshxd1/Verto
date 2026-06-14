@@ -712,7 +712,8 @@ const ClientPL = () => {
           <span><b className="text-amber-600">Not Received</b> = Outstanding per invoice (live)</span>
           <span><b className="text-gray-700">Profit Pre TDS</b> = Verto Fee Earned − Expense</span>
           <span><b className="text-gray-700">Profit Post TDS</b> = Fee Post TDS − Expense</span>
-          <span><b className="text-emerald-600">Actual Profit</b> = Fee Received − TDS − Expense (most realistic)</span>
+          <span><b className="text-emerald-600">Actual Profit</b> = Fee Received − TDS − Expense</span>
+          <span><b className="text-rose-600">CN / Bad Debt</b> = Written off (does NOT reduce Fee columns, only Actual Profit)</span>
         </div>
       )}
     </div>

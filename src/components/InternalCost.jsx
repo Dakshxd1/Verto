@@ -259,7 +259,7 @@ const CostLogicDrawer = ({ row, onClose }) => {
               ₹{inr(row.total_employee_cost)}
             </p>
             <p className="text-xs text-indigo-500 mt-1">
-              CTC + PF + ESI + Bonus + Reimb + Other
+            CTC + Variable + PF + ESI + Bonus + Reimb + Other
             </p>
           </div>
 
@@ -511,7 +511,7 @@ const InternalCost = () => {
       g.rec_cost += Number(row.rec_cost || 0);
       g.temp_cost += Number(row.temp_cost || 0);
       g.projects_cost += Number(row.projects_cost || 0);
-      g.salaryDue += Number(row.ctc || 0);
+      g.salaryDue += Number(row.ctc || 0) + Number(row.variable || 0);
     });
 
     // Add dept % averages
@@ -884,7 +884,7 @@ const InternalCost = () => {
         <StatCard
           label="Total Employee Cost"
           value={inrK(totals.total_employee_cost)}
-          sub="CTC+PF+ESI+Bonus+Reimb"
+          sub="CTC+Variable+PF+ESI+Bonus+Reimb"
           color="border-indigo-200"
         />
       </div>
