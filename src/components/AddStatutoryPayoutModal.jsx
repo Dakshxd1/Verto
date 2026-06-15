@@ -638,8 +638,24 @@ const AddStatutoryPayoutModal = ({
   isOpen,
   onClose,
   entities = [],
-  banks = [],
+  banks: banksProp = [],
 }) => {
+  const [banks, setBanks] = useState(banksProp);
+
+  // Fetch banks directly so the dropdown is always populated
+  useEffect(() => {
+    const fetchBanks = async () => {
+      const { data } = await supabase.from("bank_master").select("id, bank_name").order("bank_name");
+      if (data && data.length > 0) setBanks(data);
+    };
+    if (isOpen) fetchBanks();
+  }, [isOpen]);
+
+  // Sync prop changes too (in case parent provides them)
+  useEffect(() => {
+    if (banksProp && banksProp.length > 0) setBanks(banksProp);
+  }, [banksProp]);
+
   // Change 2: Added rpc_type to formData
   const [formData, setFormData] = useState({
     entity: "",

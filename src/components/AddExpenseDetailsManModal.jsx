@@ -29,6 +29,7 @@ import {
   CornerDownLeft,
 } from "lucide-react";
 import ExpenseRecordsView from "./ExpenseRecordsView";
+import { usePerms } from "../context/PermissionsContext";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const Select = ({ value, onChange, options, placeholder, error, disabled }) => (
@@ -582,6 +583,7 @@ const OsPayoutRecordsView = ({
   onClose,
   onChanged,
 }) => {
+  const { canEdit, canDelete } = usePerms();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editRow, setEditRow] = useState(null);
@@ -1634,13 +1636,15 @@ const OsPayoutRecordsView = ({
                           >
                             <Eye size={13} />
                           </button>
-                          <button
-                            onClick={() => startEdit(row)}
-                            className="p-1.5 rounded-lg hover:bg-indigo-100 text-indigo-600 transition"
-                            title="Edit"
-                          >
-                            <Pencil size={13} />
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => startEdit(row)}
+                              className="p-1.5 rounded-lg hover:bg-indigo-100 text-indigo-600 transition"
+                              title="Edit"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                          )}
                           <button
                             onClick={() => openBbModal(row)}
                             className="p-1.5 rounded-lg hover:bg-rose-100 text-rose-500 transition"
@@ -1648,18 +1652,20 @@ const OsPayoutRecordsView = ({
                           >
                             <CornerDownLeft size={13} />
                           </button>
-                          <button
-                            onClick={() => deleteRecord(row)}
-                            disabled={deleting === row.id}
-                            className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition disabled:opacity-40"
-                            title="Delete"
-                          >
-                            {deleting === row.id ? (
-                              <Loader2 size={13} className="animate-spin" />
-                            ) : (
-                              <Trash2 size={13} />
-                            )}
-                          </button>
+                          {canDelete && (
+                            <button
+                              onClick={() => deleteRecord(row)}
+                              disabled={deleting === row.id}
+                              className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition disabled:opacity-40"
+                              title="Delete"
+                            >
+                              {deleting === row.id ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={13} />
+                              )}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

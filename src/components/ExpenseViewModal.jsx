@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { usePerms } from "../context/PermissionsContext";
 import * as XLSX from "xlsx";
 import { logExport, EXPORT_ACTIONS } from "../utils/Auditlog.js";
 import {
@@ -171,6 +172,7 @@ const ConfirmDeleteDialog = ({ row, onConfirm, onCancel }) => (
 
 /* ─── Main Component ───────────────────────────────────────────────────────── */
 const ExpenseViewModal = ({ open, onClose, onSaved }) => {
+  const { canEdit, canDelete } = usePerms();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [search, setSearch] = useState("");
@@ -652,7 +654,7 @@ const ExpenseViewModal = ({ open, onClose, onSaved }) => {
                                 ✕
                               </button>
                             </div>
-                          ) : (
+                          ) : canEdit ? (
                             <button
                               onClick={() => {
                                 setEditRow(row);
@@ -671,7 +673,7 @@ const ExpenseViewModal = ({ open, onClose, onSaved }) => {
                             >
                               <Pencil size={10} /> Edit
                             </button>
-                          )}
+                          ) : null}
                         </td>
 
                         {/* Delete button */}
@@ -681,14 +683,14 @@ const ExpenseViewModal = ({ open, onClose, onSaved }) => {
                               size={14}
                               className="animate-spin text-rose-400"
                             />
-                          ) : (
+                          ) : canDelete ? (
                             <button
                               onClick={() => setConfirmRow(row)}
                               className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-semibold border border-rose-200 transition-colors"
                             >
                               <Trash2 size={10} /> Delete
                             </button>
-                          )}
+                          ) : null}
                         </td>
                       </tr>
 

@@ -1586,10 +1586,11 @@ const ViewPaymentReceivedModal = ({ isOpen, onClose, invoice, onRefresh }) => {
                                           ? setDeletingRow(null)
                                           : setDeletingRow(r)
                                       }
+                                      disabled={isEditing || deleting}
                                       className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                                         isDeleting
                                           ? "bg-slate-100 text-slate-700"
-                                          : "bg-rose-100 text-rose-800 hover:bg-rose-200"
+                                          : "bg-rose-100 text-rose-800 hover:bg-rose-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                       }`}
                                     >
                                       <Trash2 size={11} />
