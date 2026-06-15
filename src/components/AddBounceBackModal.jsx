@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   CheckCircle2,
 } from "lucide-react";
+import { usePerms } from "../context/PermissionsContext";
 
 // ─── Inline View Panel ─────────────────────────────────────────────────────────
 const BounceBackRecordsPanel = ({ onClose }) => {
@@ -245,6 +246,7 @@ const AddBounceBackModal = ({
   const [selectedBankId, setSelectedBankId] = useState("");   // UUID – only for display
   const [selectedBankName, setSelectedBankName] = useState(""); // Text stored in bounce_back.bank_details
   const [viewOpen, setViewOpen] = useState(false);
+  const { canSave, canDelete, isIntern } = usePerms();
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -560,16 +562,13 @@ const AddBounceBackModal = ({
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Enter Invoice Number or Payment Reference{" "}
-                        <span className="text-rose-600">*</span>
+                        Enter Invoice Number or Payment Reference <span className="text-rose-600">*</span>
                       </label>
                       <input
                         type="text"
                         list="references-list"
                         value={formData.invoiceOrPaymentRef}
-                        onChange={(e) =>
-                          handleChange("invoiceOrPaymentRef", e.target.value)
-                        }
+                        onChange={(e) => handleChange("invoiceOrPaymentRef", e.target.value)}
                         className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
                           showErrors && errors.invoiceOrPaymentRef
                             ? "border-rose-500"
@@ -591,9 +590,7 @@ const AddBounceBackModal = ({
                         ))}
                       </datalist>
                       <ErrorMessage error={errors.invoiceOrPaymentRef} />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Rest details auto pop up
-                      </p>
+                      <p className="text-xs text-gray-500 mt-1">Rest details auto pop up</p>
                     </div>
                   </div>
 
@@ -889,14 +886,16 @@ const AddBounceBackModal = ({
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="px-8 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium shadow-lg shadow-rose-500/30 flex items-center space-x-2"
-                  >
-                    <span>{loading ? "Saving..." : "Save Bounce Back"}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
+                  {canSave && (
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="px-8 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium shadow-lg shadow-rose-500/30 flex items-center space-x-2"
+                    >
+                      <span>{loading ? "Saving..." : "Save Bounce Back"}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </form>
             </div>
