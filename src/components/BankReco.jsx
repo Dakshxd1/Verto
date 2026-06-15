@@ -34,6 +34,7 @@ import {
 import Card from "./ui/Card";
 import Button from "./ui/button";
 import Badge from "./ui/Badge";
+import { usePerms } from "../context/PermissionsContext";
 
 // ─── PERIOD CONFIG ─────────────────────────────────────────────────────────────
 const PERIOD_OPTIONS = [
@@ -749,6 +750,7 @@ const BankTransferModal = ({
   editData,
   entries,
 }) => {
+  const { isIntern } = usePerms?.() || {};
   const [form, setForm] = useState({
     transfer_date: new Date().toISOString().split("T")[0],
     amount: "",
@@ -779,6 +781,7 @@ const BankTransferModal = ({
   }, [editData, isOpen]);
 
   const handleSave = async () => {
+    if (isIntern) return;
     if (
       !form.transfer_date ||
       !form.amount ||
@@ -984,11 +987,17 @@ const BankTransferModal = ({
             </button>
             <button
               onClick={handleSave}
-              disabled={loading}
-              className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium disabled:opacity-60"
+              disabled={loading || isIntern}
+              className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60 ${
+                isIntern
+                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white"
+              }`}
             >
               {loading
                 ? "Saving…"
+                : isIntern
+                ? "View Only"
                 : editData
                 ? "Update Transfer"
                 : "Save Transfer"}
@@ -1007,6 +1016,7 @@ const BankTransferHistoryDrawer = ({
   transfers,
   onEdit,
   onDelete,
+  isIntern,
 }) => (
   <AnimatePresence>
     {isOpen && (
@@ -1082,18 +1092,22 @@ const BankTransferHistoryDrawer = ({
                       )}
                     </div>
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => onEdit(t)}
-                        className="p-1.5 hover:bg-indigo-50 rounded-lg text-gray-400 hover:text-indigo-600"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => onDelete(t.id)}
-                        className="p-1.5 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-600"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {!isIntern && (
+                        <button
+                          onClick={() => onEdit(t)}
+                          className="p-1.5 hover:bg-indigo-50 rounded-lg text-gray-400 hover:text-indigo-600"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {!isIntern && (
+                        <button
+                          onClick={() => onDelete(t.id)}
+                          className="p-1.5 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-600"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-3">
@@ -1128,6 +1142,7 @@ const BankTransferHistoryDrawer = ({
 
 // ─── MAIN BANKRECO COMPONENT ────────────────────────────────────────────────────
 const BankReco = () => {
+  const { isIntern } = usePerms?.() || {};
   const [bankData, setBankData] = useState([]);
   const [fundFlowData, setFundFlowData] = useState([]);
   const [selectedRow, setSelectedRow] = useState(null);
@@ -1510,6 +1525,7 @@ const BankReco = () => {
 
   // ─── TRANSFER HANDLERS ─────────────────────────────────────────────────────
   const handleDeleteTransfer = async (id) => {
+    if (isIntern) return;
     if (!window.confirm("Delete this transfer?")) return;
     const { error } = await supabase
       .from("bank_transfers")
@@ -1542,6 +1558,7 @@ const BankReco = () => {
 
   // ✅ STEP 5: Fix stale selectedRow update — just clear it instead of setTimeout
   const handleAddEntry = async () => {
+    if (isIntern) return;
     if (!newEntry.bank_id || !newEntry.amount || !newEntry.dateOfBankBal) {
       alert("Fill all required fields");
       return;
@@ -1651,6 +1668,7 @@ const BankReco = () => {
         transfers={transfers}
         onEdit={handleEditTransfer}
         onDelete={handleDeleteTransfer}
+        isIntern={isIntern}
       />
 
       {/* ── Filter bar ── */}
@@ -2047,41 +2065,45 @@ const BankReco = () => {
                                           </div>
                                         </div>
                                         <div className="flex gap-2 mt-4">
-                                          <button
-                                            onClick={async () => {
-                                              await supabase.rpc(
-                                                "complete_projection",
-                                                {
-                                                  p_projection_id: item.id,
-                                                }
-                                              );
-                                              fetchFutureEntries(
-                                                selectedRow.bank_id
-                                              );
-                                              fetchEntries();
-                                              fetchSoftwareEntries();
-                                              fetchFundFlowProjection();
-                                            }}
-                                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold"
-                                          >
-                                            DONE
-                                          </button>
-                                          <button
-                                            onClick={async () => {
-                                              await supabase.rpc(
-                                                "delete_projection_complete",
-                                                {
-                                                  p_projection_id: item.id,
-                                                }
-                                              );
-                                              fetchFutureEntries(
-                                                selectedRow.bank_id
-                                              );
-                                            }}
-                                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold"
-                                          >
-                                            DELETE
-                                          </button>
+                                          {!isIntern && (
+                                            <button
+                                              onClick={async () => {
+                                                await supabase.rpc(
+                                                  "complete_projection",
+                                                  {
+                                                    p_projection_id: item.id,
+                                                  }
+                                                );
+                                                fetchFutureEntries(
+                                                  selectedRow.bank_id
+                                                );
+                                                fetchEntries();
+                                                fetchSoftwareEntries();
+                                                fetchFundFlowProjection();
+                                              }}
+                                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold"
+                                            >
+                                              DONE
+                                            </button>
+                                          )}
+                                          {!isIntern && (
+                                            <button
+                                              onClick={async () => {
+                                                await supabase.rpc(
+                                                  "delete_projection_complete",
+                                                  {
+                                                    p_projection_id: item.id,
+                                                  }
+                                                );
+                                                fetchFutureEntries(
+                                                  selectedRow.bank_id
+                                                );
+                                              }}
+                                              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold"
+                                            >
+                                              DELETE
+                                            </button>
+                                          )}
                                         </div>
                                       </div>
                                     ))}
@@ -2294,38 +2316,42 @@ const BankReco = () => {
                       <p className="text-xs text-gray-500 mb-2">
                         Select a row to enable entry
                       </p>
-                      <Button
-                        className="w-full justify-start"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          if (!selectedRow && bankData.length > 0) {
-                            const first = bankData[0];
-                            setSelectedRow(first);
-                            setRemainingBalance(first.remainingBalance || 0);
-                          }
-                          setShowEntryModal(true);
-                        }}
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add Bank Entry
-                      </Button>
+                      {!isIntern && (
+                        <Button
+                          className="w-full justify-start"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (!selectedRow && bankData.length > 0) {
+                              const first = bankData[0];
+                              setSelectedRow(first);
+                              setRemainingBalance(first.remainingBalance || 0);
+                            }
+                            setShowEntryModal(true);
+                          }}
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add Bank Entry
+                        </Button>
+                      )}
                       <div className="pt-2 border-t border-blue-200 mt-2">
                         <p className="text-xs font-semibold text-blue-800 uppercase tracking-wider mb-2 flex items-center gap-1">
                           <ArrowLeftRight className="w-3 h-3" />
                           Bank to Bank Transfer
                         </p>
-                        <Button
-                          className="w-full justify-start bg-indigo-600 hover:bg-indigo-700 text-white border-0 mb-2"
-                          size="sm"
-                          onClick={() => {
-                            setEditTransfer(null);
-                            setShowTransferModal(true);
-                          }}
-                        >
-                          <ArrowLeftRight className="w-4 h-4 mr-2" />
-                          New Transfer
-                        </Button>
+                        {!isIntern && (
+                          <Button
+                            className="w-full justify-start bg-indigo-600 hover:bg-indigo-700 text-white border-0 mb-2"
+                            size="sm"
+                            onClick={() => {
+                              setEditTransfer(null);
+                              setShowTransferModal(true);
+                            }}
+                          >
+                            <ArrowLeftRight className="w-4 h-4 mr-2" />
+                            New Transfer
+                          </Button>
+                        )}
                         <Button
                           className="w-full justify-start"
                           variant="outline"

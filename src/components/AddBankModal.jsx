@@ -2,8 +2,10 @@ import React, { useState, useEffect } from "react";
 import supabase from "../lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Landmark, AlertCircle, ArrowRight } from "lucide-react";
+import { usePerms } from "../context/PermissionsContext";
 
 const AddBankModal = ({ isOpen, onClose, selectedBank, onSave }) => {
+  const { isIntern } = usePerms?.() || {};
   const [formData, setFormData] = useState({
     bankName: "",
     accountNumber: "",
@@ -52,6 +54,7 @@ const AddBankModal = ({ isOpen, onClose, selectedBank, onSave }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isIntern) return;
     setShowErrors(true);
 
     if (!validateForm()) return;
@@ -192,8 +195,15 @@ const AddBankModal = ({ isOpen, onClose, selectedBank, onSave }) => {
                   Cancel
                 </button>
 
-                <button className="bg-indigo-600 text-white px-4 py-2 rounded">
-                  Save
+                <button
+                  disabled={isIntern}
+                  className={`px-4 py-2 rounded ${
+                    isIntern
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-indigo-600 text-white"
+                  }`}
+                >
+                  {isIntern ? "View Only" : "Save"}
                 </button>
               </div>
             </form>

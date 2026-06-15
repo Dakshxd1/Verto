@@ -7,6 +7,7 @@ import {
   History, Search,
 } from "lucide-react";
 import PettyCashHistoryModal from "./Pettycashhistorymodal.jsx";
+import { usePerms } from "../context/PermissionsContext";
 
 // ─── MASTER DATA ─────────────────────────────────────────────────────────────
 const DEPARTMENTS = [
@@ -262,6 +263,7 @@ const CostHeadSection = ({ breakup, onChange, error }) => {
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 const PettyCashPage = () => {
+  const { isIntern } = usePerms?.() || {};
   const [pettyCashes, setPettyCashes]       = useState([]);
   const [selectedBox, setSelectedBox]       = useState(null);
   const [entries, setEntries]               = useState([]);
@@ -345,6 +347,7 @@ const PettyCashPage = () => {
   };
 
   const saveExpense = async () => {
+    if (isIntern) return;
     if (!validateExpense() || !selectedBox) return;
     setSaving(true);
     try {
@@ -396,6 +399,7 @@ const PettyCashPage = () => {
   };
 
   const saveCashIn = async () => {
+    if (isIntern) return;
     if (!validateCashIn() || !selectedBox) return;
     setSaving(true);
     try {
@@ -541,16 +545,20 @@ const PettyCashPage = () => {
                   className="flex items-center gap-1.5 px-4 py-2 bg-violet-500 hover:bg-violet-600 text-white rounded-lg text-sm font-semibold transition">
                   <History className="w-4 h-4" />View History
                 </button>
-                <button
-                  onClick={() => { setCashInForm(DEFAULT_CASH_IN); setCashInErrors({}); setCashInOpen(true); }}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition">
-                  <Plus className="w-4 h-4" />Add Cash Received (+)
-                </button>
-                <button
-                  onClick={() => { setExpenseForm(DEFAULT_EXPENSE); setExpenseErrors({}); setExpenseOpen(true); }}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-semibold transition">
-                  <Minus className="w-4 h-4" />Add Expense (−)
-                </button>
+                {!isIntern && (
+                  <button
+                    onClick={() => { setCashInForm(DEFAULT_CASH_IN); setCashInErrors({}); setCashInOpen(true); }}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition">
+                    <Plus className="w-4 h-4" />Add Cash Received (+)
+                  </button>
+                )}
+                {!isIntern && (
+                  <button
+                    onClick={() => { setExpenseForm(DEFAULT_EXPENSE); setExpenseErrors({}); setExpenseOpen(true); }}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-semibold transition">
+                    <Minus className="w-4 h-4" />Add Expense (−)
+                  </button>
+                )}
               </div>
             </div>
 
@@ -634,9 +642,11 @@ const PettyCashPage = () => {
             className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-100 transition">
             Cancel
           </button>
-          <button onClick={saveExpense} disabled={saving}
-            className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition flex items-center gap-2 disabled:opacity-60">
-            {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Plus className="w-4 h-4" />Add Expense</>}
+          <button onClick={saveExpense} disabled={saving || isIntern}
+            className={`px-5 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 disabled:opacity-60 ${
+              isIntern ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-red-500 hover:bg-red-600 text-white"
+            }`}>
+            {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Plus className="w-4 h-4" />{isIntern ? "View Only" : "Add Expense"}</>}
           </button>
         </>}
       >
@@ -725,9 +735,11 @@ const PettyCashPage = () => {
             className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-100 transition">
             Cancel
           </button>
-          <button onClick={saveCashIn} disabled={saving}
-            className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-semibold transition flex items-center gap-2 disabled:opacity-60">
-            {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Plus className="w-4 h-4" />Add Cash Received</>}
+          <button onClick={saveCashIn} disabled={saving || isIntern}
+            className={`px-5 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 disabled:opacity-60 ${
+              isIntern ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-emerald-500 hover:bg-emerald-600 text-white"
+            }`}>
+            {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Plus className="w-4 h-4" />{isIntern ? "View Only" : "Add Cash Received"}</>}
           </button>
         </>}
       >
