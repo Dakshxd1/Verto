@@ -424,10 +424,17 @@ const Dashboard = ({
 
   const fetchInvoices = useCallback(async () => {
     console.log("🔥 FETCH RUNNING...");
-    const { data: rows, error } = await supabase
-      .from("outstanding_invoice_view")
-      .select("*")
-      .order("invoice_date", { ascending: false });
+    const now = new Date();
+    const fy = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    const fyFromDate = `${fy}-04-01`;
+    const fyToDate = `${fy + 1}-03-31`;
+
+    const { data: rows, error } = await supabase.rpc("get_dashboard_invoices", {
+      p_date_from: fyFromDate,
+      p_date_to: fyToDate,
+      p_limit: 1000,
+      p_offset: 0,
+    });
 
     if (error) {
       console.error("Fetch error:", error);

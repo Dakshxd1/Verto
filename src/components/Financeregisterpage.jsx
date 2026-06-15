@@ -394,31 +394,26 @@ export default function FinanceRegisterPage() {
   // Load distinct filter options — only outgoing types
   useEffect(() => {
     const loadOptions = async () => {
-      const { data } = await supabase
-        .from("finance_transaction_register_view")
-        .select("transaction_type, entity, department")
-        .in("transaction_type", OUTGOING_TYPES);
+      const { data } = await supabase.rpc("get_register_filter_options");
 
       if (data) {
-        const types = [
-          ...new Set(data.map((d) => d.transaction_type).filter(Boolean)),
-        ].sort();
-        const entities = [
-          ...new Set(data.map((d) => d.entity).filter(Boolean)),
-        ].sort();
-        const departments = [
-          ...new Set(data.map((d) => d.department).filter(Boolean)),
-        ].sort();
+        const get = (type) =>
+          data
+            .filter((d) => d.option_type === type)
+            .map((d) => d.option_value);
+
         setTypeOptions(
-          types.map((t) => ({
+          get("transaction_type").map((t) => ({
             value: t,
             label: t,
             icon: getTypeConfig(t).icon,
             color: getTypeConfig(t).color,
           }))
         );
-        setEntityOptions(entities.map((e) => ({ value: e, label: e })));
-        setDepartmentOptions(departments.map((d) => ({ value: d, label: d })));
+        setEntityOptions(get("entity").map((e) => ({ value: e, label: e })));
+        setDepartmentOptions(
+          get("department").map((d) => ({ value: d, label: d }))
+        );
       }
     };
     loadOptions();
@@ -464,9 +459,14 @@ export default function FinanceRegisterPage() {
         setRows(data || []);
         setTotalCount(count || 0);
 
-        const { data: totalsData } = await buildQuery().select(
-          "amount, transaction_type"
-        );
+        const { data: totalsData } = await supabase.rpc("get_register_totals", {
+          p_type: type || null,
+          p_entity: entity || null,
+          p_department: department || null,
+          p_date_from: dateRange.from || null,
+          p_date_to: dateRange.to || null,
+          p_search: search || null,
+        });
         setAllRowsForTotals(totalsData || []);
       } catch (err) {
         setErrorMsg(err.message || "Failed to load transactions.");
@@ -499,19 +499,20 @@ export default function FinanceRegisterPage() {
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   // Totals — all outgoing
-  const grandTotal = allRowsForTotals.reduce(
-    (sum, r) => sum + (Number(r.amount) || 0),
+  const grandTotal = (allRowsForTotals || []).reduce(
+    (sum, r) => sum + (Number(r.total_amount) || 0),
     0
   );
 
   const byType = (types) =>
-    allRowsForTotals
+    (allRowsForTotals || [])
       .filter((r) =>
         types.some(
-          (t) => r.transaction_type === t || r.transaction_type?.startsWith(t)
+          (t) =>
+            r.transaction_type === t || r.transaction_type?.startsWith(t)
         )
       )
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+      .reduce((sum, r) => sum + (Number(r.total_amount) || 0), 0);
 
   const payrollTotal = byType(["Employee Payout", "OS Payout"]);
   const expenseTotal = byType([
@@ -635,7 +636,9 @@ export default function FinanceRegisterPage() {
             {formatAmount(grandTotal)}
           </p>
           <p className="text-[11px] text-gray-400 mt-1">
-            {allRowsForTotals.length.toLocaleString("en-IN")} entries in view
+            {(allRowsForTotals || [])
+              .reduce((s, r) => s + Number(r.row_count || 0), 0)
+              .toLocaleString("en-IN")} entries in view
           </p>
         </div>
 
