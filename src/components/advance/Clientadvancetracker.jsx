@@ -9,7 +9,7 @@ import {
   Loader2, Eye
 } from "lucide-react";
 import supabase from "../../lib/supabaseClient";
-import { logExport, EXPORT_ACTIONS } from "../utils/Auditlog.js";
+import { logExport, EXPORT_ACTIONS } from "../../utils/Auditlog.js";
 
 const STATUS_OPTIONS = ["Pending", "Partially Paid", "Closed"];
 
