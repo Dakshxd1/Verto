@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import supabase from "../../lib/supabaseClient";
 import { logExport, EXPORT_ACTIONS } from "../../utils/Auditlog.js";
+import { usePerms } from "../../context/PermissionsContext";
 
 const STATUS_OPTIONS = ["Pending", "Partially Paid", "Closed"];
 
@@ -156,6 +157,7 @@ const BulkResultModal = ({ result, onClose }) => {
 
 // ─── Inline Edit Row Form (inside BulkDetailModal) ────────────────────────────
 const InlineEditRow = ({ row, onSave, onCancel }) => {
+  const { isIntern } = usePerms?.() || {};
   const [f, setF] = useState({
     client_name: row.client_name || "",
     ledger_name: row.ledger_name || "",
@@ -170,6 +172,7 @@ const InlineEditRow = ({ row, onSave, onCancel }) => {
   const livePending = calcPendingDue(f.amount, f.interest, f.paid_back);
 
   const handleSave = async () => {
+    if (isIntern) return;
     if (!f.client_name || !f.amount) return;
     setSaving(true);
     const pending_due = calcPendingDue(f.amount, f.interest, f.paid_back);
@@ -249,10 +252,12 @@ const InlineEditRow = ({ row, onSave, onCancel }) => {
       {/* Actions */}
       <td className="px-2 py-2 align-top">
         <div className="flex gap-1.5">
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition disabled:opacity-60">
+          <button onClick={handleSave} disabled={saving || isIntern}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-60 ${
+              isIntern ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700 text-white"
+            }`}>
             {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-            {saving ? "…" : "Save"}
+            {saving ? "…" : isIntern ? "View Only" : "Save"}
           </button>
           <button onClick={onCancel}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-semibold transition">
@@ -266,6 +271,7 @@ const InlineEditRow = ({ row, onSave, onCancel }) => {
 
 // ─── Bulk Upload Row Modal (drill-down) ───────────────────────────────────────
 const BulkDetailModal = ({ upload, onClose, onDataChanged }) => {
+  const { isIntern } = usePerms?.() || {};
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingRowId, setEditingRowId] = useState(null);
@@ -432,18 +438,22 @@ const BulkDetailModal = ({ upload, onClose, onDataChanged }) => {
                       <td className="px-4 py-3 text-gray-500 max-w-[120px] truncate">{r.remarks || "—"}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => setEditingRowId(r.id)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-700 text-xs font-semibold transition"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" /> Edit
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(r.id)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 text-xs font-semibold transition"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" /> Delete
-                          </button>
+                          {!isIntern && (
+                            <button
+                              onClick={() => setEditingRowId(r.id)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-700 text-xs font-semibold transition"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" /> Edit
+                            </button>
+                          )}
+                          {!isIntern && (
+                            <button
+                              onClick={() => setConfirmDeleteId(r.id)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 text-xs font-semibold transition"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -494,6 +504,7 @@ const BulkDetailModal = ({ upload, onClose, onDataChanged }) => {
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function ClientAdvanceTracker() {
+  const { isIntern } = usePerms?.() || {};
   const [records, setRecords]         = useState([]);
   const [bulkUploads, setBulkUploads] = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -535,6 +546,7 @@ export default function ClientAdvanceTracker() {
   }
 
   async function handleSave() {
+    if (isIntern) return;
     if (!form.client_name || !form.amount) return;
     setSaving(true);
     const pending_due = calcPendingDue(form.amount, form.interest, form.paid_back);
@@ -744,14 +756,18 @@ export default function ClientAdvanceTracker() {
               className="flex items-center gap-2 px-4 py-2.5 border border-orange-300 bg-orange-50 text-orange-700 rounded-xl text-sm font-semibold hover:bg-orange-100 transition">
               <Download className="w-4 h-4" /> Template
             </button>
-            <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition ${bulkLoading ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}>
-              {bulkLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><Upload className="w-4 h-4" /> Bulk Upload</>}
-              <input ref={excelFileRef} type="file" accept=".xlsx,.xls" onChange={handleExcelFileSelected} disabled={bulkLoading} className="hidden" />
-            </label>
-            <button onClick={openAdd}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#7c2d12] to-[#ea580c] text-white rounded-xl text-sm font-semibold shadow hover:shadow-md transition-all">
-              <Plus className="w-4 h-4" /> Add Client Advance
-            </button>
+            {!isIntern && (
+              <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition ${bulkLoading ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}>
+                {bulkLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><Upload className="w-4 h-4" /> Bulk Upload</>}
+                <input ref={excelFileRef} type="file" accept=".xlsx,.xls" onChange={handleExcelFileSelected} disabled={bulkLoading} className="hidden" />
+              </label>
+            )}
+            {!isIntern && (
+              <button onClick={openAdd}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#7c2d12] to-[#ea580c] text-white rounded-xl text-sm font-semibold shadow hover:shadow-md transition-all">
+                <Plus className="w-4 h-4" /> Add Client Advance
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -821,12 +837,14 @@ export default function ClientAdvanceTracker() {
                             >
                               <Eye className="w-3.5 h-3.5" /> View Rows
                             </button>
-                            <button
-                              onClick={() => setConfirmBulkDelete(u)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 text-xs font-semibold transition"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" /> Delete
-                            </button>
+                            {!isIntern && (
+                              <button
+                                onClick={() => setConfirmBulkDelete(u)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 text-xs font-semibold transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Delete
+                              </button>
+                            )}
                           </td>
                         </motion.tr>
                       ))}
@@ -914,7 +932,9 @@ export default function ClientAdvanceTracker() {
                       <td className="px-4 py-3.5">
                         <div className="flex gap-2">
                           <button onClick={() => openEdit(r)} className="p-1.5 rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-700 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => setDeleteId(r.id)} className="p-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                          {!isIntern && (
+                            <button onClick={() => setDeleteId(r.id)} className="p-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                          )}
                         </div>
                       </td>
                     </motion.tr>
@@ -987,8 +1007,10 @@ export default function ClientAdvanceTracker() {
               </div>
               <div className="px-6 pb-6 flex justify-end gap-3">
                 <button onClick={() => setShowModal(false)} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50">Cancel</button>
-                <button onClick={handleSave} disabled={saving} className="px-6 py-2.5 bg-gradient-to-r from-[#7c2d12] to-[#ea580c] text-white rounded-xl text-sm font-semibold flex items-center gap-2 shadow disabled:opacity-60">
-                  <Save className="w-4 h-4" /> {saving ? "Saving…" : editRecord ? "Update" : "Save"}
+                <button onClick={handleSave} disabled={saving || isIntern} className={`px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow disabled:opacity-60 ${
+                  isIntern ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-gradient-to-r from-[#7c2d12] to-[#ea580c] text-white"
+                }`}>
+                  <Save className="w-4 h-4" /> {saving ? "Saving…" : isIntern ? "View Only" : editRecord ? "Update" : "Save"}
                 </button>
               </div>
             </motion.div>

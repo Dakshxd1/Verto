@@ -5,6 +5,7 @@ import {
   CreditCard, TrendingUp, AlertCircle, DollarSign
 } from "lucide-react";
 import supabase from "../../lib/supabaseClient";
+import { usePerms } from "../../context/PermissionsContext";
 
 // REMOVED: const BANK_OPTIONS = [...] — now fetched from bank_master
 
@@ -58,6 +59,7 @@ function GoldStatCard({ label, value, icon: Icon }) {
 }
 
 export default function CreditCardTracker() {
+  const { isIntern } = usePerms?.() || {};
   const [cards, setCards] = useState([]);
   const [bills, setBills] = useState([]);
   const [billDetails, setBillDetails] = useState([]);
@@ -124,6 +126,7 @@ export default function CreditCardTracker() {
     setShowCardModal(true);
   }
   async function saveCard() {
+    if (isIntern) return;
     if (!cardForm.bank || !cardForm.card_last4) return;
     setSaving(true);
     if (editCard) { await supabase.from("credit_card_master").update(cardForm).eq("id", editCard.id); }
@@ -145,6 +148,7 @@ export default function CreditCardTracker() {
     setShowBillModal(true);
   }
   async function saveBill() {
+    if (isIntern) return;
     if (!billForm.card_master_id) return;
     setSaving(true);
     const amount_payable = Math.max(0, (parseFloat(billForm.amount) || 0) + (parseFloat(billForm.penalty) || 0) - (parseFloat(billForm.cash_back) || 0));
@@ -163,6 +167,7 @@ export default function CreditCardTracker() {
     setShowDetailFormInline(true);
   }
   async function saveDetail() {
+    if (isIntern) return;
     if (!viewBill) return;
     setSaving(true);
     const payload = { ...detailForm, bill_id: viewBill.id };
@@ -212,10 +217,12 @@ export default function CreditCardTracker() {
             <CreditCard className="w-5 h-5 text-white" />
             <h3 className="text-white font-bold text-base tracking-wide">Credit Card Master</h3>
           </div>
-          <button onClick={openAddCard}
-            className="flex items-center gap-2 px-4 py-2 bg-black/30 hover:bg-black/50 text-white rounded-xl text-sm font-semibold transition-all border border-white/20">
-            <Plus className="w-4 h-4" /> Add Card
-          </button>
+          {!isIntern && (
+            <button onClick={openAddCard}
+              className="flex items-center gap-2 px-4 py-2 bg-black/30 hover:bg-black/50 text-white rounded-xl text-sm font-semibold transition-all border border-white/20">
+              <Plus className="w-4 h-4" /> Add Card
+            </button>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -242,7 +249,9 @@ export default function CreditCardTracker() {
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <button onClick={() => openEditCard(c)} className="p-1.5 rounded-lg transition-colors" style={{ background: "#2a1f00", color: "#d97706" }}><Edit2 className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => setDeleteTarget({ type: "card", id: c.id })} className="p-1.5 rounded-lg bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                      {!isIntern && (
+                        <button onClick={() => setDeleteTarget({ type: "card", id: c.id })} className="p-1.5 rounded-lg bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -265,10 +274,12 @@ export default function CreditCardTracker() {
               <input className="pl-9 pr-4 py-2 text-sm rounded-xl border border-white/20 bg-black/30 text-white placeholder-white/50 focus:outline-none"
                 placeholder="Search cards…" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <button onClick={openAddBill}
-              className="flex items-center gap-2 px-4 py-2 bg-black/30 hover:bg-black/50 text-white rounded-xl text-sm font-semibold transition-all border border-white/20">
-              <Plus className="w-4 h-4" /> Add Bill
-            </button>
+            {!isIntern && (
+              <button onClick={openAddBill}
+                className="flex items-center gap-2 px-4 py-2 bg-black/30 hover:bg-black/50 text-white rounded-xl text-sm font-semibold transition-all border border-white/20">
+                <Plus className="w-4 h-4" /> Add Bill
+              </button>
+            )}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -312,7 +323,9 @@ export default function CreditCardTracker() {
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button onClick={() => openEditBill(b)} className="p-1.5 rounded-lg transition-colors" style={{ background: "#2a1f00", color: "#d97706" }}><Edit2 className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => setDeleteTarget({ type: "bill", id: b.id })} className="p-1.5 rounded-lg bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                        {!isIntern && (
+                          <button onClick={() => setDeleteTarget({ type: "bill", id: b.id })} className="p-1.5 rounded-lg bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                        )}
                       </div>
                     </td>
                   </motion.tr>
@@ -380,8 +393,10 @@ export default function CreditCardTracker() {
               </div>
               <div className="px-6 pb-6 flex justify-end gap-3">
                 <button onClick={() => setShowCardModal(false)} className="px-5 py-2.5 rounded-xl border text-gray-300 text-sm font-semibold" style={{ borderColor: "#78350f" }}>Cancel</button>
-                <button onClick={saveCard} disabled={saving} className="px-6 py-2.5 text-white rounded-xl text-sm font-semibold flex items-center gap-2 shadow disabled:opacity-60" style={{ background: goldGrad }}>
-                  <Save className="w-4 h-4" /> {saving ? "Saving…" : editCard ? "Update" : "Save"}
+                <button onClick={saveCard} disabled={saving || isIntern} className={`px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow disabled:opacity-60 ${
+                  isIntern ? "bg-gray-600 text-gray-300 cursor-not-allowed" : "text-white"
+                }`} style={isIntern ? {} : { background: goldGrad }}>
+                  <Save className="w-4 h-4" /> {saving ? "Saving…" : isIntern ? "View Only" : editCard ? "Update" : "Save"}
                 </button>
               </div>
             </motion.div>
@@ -432,8 +447,10 @@ export default function CreditCardTracker() {
               </div>
               <div className="px-6 pb-6 flex justify-end gap-3">
                 <button onClick={() => setShowBillModal(false)} className="px-5 py-2.5 rounded-xl border text-gray-300 text-sm font-semibold" style={{ borderColor: "#78350f" }}>Cancel</button>
-                <button onClick={saveBill} disabled={saving} className="px-6 py-2.5 text-white rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-60" style={{ background: goldGrad }}>
-                  <Save className="w-4 h-4" /> {saving ? "Saving…" : editBill ? "Update" : "Save"}
+                <button onClick={saveBill} disabled={saving || isIntern} className={`px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-60 ${
+                  isIntern ? "bg-gray-600 text-gray-300 cursor-not-allowed" : "text-white"
+                }`} style={isIntern ? {} : { background: goldGrad }}>
+                  <Save className="w-4 h-4" /> {saving ? "Saving…" : isIntern ? "View Only" : editBill ? "Update" : "Save"}
                 </button>
               </div>
             </motion.div>
@@ -454,10 +471,12 @@ export default function CreditCardTracker() {
                   <p className="text-white/70 text-xs mt-0.5">{viewCard?.bank} | {viewCard?.issued_to} | Cycle: {viewCard?.billing_cycle_from} → {viewCard?.billing_cycle_to}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={startAddDetail}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-black/30 hover:bg-black/50 text-white rounded-xl text-sm font-semibold border border-white/20">
-                    <Plus className="w-4 h-4" /> Add Expense
-                  </button>
+                  {!isIntern && (
+                    <button onClick={startAddDetail}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-black/30 hover:bg-black/50 text-white rounded-xl text-sm font-semibold border border-white/20">
+                      <Plus className="w-4 h-4" /> Add Expense
+                    </button>
+                  )}
                   <button onClick={() => setShowDetailModal(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
                 </div>
               </div>
@@ -514,9 +533,11 @@ export default function CreditCardTracker() {
                       <div className="col-span-3 flex justify-end gap-3 pt-1">
                         <button onClick={() => { setShowDetailFormInline(false); setEditDetail(null); }}
                           className="px-4 py-2 rounded-xl border text-gray-300 text-sm font-semibold" style={{ borderColor: "#78350f" }}>Cancel</button>
-                        <button onClick={saveDetail} disabled={saving}
-                          className="px-5 py-2 text-white rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-60" style={{ background: goldGrad }}>
-                          <Save className="w-4 h-4" /> {saving ? "Saving…" : editDetail ? "Update" : "Add"}
+                        <button onClick={saveDetail} disabled={saving || isIntern}
+                          className={`px-5 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-60 ${
+                            isIntern ? "bg-gray-600 text-gray-300 cursor-not-allowed" : "text-white"
+                          }`} style={isIntern ? {} : { background: goldGrad }}>
+                          <Save className="w-4 h-4" /> {saving ? "Saving…" : isIntern ? "View Only" : editDetail ? "Update" : "Add"}
                         </button>
                       </div>
                     </div>
@@ -553,7 +574,9 @@ export default function CreditCardTracker() {
                         <td className="px-4 py-3">
                           <div className="flex gap-2">
                             <button onClick={() => startEditDetail(d)} className="p-1.5 rounded-lg transition-colors" style={{ background: "#2a1f00", color: "#d97706" }}><Edit2 className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => setDeleteTarget({ type: "detail", id: d.id })} className="p-1.5 rounded-lg bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                            {!isIntern && (
+                              <button onClick={() => setDeleteTarget({ type: "detail", id: d.id })} className="p-1.5 rounded-lg bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                            )}
                           </div>
                         </td>
                       </motion.tr>
