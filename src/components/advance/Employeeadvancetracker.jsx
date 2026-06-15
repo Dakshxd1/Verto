@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import supabase from "../../lib/supabaseClient";
+import { usePerms } from "../../context/PermissionsContext";
 
 const STATUS_OPTIONS = ["Pending", "Partially Paid", "Closed"];
 const DEPT_OPTIONS = ["HR", "Finance", "Operations", "Sales", "IT", "Admin", "Marketing"];
@@ -36,6 +37,7 @@ function StatCard({ label, value, icon: Icon, color, bg }) {
 }
 
 export default function EmployeeAdvanceTracker() {
+  const { isIntern } = usePerms?.() || {};
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -106,6 +108,7 @@ export default function EmployeeAdvanceTracker() {
   }
 
   async function handleSave() {
+    if (isIntern) return;
     if (!form.employee_name || !form.advance_amount) return;
     setSaving(true);
 
@@ -298,30 +301,36 @@ export default function EmployeeAdvanceTracker() {
           </div>
           <div className="flex gap-2">
             {/* Excel Upload */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={handleExcelUpload}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold shadow transition-all disabled:opacity-60"
-            >
-              {uploading ? (
-                <span className="flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 animate-pulse" /> Importing…</span>
-              ) : (
-                <><Upload className="w-4 h-4" /> Import Excel</>
-              )}
-            </button>
-            <button
-              onClick={openAdd}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-700 to-blue-500 text-white rounded-xl text-sm font-semibold shadow hover:shadow-md hover:from-blue-800 transition-all"
-            >
-              <Plus className="w-4 h-4" /> Add Advance
-            </button>
+            {!isIntern && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={handleExcelUpload}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold shadow transition-all disabled:opacity-60"
+                >
+                  {uploading ? (
+                    <span className="flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 animate-pulse" /> Importing…</span>
+                  ) : (
+                    <><Upload className="w-4 h-4" /> Import Excel</>
+                  )}
+                </button>
+              </>
+            )}
+            {!isIntern && (
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-700 to-blue-500 text-white rounded-xl text-sm font-semibold shadow hover:shadow-md hover:from-blue-800 transition-all"
+              >
+                <Plus className="w-4 h-4" /> Add Advance
+              </button>
+            )}
           </div>
         </div>
 
@@ -389,9 +398,11 @@ export default function EmployeeAdvanceTracker() {
                           <button onClick={() => openEdit(r)} className="p-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 transition-colors">
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => setDeleteId(r.id)} className="p-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 transition-colors">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {!isIntern && (
+                            <button onClick={() => setDeleteId(r.id)} className="p-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </motion.tr>
@@ -514,8 +525,10 @@ export default function EmployeeAdvanceTracker() {
 
               <div className="px-6 pb-6 flex justify-end gap-3">
                 <button onClick={() => setShowModal(false)} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50">Cancel</button>
-                <button onClick={handleSave} disabled={saving} className="px-6 py-2.5 bg-gradient-to-r from-blue-700 to-blue-500 text-white rounded-xl text-sm font-semibold flex items-center gap-2 shadow hover:shadow-md disabled:opacity-60">
-                  <Save className="w-4 h-4" /> {saving ? "Saving…" : editRecord ? "Update" : "Save"}
+                <button onClick={handleSave} disabled={saving || isIntern} className={`px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow hover:shadow-md disabled:opacity-60 ${
+                  isIntern ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-gradient-to-r from-blue-700 to-blue-500 text-white"
+                }`}>
+                  <Save className="w-4 h-4" /> {saving ? "Saving…" : isIntern ? "View Only" : editRecord ? "Update" : "Save"}
                 </button>
               </div>
             </motion.div>

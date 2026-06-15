@@ -2,11 +2,13 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Save } from "lucide-react";
 import supabase from "../../lib/supabaseClient";
+import { usePerms } from "../../context/PermissionsContext";
 
 const TYPE_OPTIONS = ["Employee Advance", "Client Advance"];
 const STATUS_OPTIONS = ["Pending", "Partially Paid", "Closed"];
 
 export default function AddAdvanceLoanModal({ isOpen, onClose }) {
+  const { isIntern } = usePerms?.() || {};
   const [type, setType] = useState("Employee Advance");
   const [form, setForm] = useState({
     name: "",
@@ -110,6 +112,7 @@ export default function AddAdvanceLoanModal({ isOpen, onClose }) {
 
   // ── Save ─────────────────────────────────────────────────────────────────
   async function handleSave() {
+    if (isIntern) return;
     if (!form.name || !form.amount) return;
     setSaving(true);
 
@@ -461,11 +464,13 @@ export default function AddAdvanceLoanModal({ isOpen, onClose }) {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving}
-                className="px-6 py-2.5 bg-gradient-to-r from-blue-700 to-blue-500 text-white rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
+                disabled={saving || isIntern}
+                className={`px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-60 ${
+                  isIntern ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-gradient-to-r from-blue-700 to-blue-500 text-white"
+                }`}
               >
                 <Save className="w-4 h-4" />
-                {saving ? "Saving…" : "Save"}
+                {saving ? "Saving…" : isIntern ? "View Only" : "Save"}
               </button>
             </div>
           </motion.div>
