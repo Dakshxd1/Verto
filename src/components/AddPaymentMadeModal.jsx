@@ -18,6 +18,7 @@ import {
   Eye,
 } from "lucide-react";
 import ViewPaymentModal from "./ViewPaymentModal";
+import { usePerms } from "../context/PermissionsContext";
 
 /* ─────────────────────────────────────────────
    Tiny helpers
@@ -42,6 +43,7 @@ const selectCls =
    Main Component
 ───────────────────────────────────────────── */
 const AddPaymentMadeModal = ({ isOpen, onClose, invoice, onSaved }) => {
+  const { isIntern } = usePerms?.() || {};
   /* form state */
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
@@ -123,7 +125,9 @@ const AddPaymentMadeModal = ({ isOpen, onClose, invoice, onSaved }) => {
   const isPettyCash = paymentType === "Petty Cash";
 
   /* ── save handler ── */
+  /* ── save handler ── */
   const handleSave = async () => {
+    if (isIntern) return;
     if (!amount || !date) return alert("Amount and Date are required");
     if (paymentType === "Invoice" && !resolvedInvoiceId)
       return alert("Please select an invoice");
@@ -653,9 +657,11 @@ const AddPaymentMadeModal = ({ isOpen, onClose, invoice, onSaved }) => {
             </button>
             <button
               onClick={handleSave}
-              disabled={loading}
+              disabled={loading || isIntern}
               className={`flex-1 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-60 ${
-                isBillable
+                isIntern
+                  ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                  : isBillable
                   ? "bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-500/30"
                   : "bg-slate-800 hover:bg-slate-900 text-white shadow-lg shadow-slate-800/20"
               }`}
@@ -667,12 +673,14 @@ const AddPaymentMadeModal = ({ isOpen, onClose, invoice, onSaved }) => {
                 </>
               ) : (
                 <>
-                  {isPettyCash
+                  {isIntern
+                    ? "Intern — View Only"
+                    : isPettyCash
                     ? "Top Up Petty Cash"
                     : isBillable
                     ? "Save & Update Outstanding"
                     : "Save Payment"}
-                  <ArrowRight size={15} />
+                  {!isIntern && <ArrowRight size={15} />}
                 </>
               )}
             </button>

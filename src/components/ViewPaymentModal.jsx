@@ -111,6 +111,7 @@ const DeleteConfirm = ({ payment, onConfirm, onCancel, loading }) => (
    Inline Edit Row
 ───────────────────────────────────────────── */
 const EditRow = ({ payment, banks, onSave, onCancel, saving }) => {
+  const { isIntern } = usePerms();
   const [form, setForm] = useState({
     amount:       String(payment.amount || ""),
     payment_date: payment.payment_date || "",
@@ -164,11 +165,13 @@ const EditRow = ({ payment, banks, onSave, onCancel, saving }) => {
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => onSave(payment.id, form)}
-            disabled={saving}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors disabled:opacity-60"
+            disabled={saving || isIntern}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-60 ${
+              isIntern ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700 text-white"
+            }`}
           >
             {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
-            Save
+            {isIntern ? "View Only" : "Save"}
           </button>
           <button
             onClick={onCancel}
@@ -242,7 +245,7 @@ const exportToExcel = (rows) => {
    Main Component
 ───────────────────────────────────────────── */
 const ViewPaymentModal = ({ isOpen, onClose, invoice }) => {
-  const { canEdit, canDelete, canExport } = usePerms();
+  const { canEdit, canDelete, canExport, isIntern } = usePerms();
   const [payments, setPayments]     = useState([]);
   const [loading, setLoading]       = useState(false);
   const [search, setSearch]         = useState("");
@@ -314,6 +317,7 @@ const ViewPaymentModal = ({ isOpen, onClose, invoice }) => {
 
   /* ── EDIT SAVE ── */
   const handleSave = async (id, form) => {
+    if (isIntern) return;
     setSavingId(id);
     try {
       const payload = {
@@ -361,6 +365,7 @@ const ViewPaymentModal = ({ isOpen, onClose, invoice }) => {
 
   /* ── DELETE ── */
   const handleDelete = async () => {
+    if (isIntern) return;
     if (!deleteTarget) return;
     setDeletingId(deleteTarget.id);
 
@@ -579,7 +584,7 @@ const ViewPaymentModal = ({ isOpen, onClose, invoice }) => {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
-                            {canEdit && (
+                            {canEdit && !isIntern && (
                               <button
                                 onClick={() => { setEditingId(p.id); setDeleteTarget(null); }}
                                 title="Edit"
@@ -588,7 +593,7 @@ const ViewPaymentModal = ({ isOpen, onClose, invoice }) => {
                                 <Pencil size={13} />
                               </button>
                             )}
-                            {canDelete && (
+                            {canDelete && !isIntern && (
                               <button
                                 onClick={() => { setDeleteTarget(p); setEditingId(null); }}
                                 title="Delete"
