@@ -1484,8 +1484,8 @@ const OsPayoutRecordsView = ({
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => saveEdit(row)}
-                            disabled={saving}
-                            className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 disabled:opacity-50"
+                            disabled={saving || isIntern}
+                            className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {saving ? (
                               <Loader2 size={10} className="animate-spin" />
@@ -1636,7 +1636,7 @@ const OsPayoutRecordsView = ({
                           >
                             <Eye size={13} />
                           </button>
-                          {canEdit && (
+                          {canEdit && !isIntern && (
                             <button
                               onClick={() => startEdit(row)}
                               className="p-1.5 rounded-lg hover:bg-indigo-100 text-indigo-600 transition"
@@ -1645,13 +1645,15 @@ const OsPayoutRecordsView = ({
                               <Pencil size={13} />
                             </button>
                           )}
-                          <button
-                            onClick={() => openBbModal(row)}
-                            className="p-1.5 rounded-lg hover:bg-rose-100 text-rose-500 transition"
-                            title="Add Bounce Back"
-                          >
-                            <CornerDownLeft size={13} />
-                          </button>
+                          {!isIntern && (
+                            <button
+                              onClick={() => openBbModal(row)}
+                              className="p-1.5 rounded-lg hover:bg-rose-100 text-rose-500 transition"
+                              title="Add Bounce Back"
+                            >
+                              <CornerDownLeft size={13} />
+                            </button>
+                          )}
                           {canDelete && !isIntern && (
                             <button
                               onClick={() => deleteRecord(row)}
@@ -1897,8 +1899,8 @@ const OsPayoutRecordsView = ({
               </button>
               <button
                 onClick={saveBB}
-                disabled={bbSaving}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold transition flex items-center justify-center gap-2 disabled:opacity-60"
+                disabled={bbSaving || isIntern}
+                className={`flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold transition flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed`}
               >
                 {bbSaving ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -1977,13 +1979,15 @@ const OsPayoutRecordsView = ({
                         <p className="font-bold text-rose-700">
                           {fmtCur(bb.bb_amount)}
                         </p>
-                        <button
-                          onClick={() => deleteBB(bb, drillRow)}
-                          className="text-[10px] text-red-400 hover:text-red-600 mt-0.5 flex items-center gap-0.5 ml-auto"
-                        >
-                          <Trash2 size={10} />
-                          Delete
-                        </button>
+                        {!isIntern && (
+                          <button
+                            onClick={() => deleteBB(bb, drillRow)}
+                            className="text-[10px] text-red-400 hover:text-red-600 mt-0.5 flex items-center gap-0.5 ml-auto"
+                          >
+                            <Trash2 size={10} />
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -2059,17 +2063,19 @@ const OsPayoutRecordsView = ({
               )}
             </div>
 
-            <div className="px-5 py-3 border-t flex gap-2">
-              <button
-                onClick={() => {
-                  setDrillRow(null);
-                  openBbModal(drillRow);
-                }}
-                className="flex-1 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 transition flex items-center justify-center gap-2"
-              >
-                <CornerDownLeft size={14} />
-                Add Another BB
-              </button>
+              <div className="px-5 py-3 border-t flex gap-2">
+              {!isIntern && (
+                <button
+                  onClick={() => {
+                    setDrillRow(null);
+                    openBbModal(drillRow);
+                  }}
+                  className="flex-1 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 transition flex items-center justify-center gap-2"
+                >
+                  <CornerDownLeft size={14} />
+                  Add Another BB
+                </button>
+              )}
               <button
                 onClick={() => setDrillRow(null)}
                 className="flex-1 py-2 rounded-xl bg-gray-800 text-white text-sm font-semibold hover:bg-gray-900 transition"
@@ -2174,27 +2180,31 @@ const OsPayoutRecordsView = ({
                 </div>
               ))}
             </div>
-            <div className="px-5 py-3 border-t flex gap-2">
-              <button
-                onClick={() => {
-                  setViewRow(null);
-                  openBbModal(viewRow);
-                }}
-                className="flex-1 py-2 rounded-xl border-2 border-rose-200 text-rose-600 text-sm font-semibold hover:bg-rose-50 transition flex items-center justify-center gap-2"
-              >
-                <CornerDownLeft size={14} />
-                Add BB
-              </button>
-              <button
-                onClick={() => {
-                  setViewRow(null);
-                  startEdit(viewRow);
-                }}
-                className="flex-1 py-2 rounded-xl border-2 border-indigo-200 text-indigo-700 text-sm font-semibold hover:bg-indigo-50 transition flex items-center justify-center gap-2"
-              >
-                <Pencil size={14} />
-                Edit
-              </button>
+              <div className="px-5 py-3 border-t flex gap-2">
+              {!isIntern && (
+                <button
+                  onClick={() => {
+                    setViewRow(null);
+                    openBbModal(viewRow);
+                  }}
+                  className="flex-1 py-2 rounded-xl border-2 border-rose-200 text-rose-600 text-sm font-semibold hover:bg-rose-50 transition flex items-center justify-center gap-2"
+                >
+                  <CornerDownLeft size={14} />
+                  Add BB
+                </button>
+              )}
+              {!isIntern && (
+                <button
+                  onClick={() => {
+                    setViewRow(null);
+                    startEdit(viewRow);
+                  }}
+                  className="flex-1 py-2 rounded-xl border-2 border-indigo-200 text-indigo-700 text-sm font-semibold hover:bg-indigo-50 transition flex items-center justify-center gap-2"
+                >
+                  <Pencil size={14} />
+                  Edit
+                </button>
+              )}
               <button
                 onClick={() => setViewRow(null)}
                 className="flex-1 py-2 rounded-xl bg-gray-800 text-white text-sm font-semibold hover:bg-gray-900 transition"
