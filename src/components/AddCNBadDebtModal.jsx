@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import supabase from "../lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
+import { usePerms } from "../context/PermissionsContext";
 import {
   X,
   ArrowRight,
@@ -347,7 +348,7 @@ const InvoiceCard = ({ d }) => (
 );
 
 // ─── CN Records Panel ─────────────────────────────────────────────────────────
-const CNRecordsPanel = ({ onClose, onEdit }) => {
+const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete }) => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
@@ -820,18 +821,22 @@ const CNRecordsPanel = ({ onClose, onEdit }) => {
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => onEdit?.(row)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-semibold border border-amber-200 transition-colors"
-                          >
-                            <Pencil className="w-3 h-3" /> Edit
-                          </button>
-                          <button
-                            onClick={() => setConfirmId(row.id)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold border border-red-100 transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" /> Delete
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => onEdit?.(row)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-semibold border border-amber-200 transition-colors"
+                            >
+                              <Pencil className="w-3 h-3" /> Edit
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => setConfirmId(row.id)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold border border-red-100 transition-colors"
+                            >
+                              <Trash2 className="w-3 h-3" /> Delete
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -941,6 +946,7 @@ const AddCNBadDebtModal = ({
   const [refStatus, setRefStatus] = useState(null);
   const [invoiceList, setInvoiceList] = useState([]);
   const refCheckTimer = useRef(null);
+  const { canSave, isIntern, canEdit, canDelete } = usePerms();
 
   // ── Fetch invoice list ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -1412,6 +1418,8 @@ const AddCNBadDebtModal = ({
                 <CNRecordsPanel
                   onClose={() => setViewOpen(false)}
                   onEdit={handleEditEntry}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
                 />
               )}
             </AnimatePresence>
@@ -1448,6 +1456,14 @@ const AddCNBadDebtModal = ({
             {/* Form */}
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
               <form onSubmit={handleSubmit} className="space-y-5">
+                {/* Intern banner */}
+                {isIntern && (
+                  <div style={{background: '#f3e8ff', border: '1px solid #a855f7', borderRadius: '0.75rem', padding: '0.75rem 1rem'}}>
+                    <p style={{fontSize: '0.875rem', color: '#6b21a8', margin: 0}}>
+                      <strong>Training Mode</strong> — You can explore but cannot save.
+                    </p>
+                  </div>
+                )}
                 {/* Type toggle */}
                 <div className="flex gap-3">
                   {["CN", "Bad Debt"].map((t) => (
@@ -2165,31 +2181,33 @@ const AddCNBadDebtModal = ({
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    disabled={
-                      loading ||
-                      refStatus === "taken" ||
-                      refStatus === "checking" ||
-                      overLimit
-                    }
-                    className={`px-8 py-2.5 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium shadow-lg flex items-center gap-2 ${
-                      formData.optionType === "Bad Debt"
-                        ? "bg-red-600 hover:bg-red-700 shadow-red-200"
-                        : "bg-violet-600 hover:bg-violet-700 shadow-violet-200"
-                    }`}
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Saving…
-                      </>
-                    ) : (
-                      <>
-                        <span>{editingEntry ? `Update ${formData.optionType}` : `Save ${formData.optionType}`}</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
+                  {canSave && (
+                    <button
+                      type="submit"
+                      disabled={
+                        loading ||
+                        refStatus === "taken" ||
+                        refStatus === "checking" ||
+                        overLimit
+                      }
+                      className={`px-8 py-2.5 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium shadow-lg flex items-center gap-2 ${
+                        formData.optionType === "Bad Debt"
+                          ? "bg-red-600 hover:bg-red-700 shadow-red-200"
+                          : "bg-violet-600 hover:bg-violet-700 shadow-violet-200"
+                      }`}
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Saving…
+                        </>
+                      ) : (
+                        <>
+                          <span>{editingEntry ? `Update ${formData.optionType}` : `Save ${formData.optionType}`}</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </form>
             </div>

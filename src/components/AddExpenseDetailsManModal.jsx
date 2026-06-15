@@ -2236,6 +2236,8 @@ const OS_PAY_HEADS = ["Salary", "Claim", "Incentive", "Other"];
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
+  const { role } = usePerms?.() || {};
+
   const [selectedOption, setSelectedOption] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -3596,9 +3598,11 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
         </div>
         <button
           onClick={saveInternal}
-          disabled={loading || saved}
+          disabled={loading || saved || role?.toLowerCase() === "intern"}
           className={`px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 min-w-[160px] justify-center transition ${
-            saved
+            role?.toLowerCase() === "intern"
+              ? "bg-blue-200 text-blue-700 cursor-not-allowed"
+              : saved
               ? "bg-emerald-500 text-white"
               : "bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60"
           }`}

@@ -17,6 +17,7 @@ import {
   StickyNote,
   ShieldCheck,
 } from "lucide-react";
+import { usePerms } from "../context/PermissionsContext";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const inr = (v) => Number(v || 0).toLocaleString("en-IN");
@@ -139,6 +140,7 @@ const StatutoryRecordsPanel = ({ onClose }) => {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState("");
+  const { canEdit, canDelete, isIntern } = usePerms();
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -483,18 +485,22 @@ const StatutoryRecordsPanel = ({ onClose }) => {
                     </div>
                   ) : (
                     <>
-                      <button
-                        onClick={() => startEdit(row)}
-                        className="p-2 text-gray-300 hover:text-cyan-500 hover:bg-cyan-50 rounded-xl border-2 border-transparent hover:border-cyan-100 transition-all"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setConfirmId(row.id)}
-                        className="p-2 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl border-2 border-transparent hover:border-rose-100 transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => startEdit(row)}
+                          className="p-2 text-gray-300 hover:text-cyan-500 hover:bg-cyan-50 rounded-xl border-2 border-transparent hover:border-cyan-100 transition-all"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => setConfirmId(row.id)}
+                          className="p-2 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl border-2 border-transparent hover:border-rose-100 transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -641,6 +647,7 @@ const AddStatutoryPayoutModal = ({
   banks: banksProp = [],
 }) => {
   const [banks, setBanks] = useState(banksProp);
+  const { canSave, isIntern } = usePerms();
 
   // Fetch banks directly so the dropdown is always populated
   useEffect(() => {
@@ -1310,21 +1317,23 @@ const AddStatutoryPayoutModal = ({
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex items-center gap-2 px-8 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-black rounded-xl shadow-lg shadow-cyan-500/25 transition-all"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Saving…
-                      </>
-                    ) : (
-                      <>
-                        Save Statutory Payout <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
+                  {canSave && (
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex items-center gap-2 px-8 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-black rounded-xl shadow-lg shadow-cyan-500/25 transition-all"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Saving…
+                        </>
+                      ) : (
+                        <>
+                          Save Statutory Payout <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </form>
             </div>

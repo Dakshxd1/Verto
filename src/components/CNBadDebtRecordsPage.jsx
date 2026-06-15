@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import supabase from "../lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
+import { usePerms } from "../context/PermissionsContext";
 import {
   Search,
   Trash2,
@@ -193,6 +194,7 @@ const CNBadDebtRecordsPage = () => {
   const [deletingId, setDeletingId]   = useState(null);
   const [toast, setToast]             = useState(null);
   const [expandedId, setExpandedId]   = useState(null);
+  const { canDelete, isIntern } = usePerms();
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -295,7 +297,14 @@ const CNBadDebtRecordsPage = () => {
   // ── Render ────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
-
+      {/* Intern banner */}
+      {isIntern && (
+        <div style={{background: '#f3e8ff', border: '1px solid #a855f7', borderRadius: '0.75rem', padding: '0.75rem 1rem', margin: '1rem'}}>
+          <p style={{fontSize: '0.875rem', color: '#6b21a8', margin: 0}}>
+            <strong>Training Mode</strong> — You can view but cannot delete records.
+          </p>
+        </div>
+      )}
       {/* ── Page Header ───────────────────────────────────── */}
       <div className="bg-gradient-to-r from-violet-700 via-purple-700 to-indigo-800 px-6 py-8 text-white">
         <div className="max-w-7xl mx-auto">
@@ -542,7 +551,7 @@ const CNBadDebtRecordsPage = () => {
                         </button>
                         {deletingId === row.id ? (
                           <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
-                        ) : (
+                        ) : canDelete ? (
                           <button
                             onClick={() => setConfirmRecord(row)}
                             className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -550,7 +559,7 @@ const CNBadDebtRecordsPage = () => {
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        )}
+                        ) : null}
                       </div>
                     </div>
 
@@ -643,14 +652,14 @@ const CNBadDebtRecordsPage = () => {
                         <div>
                           {deletingId === row.id ? (
                             <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
-                          ) : (
+                          ) : canDelete ? (
                             <button
                               onClick={() => setConfirmRecord(row)}
                               className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                     </div>
