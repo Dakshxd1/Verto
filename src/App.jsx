@@ -1,17 +1,17 @@
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "./context/AuthContext";
+import { PermissionsContext } from "./context/PermissionsContext";
+import { usePermissions } from "./hooks/usePermissions";
 import Login from "./pages/Login";
 import UserManagement from "./pages/UserManagement";
 import SessionMonitor from "./components/SessionMonitor";
 import LivePopup from "./components/LivePopup";
-import AuditLogPage from "./components/Auditlogpage";
 import MyAccountPage from "./components/Myaccountpage";
 import supabase from "./lib/supabaseClient";
 import CommandPalette from "./components/CommandPalette";
 import ShortcutsHelp from "./components/ShortcutsHelp";
-import FinanceRegisterPage from "./components/Financeregisterpage";
 import {
   LayoutDashboard,
   TrendingUp,
@@ -36,33 +36,35 @@ import {
 } from "lucide-react";
 
 // Import Components
-import Dashboard from "./components/Dashboard";
-import ProfitCenterPL from "./components/ProfitCenterPL";
-import ClientPL from "./components/ClientPL";
-import InternalCost from "./components/InternalCost";
-import BankReco from "./components/BankReco";
+// ── Static imports (small / always needed) ──────────────────────
+import InternModeBanner from "./components/InternModeBanner.jsx";
 import AddPaymentReceivedModal from "./components/AddPaymentReceivedModal";
 import AddInvoiceModal from "./components/AddInvoiceModal";
 import AddCNBadDebtModal from "./components/AddCNBadDebtModal";
 import AddBounceBackModal from "./components/AddBounceBackModal";
 import AddInternalTeamModal from "./components/AddInternalTeamModal";
 import AddPaymentMadeModal from "./components/AddPaymentMadeModal";
-import InternalTeamDetails from "./components/InternalTeamDetails";
 import AddExpenseDetailsModal from "./components/AddExpenseDetailsModal";
 import AddInterestPenaltyModal from "./components/AddInterestPenaltyModal";
 import AddExpenseDetailsManModal from "./components/AddExpenseDetailsManModal";
-import LedgerPage from "./components/LedgerPage";
-import PettyCashPage from "./components/PettyCashPage";
-import AdvanceCreditCardLockerPage from "./components/advance/Advancecreditcardlockerpage.jsx";
 import AddAdvanceLoanModal from "./components/advance/Addadvanceloanmodal.jsx";
 import AddCreditCardModal from "./components/advance/Addcreditcardmodal.jsx";
 import AddStatutoryPayoutModal from "./components/AddStatutoryPayoutModal";
-import SettingsPage from "./components/Settingspage.jsx";
-import AnalyticsDashboard from "./components/Analyticsdashboard.jsx";
-import InternModeBanner from "./components/InternModeBanner.jsx";
-import { useInternGuard } from "./hooks/useInternGuard";
-import { PermissionsContext } from "./context/PermissionsContext";
-import { usePermissions } from "./hooks/usePermissions";
+
+// ── Lazy imports (heavy page components) ────────────────────────
+const Dashboard              = React.lazy(() => import("./components/Dashboard"));
+const ProfitCenterPL         = React.lazy(() => import("./components/ProfitCenterPL"));
+const ClientPL               = React.lazy(() => import("./components/ClientPL"));
+const InternalCost           = React.lazy(() => import("./components/InternalCost"));
+const BankReco               = React.lazy(() => import("./components/BankReco"));
+const InternalTeamDetails    = React.lazy(() => import("./components/InternalTeamDetails"));
+const LedgerPage             = React.lazy(() => import("./components/LedgerPage"));
+const PettyCashPage          = React.lazy(() => import("./components/PettyCashPage"));
+const AdvanceCreditCardLockerPage = React.lazy(() => import("./components/advance/Advancecreditcardlockerpage.jsx"));
+const SettingsPage           = React.lazy(() => import("./components/Settingspage.jsx"));
+const AnalyticsDashboard     = React.lazy(() => import("./components/Analyticsdashboard.jsx"));
+const AuditLogPage           = React.lazy(() => import("./components/Auditlogpage"));
+const FinanceRegisterPage    = React.lazy(() => import("./components/Financeregisterpage"));
 
 // ── Manage Team Modal ──────────────────────────────────────────────────────
 const ManageTeamModal = ({ onClose, role }) => {
@@ -380,16 +382,22 @@ const ManageTeamModal = ({ onClose, role }) => {
               </motion.div>
             )}
             {activeSection === "audit" && (
-              <motion.div
-                key="audit"
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 12 }}
-                transition={{ duration: 0.2 }}
-                className="p-8"
-              >
-                <AuditLogPage />
-              </motion.div>
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-16">
+                  <div className="w-6 h-6 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                </div>
+              }>
+                <motion.div
+                  key="audit"
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 12 }}
+                  transition={{ duration: 0.2 }}
+                  className="p-8"
+                >
+                  <AuditLogPage />
+                </motion.div>
+              </Suspense>
             )}
           </AnimatePresence>
         </div>
@@ -509,8 +517,8 @@ function App() {
     sessionKicked,
   } = useAuth();
 
-  const { isIntern, blockIfIntern } = useInternGuard();
   const permissions = usePermissions();
+  const { isIntern } = permissions;
 
   useEffect(() => {
     const checkMidnightLogout = async () => {
@@ -601,7 +609,7 @@ function App() {
       Object.entries(handlers).forEach(([ev, fn]) =>
         window.removeEventListener(ev, fn)
       );
-  }, [isIntern, blockIfIntern]);
+  }, [isIntern]);
   if (sessionKicked) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#05060f] px-4">
@@ -1104,6 +1112,11 @@ function App() {
 
         {/* Page Content */}
         <div className="flex-1 overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-6 lg:p-8 relative z-0">
+          <Suspense fallback={
+            <div className="flex h-full items-center justify-center py-20">
+              <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+            </div>
+          }>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -1154,6 +1167,7 @@ function App() {
               )}
             </motion.div>
           </AnimatePresence>
+          </Suspense>
         </div>
         {/* ── MOBILE BOTTOM NAV ── */}
         <nav
@@ -1330,7 +1344,13 @@ function App() {
                 className="overflow-y-auto p-6"
                 style={{ maxHeight: "calc(92vh - 90px)" }}
               >
-                <FinanceRegisterPage />
+                <Suspense fallback={
+                  <div className="flex items-center justify-center py-20">
+                    <div className="w-6 h-6 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                  </div>
+                }>
+                  <FinanceRegisterPage />
+                </Suspense>
               </div>
             </motion.div>
           </div>
