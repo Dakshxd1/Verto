@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import supabase from "../lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -227,8 +227,6 @@ const BounceBackRecordsPanel = ({ onClose }) => {
 const AddBounceBackModal = ({
   isOpen,
   onClose,
-  invoices = [],
-  paymentReferences = [],
 }) => {
   const [formData, setFormData] = useState({
     invoiceOrPaymentRef: "",
@@ -241,38 +239,108 @@ const AddBounceBackModal = ({
   const [errors, setErrors] = useState({});
   const [showErrors, setShowErrors] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState(null);
+  const [paymentDetails, setPaymentDetails] = useState(null); // extra info when a pay ref is picked
   const [loading, setLoading] = useState(false);
   const [banks, setBanks] = useState([]);
   const [selectedBankId, setSelectedBankId] = useState("");   // UUID – only for display
   const [selectedBankName, setSelectedBankName] = useState(""); // Text stored in bounce_back.bank_details
   const [viewOpen, setViewOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const suggestionsRef = useRef(null);
   const { canSave, canDelete, isIntern } = usePerms();
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: "" }));
+    if (field === "invoiceOrPaymentRef") {
+      searchReferences(value);
+    }
   };
+
+  // ── Live search against bounce_back_reference_search view ──────────────────
+  const searchReferences = useCallback(async (query) => {
+    if (!query || query.trim().length < 1) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      const { data } = await supabase
+        .from("bounce_back_reference_search")
+        .select("invoice_id, reference_value, reference_type, client_name")
+        .ilike("reference_value", `%${query}%`)
+        .limit(10);
+      setSuggestions(data || []);
+      setShowSuggestions(true);
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, []);
+
+  // ── When user clicks a suggestion row ──────────────────────────────────────
+  const handleSelectSuggestion = (suggestion) => {
+    setFormData((prev) => ({
+      ...prev,
+      invoiceOrPaymentRef: suggestion.reference_value,
+    }));
+    if (errors.invoiceOrPaymentRef)
+      setErrors((prev) => ({ ...prev, invoiceOrPaymentRef: "" }));
+    setSuggestions([]);
+    setShowSuggestions(false);
+  };
+
+  // ── Close dropdown when clicking outside ───────────────────────────────────
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // ── Auto-populate invoice details ──────────────────────────────────────────
   useEffect(() => {
     const fetchDetails = async () => {
       if (!formData.invoiceOrPaymentRef) {
         setSelectedDetails(null);
+        setPaymentDetails(null);
         return;
       }
 
       let invoiceId = null;
+      let paymentRow = null;
 
       // Try payment_ref first
       const { data: payment } = await supabase
         .from("payments_received")
-        .select("invoice_id, bank_id")
+        .select("invoice_id, bank_id, amount_received, payment_date, remarks")
         .eq("payment_ref", formData.invoiceOrPaymentRef)
         .maybeSingle();
 
       if (payment?.invoice_id) {
         invoiceId = payment.invoice_id;
+        paymentRow = payment;
+
+        // Fetch bank name for the payment
+        if (payment.bank_id) {
+          const { data: bm } = await supabase
+            .from("bank_master")
+            .select("bank_name")
+            .eq("id", payment.bank_id)
+            .maybeSingle();
+          paymentRow = { ...payment, bank_name: bm?.bank_name || null };
+        }
+
+        setPaymentDetails(paymentRow);
       } else {
+        setPaymentDetails(null);
         // Fall back to invoice_number
         const { data: inv } = await supabase
           .from("invoices")
@@ -300,12 +368,22 @@ const AddBounceBackModal = ({
 
       setSelectedDetails({
         invoice_id: data.id,
-        bank_id: data.bank_id || payment?.bank_id || null, // bank_id from invoice/payment for entries
+        bank_id: payment?.bank_id || null,
         invoiceNumber: data.invoice_number,
+        invoiceDate: data.invoice_date,
         client: data.client_name,
         ledger: data.ledger_name,
         department: data.dept_name,
         entity: data.entity_name,
+        payHead: data.pay_head,
+        employeeCount: data.employee_count,
+        status: data.calculated_status || data.status,
+        agingBucket: data.aging_bucket,
+        daysOverdue: data.days_overdue,
+        receivableAmount: data.receivable_amount || 0,
+        amountReceived: data.amount_received || 0,
+        bounceAmount: data.bounce_amount || 0,
+        netReceived: data.net_received || 0,
         originalAmount: data.receivable_amount || 0,
         amountPayable: data.outstanding || 0,
         bankBalance: 0,
@@ -474,6 +552,7 @@ const AddBounceBackModal = ({
       remarks: "",
     });
     setSelectedDetails(null);
+    setPaymentDetails(null);
     setSelectedBankId("");
     setSelectedBankName("");
     setErrors({});
@@ -560,35 +639,76 @@ const AddBounceBackModal = ({
                     Reference Details
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
+                    <div className="col-span-2 relative" ref={suggestionsRef}>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Enter Invoice Number or Payment Reference <span className="text-rose-600">*</span>
+                        Enter Invoice Number or Payment Reference{" "}
+                        <span className="text-rose-600">*</span>
                       </label>
-                      <input
-                        type="text"
-                        list="references-list"
-                        value={formData.invoiceOrPaymentRef}
-                        onChange={(e) => handleChange("invoiceOrPaymentRef", e.target.value)}
-                        className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
-                          showErrors && errors.invoiceOrPaymentRef
-                            ? "border-rose-500"
-                            : "border-gray-300"
-                        }`}
-                        placeholder="INV-2023001 or PI-AC-150123-01"
-                      />
+
+                      {/* Input */}
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formData.invoiceOrPaymentRef}
+                          onChange={(e) => handleChange("invoiceOrPaymentRef", e.target.value)}
+                          onFocus={() => {
+                            if (suggestions.length > 0) setShowSuggestions(true);
+                          }}
+                          autoComplete="off"
+                          className={`w-full bg-white border text-gray-900 px-4 py-2.5 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 pr-9 ${
+                            showErrors && errors.invoiceOrPaymentRef
+                              ? "border-rose-500"
+                              : "border-gray-300"
+                          }`}
+                          placeholder="INV-2023001 or UI-040526-01"
+                        />
+                        {searchLoading && (
+                          <Loader2 className="w-4 h-4 animate-spin text-gray-400 absolute right-3 top-3" />
+                        )}
+                      </div>
+
+                      {/* Rich dropdown */}
+                      {showSuggestions && suggestions.length > 0 && (
+                        <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto">
+                          {suggestions.map((s, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => handleSelectSuggestion(s)}
+                              className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-mono text-sm font-semibold text-gray-800 truncate">
+                                  {s.reference_value}
+                                </span>
+                                {s.client_name && (
+                                  <span className="text-xs text-gray-400 truncate">
+                                    · {s.client_name}
+                                  </span>
+                                )}
+                              </div>
+                              <span
+                                className={`ml-2 flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                                  s.reference_type === "invoice"
+                                    ? "bg-blue-100 text-blue-600"
+                                    : "bg-emerald-100 text-emerald-600"
+                                }`}
+                              >
+                                {s.reference_type === "invoice" ? "Invoice" : "Pay Ref"}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Linked invoice confirmation */}
                       {selectedDetails?.invoiceNumber && (
                         <div className="mt-2 bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-xs font-medium">
                           ✅ Linked Invoice: {selectedDetails.invoiceNumber}
                         </div>
                       )}
-                      <datalist id="references-list">
-                        {invoices.map((invoice, idx) => (
-                          <option key={`inv-${idx}`} value={invoice} />
-                        ))}
-                        {paymentReferences.map((ref, idx) => (
-                          <option key={`ref-${idx}`} value={ref} />
-                        ))}
-                      </datalist>
+
                       <ErrorMessage error={errors.invoiceOrPaymentRef} />
                       <p className="text-xs text-gray-500 mt-1">Rest details auto pop up</p>
                     </div>
@@ -599,65 +719,165 @@ const AddBounceBackModal = ({
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="mt-4 pt-4 border-t border-blue-200"
+                      className="mt-4 pt-4 border-t border-blue-200 space-y-3"
                     >
-                      <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">
-                            Client
+                      {/* ── Payment Ref Sub-card (only when a pay ref was entered) ── */}
+                      {paymentDetails && (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+                          <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-2">
+                            Payment Reference Details
                           </p>
-                          <p className="font-semibold text-gray-900 mt-1">
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                            <div>
+                              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Payment Date</p>
+                              <p className="font-semibold text-gray-900 text-xs mt-0.5">
+                                {paymentDetails.payment_date
+                                  ? new Date(paymentDetails.payment_date).toLocaleDateString("en-IN", {
+                                      day: "2-digit", month: "short", year: "numeric",
+                                    })
+                                  : "—"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Amount Received</p>
+                              <p className="font-bold text-emerald-600 text-xs mt-0.5">
+                                ₹ {Number(paymentDetails.amount_received || 0).toLocaleString("en-IN")}
+                              </p>
+                            </div>
+                            {paymentDetails.bank_name && (
+                              <div>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Bank</p>
+                                <p className="font-semibold text-gray-900 text-xs mt-0.5">
+                                  {paymentDetails.bank_name}
+                                </p>
+                              </div>
+                            )}
+                            {paymentDetails.remarks && (
+                              <div className="col-span-2">
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wider">Remarks</p>
+                                <p className="font-semibold text-gray-700 text-xs mt-0.5 truncate">
+                                  {paymentDetails.remarks}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Invoice Info Row ── */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Invoice No.</p>
+                          <p className="font-mono font-bold text-gray-900 text-xs mt-0.5">
+                            {selectedDetails.invoiceNumber}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Invoice Date</p>
+                          <p className="font-semibold text-gray-900 text-xs mt-0.5">
+                            {selectedDetails.invoiceDate
+                              ? new Date(selectedDetails.invoiceDate).toLocaleDateString("en-IN", {
+                                  day: "2-digit", month: "short", year: "numeric",
+                                })
+                              : "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Status</p>
+                          <span className={`inline-block mt-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            selectedDetails.status === "paid"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : selectedDetails.status === "overdue"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}>
+                            {selectedDetails.agingBucket || selectedDetails.status || "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Client</p>
+                          <p className="font-semibold text-gray-900 text-xs mt-0.5 truncate">
                             {selectedDetails.client}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">
-                            Department
-                          </p>
-                          <p className="font-semibold text-gray-900 mt-1">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Department</p>
+                          <p className="font-semibold text-gray-900 text-xs mt-0.5">
                             {selectedDetails.department}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">
-                            Entity
-                          </p>
-                          <p className="font-semibold text-gray-900 mt-1">
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Entity</p>
+                          <p className="font-semibold text-gray-900 text-xs mt-0.5">
                             {selectedDetails.entity}
                           </p>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">
-                            Original Amount
-                          </p>
-                          <p className="font-semibold text-gray-900 mt-1">
-                            ₹{" "}
-                            {selectedDetails.originalAmount.toLocaleString(
-                              "en-IN"
-                            )}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">
-                            Current Amount Payable
-                          </p>
-                          <p className="font-semibold text-emerald-600 mt-1">
-                            ₹{" "}
-                            {selectedDetails.amountPayable.toLocaleString(
-                              "en-IN"
-                            )}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider">
-                            Bank Balance
-                          </p>
-                          <p className="font-semibold text-blue-600 mt-1">
-                            ₹{" "}
-                            {(selectedDetails.bankBalance || 0).toLocaleString(
-                              "en-IN"
-                            )}
-                          </p>
+                        {selectedDetails.payHead && (
+                          <div>
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Pay Head</p>
+                            <p className="font-semibold text-gray-900 text-xs mt-0.5">
+                              {selectedDetails.payHead}
+                            </p>
+                          </div>
+                        )}
+                        {selectedDetails.employeeCount > 0 && (
+                          <div>
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Employee Count</p>
+                            <p className="font-semibold text-gray-900 text-xs mt-0.5">
+                              {selectedDetails.employeeCount}
+                            </p>
+                          </div>
+                        )}
+                        {selectedDetails.daysOverdue > 0 && (
+                          <div>
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Days Overdue</p>
+                            <p className="font-bold text-red-600 text-xs mt-0.5">
+                              {selectedDetails.daysOverdue} days
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ── Financial Summary Row ── */}
+                      <div className="bg-blue-50/60 border border-blue-100 rounded-xl px-4 py-3">
+                        <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider mb-2">
+                          Financial Summary
+                        </p>
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                          <div>
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Receivable Amount</p>
+                            <p className="font-bold text-gray-900 text-sm mt-0.5">
+                              ₹ {Number(selectedDetails.receivableAmount || 0).toLocaleString("en-IN")}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Amount Received</p>
+                            <p className="font-bold text-emerald-600 text-sm mt-0.5">
+                              ₹ {Number(selectedDetails.amountReceived || 0).toLocaleString("en-IN")}
+                            </p>
+                          </div>
+                          {selectedDetails.bounceAmount > 0 && (
+                            <div>
+                              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Bounce Amount</p>
+                              <p className="font-bold text-rose-600 text-sm mt-0.5">
+                                ₹ {Number(selectedDetails.bounceAmount || 0).toLocaleString("en-IN")}
+                              </p>
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Net Received</p>
+                            <p className="font-bold text-blue-600 text-sm mt-0.5">
+                              ₹ {Number(selectedDetails.netReceived || 0).toLocaleString("en-IN")}
+                            </p>
+                          </div>
+                          <div className="col-span-2 pt-1 border-t border-blue-200 mt-1">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Outstanding</p>
+                            <p className={`font-bold text-lg mt-0.5 ${
+                              selectedDetails.amountPayable > 0 ? "text-rose-600" : "text-emerald-600"
+                            }`}>
+                              ₹ {Number(selectedDetails.amountPayable || 0).toLocaleString("en-IN")}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </motion.div>
