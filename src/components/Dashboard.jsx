@@ -591,10 +591,28 @@ const Dashboard = ({
     );
 
     let filtered = sourceData.filter((row) => {
-      const matchesSearch =
-        (row.client || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (row.dept || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (row.id || "").toLowerCase().includes(searchTerm.toLowerCase());
+      const search = searchTerm.toLowerCase().trim();
+
+const aliases =
+  row.entity === "Verto India Pvt Ltd"
+    ? "vi india vb verto"
+    : row.entity === "Verto Global LLC"
+    ? "vg global vgpl verto"
+    : row.entity === "Verto UK Ltd"
+    ? "uk verto"
+    : "";
+
+const searchableText = `
+  ${row.client || ""}
+  ${row.dept || ""}
+  ${row.id || ""}
+  ${row.entity || ""}
+  ${row.entity_name || ""}
+  ${row.ledger_name || ""}
+  ${aliases}
+`.toLowerCase();
+
+const matchesSearch = searchableText.includes(search);
 
       const from = dateFrom ? new Date(dateFrom + "T00:00:00") : null;
       const to = dateTo ? new Date(dateTo + "T23:59:59") : null;
