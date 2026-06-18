@@ -1295,14 +1295,14 @@ const AddExpenseDetailsModal = ({
                           })),
                       },
                       {
-                        label: "OS/Temp 50-50",
+                        label: "Rec 100%",
                         fn: () =>
                           setForm((p) => ({
                             ...p,
                             costHeadBreakup: {
-                              ops: 50,
-                              temp: 50,
-                              recruitment: 0,
+                              ops: 0,
+                              temp: 0,
+                              recruitment: 100,
                               projects: 0,
                               others: 0,
                             },

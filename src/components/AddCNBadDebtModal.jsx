@@ -1145,11 +1145,11 @@ const AddCNBadDebtModal = ({
   }, [formData.payCN, formData.vertoFeeCN, selectedDetails]);
 
   // ── Derived totals ─────────────────────────────────────────────────────────
+  // CN Total = Pay + Verto Fee + GST only (3 values)
+  // TDS is separate (govt liability)
+  // Statutory is separate (govt liability)
   const totalFinancialCN =
-    num(formData.payCN) +
-    num(formData.vertoFeeCN) +
-    num(formData.gstCN) +
-    num(formData.tdsCN);
+    num(formData.payCN) + num(formData.vertoFeeCN) + num(formData.gstCN);
 
   const totalStatutoryCN =
     num(formData.coPf) +
@@ -1158,24 +1158,36 @@ const AddCNBadDebtModal = ({
     num(formData.ptCN) +
     num(formData.otherDedCN);
 
-  const totalCN = totalFinancialCN + totalStatutoryCN;
+  // CN Total = ONLY Pay + Verto + GST (what actually gets written off)
+  const totalCN = totalFinancialCN;
+
+  // Total impact on invoice (for reference only)
+  const totalImpact = totalCN + num(formData.tdsCN) + totalStatutoryCN;
 
   // Computed display aggregates
   const co_pf_cn = num(formData.coPf);
   const co_esi_cn = num(formData.coEsi);
 
   // ── Max CN limit ────────────────────────────────────────────────────────────
-  const invoiceMinusTds = selectedDetails
+  // ── Max CN limit ────────────────────────────────────────────────────────────
+  // CN can only reduce Pay + Verto + GST (not TDS, not statutory)
+  const invoiceBaseValue = selectedDetails
     ? num(selectedDetails.netPay) +
       num(selectedDetails.netVertoFee) +
       num(selectedDetails.netGst)
     : Infinity;
+
   const maxCN = selectedDetails
-    ? Math.min(invoiceMinusTds, num(selectedDetails.amountPayable))
+    ? Math.min(invoiceBaseValue, num(selectedDetails.amountPayable))
     : Infinity;
+
   const limitedByOutstanding =
-    selectedDetails && num(selectedDetails.amountPayable) < invoiceMinusTds;
-  const overLimit = selectedDetails && totalCN > maxCN;
+    selectedDetails && num(selectedDetails.amountPayable) < invoiceBaseValue;
+
+  // Over-limit check: totalCN (Pay+Verto+GST only) should not exceed maxCN
+  const overLimit = selectedDetails && totalCN > maxCN + 1;
+
+  // Outstanding after CN (only CN amount reduces outstanding)
   const impactOutstanding = selectedDetails
     ? Math.max(0, num(selectedDetails.amountPayable) - totalCN)
     : null;
@@ -1198,13 +1210,13 @@ const AddCNBadDebtModal = ({
 
     if (overLimit) {
       if (limitedByOutstanding) {
-        e.payCN = `Total ₹${fmt(totalCN)} exceeds outstanding ₹${fmt(
+        e.payCN = `CN total ₹${fmt(totalCN)} exceeds outstanding ₹${fmt(
           num(selectedDetails.amountPayable)
         )}`;
       } else {
-        e.payCN = `Total ₹${fmt(
+        e.payCN = `CN total ₹${fmt(
           totalCN
-        )} exceeds invoice value excl. TDS ₹${fmt(invoiceMinusTds)}`;
+        )} exceeds invoice base (Pay+Verto+GST) ₹${fmt(invoiceBaseValue)}`;
       }
     }
 
@@ -1216,9 +1228,9 @@ const AddCNBadDebtModal = ({
     }
     // Validate co_esi does not exceed net_co_esi
     if (selectedDetails && co_esi_cn > num(selectedDetails.net_co_esi)) {
-      e.coEsi = `CO ESI (ER+EE) ₹${fmt(
-        co_esi_cn
-      )} exceeds net remaining ₹${fmt(selectedDetails.net_co_esi)}`;
+      e.coEsi = `CO ESI (ER+EE) ₹${fmt(co_esi_cn)} exceeds net remaining ₹${fmt(
+        selectedDetails.net_co_esi
+      )}`;
     }
     // LWF limit
     if (
@@ -1260,27 +1272,27 @@ const AddCNBadDebtModal = ({
   const handleEditEntry = (row) => {
     // Pre-fill every form field from the record row
     setFormData({
-      invoiceOrRef:  row.invoice_number || row.invoices?.invoice_number || "",
-      optionType:    row.type || "CN",
-      dateIssued:    row.issue_date || "",
-      referenceNo:   row.reference_no || "",
-      payCN:         row.pay_cn?.toString() || "",
-      vertoFeeCN:    row.verto_fee_cn?.toString() || "",
-      gstCN:         row.gst_cn?.toString() || "",
-      tdsCN:         row.tds_cn?.toString() || "",
-      coPf:          ((num(row.er_pf) + num(row.ee_pf))).toString() || "",
-      coEsi:         ((num(row.er_esic) + num(row.ee_esic))).toString() || "",
-      lwfCN:         row.lwf_cn?.toString() || "",
-      ptCN:          row.pt_cn?.toString() || "",
-      otherDedCN:    row.other_ded_cn?.toString() || "",
+      invoiceOrRef: row.invoice_number || row.invoices?.invoice_number || "",
+      optionType: row.type || "CN",
+      dateIssued: row.issue_date || "",
+      referenceNo: row.reference_no || "",
+      payCN: row.pay_cn?.toString() || "",
+      vertoFeeCN: row.verto_fee_cn?.toString() || "",
+      gstCN: row.gst_cn?.toString() || "",
+      tdsCN: row.tds_cn?.toString() || "",
+      coPf: (num(row.er_pf) + num(row.ee_pf)).toString() || "",
+      coEsi: (num(row.er_esic) + num(row.ee_esic)).toString() || "",
+      lwfCN: row.lwf_cn?.toString() || "",
+      ptCN: row.pt_cn?.toString() || "",
+      otherDedCN: row.other_ded_cn?.toString() || "",
       employeeCount: row.employee_count?.toString() || "",
-      remarks:       row.remarks || "",
+      remarks: row.remarks || "",
     });
-    setEditingEntry(row);   // store old row so we know its id on submit
-    setViewOpen(false);     // close records panel
+    setEditingEntry(row); // store old row so we know its id on submit
+    setViewOpen(false); // close records panel
     setErrors({});
     setShowErrors(false);
-    setRefStatus("ok");     // ref is already known good (it's the existing one)
+    setRefStatus("ok"); // ref is already known good (it's the existing one)
   };
 
   // ── Submit ─────────────────────────────────────────────────────────────────
@@ -1294,28 +1306,31 @@ const AddCNBadDebtModal = ({
     try {
       const { error } = editingEntry
         ? await supabase.rpc("edit_cn_bad_debt_atomic", {
-            p_old_cn_id:      editingEntry.id,
-            p_invoice_id:     selectedDetails.invoice_id,
+            p_old_cn_id: editingEntry.id,
+            p_invoice_id: selectedDetails.invoice_id,
             p_invoice_number: selectedDetails.invoiceNumber,
-            p_type:           formData.optionType,
-            p_issue_date:     formData.dateIssued,
-            p_total_amount:   totalCN,
-            p_reference_no:   formData.referenceNo.trim(),
-            p_pay_cn:         num(formData.payCN),
-            p_verto_fee_cn:   num(formData.vertoFeeCN),
-            p_gst_cn:         num(formData.gstCN),
-            p_tds_cn:         num(formData.tdsCN),
-            p_entity:         selectedDetails.entity,
-            p_employee_count: selectedDetails?.dept_code === "OS" ? Number(formData.employeeCount) : null,
-            p_remarks:        formData.remarks || "",
-            p_bank_name:      selectedDetails.bankName || null,
-            p_er_pf:          +(num(formData.coPf)  / 2).toFixed(2),
-            p_ee_pf:          +(num(formData.coPf)  / 2).toFixed(2),
-            p_er_esic:        +(num(formData.coEsi) / 2).toFixed(2),
-            p_ee_esic:        +(num(formData.coEsi) / 2).toFixed(2),
-            p_lwf_cn:         num(formData.lwfCN),
-            p_pt_cn:          num(formData.ptCN),
-            p_other_ded_cn:   num(formData.otherDedCN),
+            p_type: formData.optionType,
+            p_issue_date: formData.dateIssued,
+            p_total_amount: totalCN,
+            p_reference_no: formData.referenceNo.trim(),
+            p_pay_cn: num(formData.payCN),
+            p_verto_fee_cn: num(formData.vertoFeeCN),
+            p_gst_cn: num(formData.gstCN),
+            p_tds_cn: num(formData.tdsCN),
+            p_entity: selectedDetails.entity,
+            p_employee_count:
+              selectedDetails?.dept_code === "OS"
+                ? Number(formData.employeeCount)
+                : null,
+            p_remarks: formData.remarks || "",
+            p_bank_name: selectedDetails.bankName || null,
+            p_er_pf: +(num(formData.coPf) / 2).toFixed(2),
+            p_ee_pf: +(num(formData.coPf) / 2).toFixed(2),
+            p_er_esic: +(num(formData.coEsi) / 2).toFixed(2),
+            p_ee_esic: +(num(formData.coEsi) / 2).toFixed(2),
+            p_lwf_cn: num(formData.lwfCN),
+            p_pt_cn: num(formData.ptCN),
+            p_other_ded_cn: num(formData.otherDedCN),
           })
         : await supabase.rpc("save_cn_bad_debt", {
             p_invoice_id: selectedDetails.invoice_id,
@@ -1431,7 +1446,9 @@ const AddCNBadDebtModal = ({
                   <h2 className="text-2xl font-bold">+ ADD CN / BAD DEBT</h2>
                   <p className="text-violet-100 text-sm mt-1">
                     {editingEntry
-                      ? `✏️ Editing ${editingEntry.reference_no || "entry"} — old record will be replaced`
+                      ? `✏️ Editing ${
+                          editingEntry.reference_no || "entry"
+                        } — old record will be replaced`
                       : "Record credit note or bad debt write-off"}
                   </p>
                 </div>
@@ -1458,9 +1475,23 @@ const AddCNBadDebtModal = ({
               <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Intern banner */}
                 {isIntern && (
-                  <div style={{background: '#f3e8ff', border: '1px solid #a855f7', borderRadius: '0.75rem', padding: '0.75rem 1rem'}}>
-                    <p style={{fontSize: '0.875rem', color: '#6b21a8', margin: 0}}>
-                      <strong>Training Mode</strong> — You can explore but cannot save.
+                  <div
+                    style={{
+                      background: "#f3e8ff",
+                      border: "1px solid #a855f7",
+                      borderRadius: "0.75rem",
+                      padding: "0.75rem 1rem",
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: "0.875rem",
+                        color: "#6b21a8",
+                        margin: 0,
+                      }}
+                    >
+                      <strong>Training Mode</strong> — You can explore but
+                      cannot save.
                     </p>
                   </div>
                 )}
@@ -1491,14 +1522,21 @@ const AddCNBadDebtModal = ({
                     <div className="flex-1">
                       <p className="font-bold text-amber-800">Edit Mode</p>
                       <p className="text-amber-600 text-xs">
-                        Ref: <span className="font-mono font-bold">{editingEntry.reference_no}</span>
+                        Ref:{" "}
+                        <span className="font-mono font-bold">
+                          {editingEntry.reference_no}
+                        </span>
                         {" · "}Original: ₹{fmt(editingEntry.amount)}
-                        {" · "}Saving will delete the old entry and create a corrected one.
+                        {" · "}Saving will delete the old entry and create a
+                        corrected one.
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => { setEditingEntry(null); resetForm(); }}
+                      onClick={() => {
+                        setEditingEntry(null);
+                        resetForm();
+                      }}
                       className="text-amber-500 hover:text-amber-700 text-xs font-semibold underline"
                     >
                       Cancel Edit
@@ -2042,6 +2080,7 @@ const AddCNBadDebtModal = ({
                 </div>
 
                 {/* ── Impact Summary ── */}
+                {/* ── Impact Summary ── */}
                 {selectedDetails && totalCN > 0 && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -2051,6 +2090,8 @@ const AddCNBadDebtModal = ({
                     <h3 className="text-sm font-bold text-amber-900 uppercase tracking-wider mb-3">
                       Impact Summary
                     </h3>
+
+                    {/* Main 3 columns */}
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div>
                         <p className="text-xs text-gray-500 uppercase tracking-wider">
@@ -2067,11 +2108,10 @@ const AddCNBadDebtModal = ({
                         <p className="text-lg font-bold text-violet-600 mt-1">
                           − ₹{fmt(totalCN)}
                         </p>
-                        {totalStatutoryCN > 0 && (
-                          <p className="text-[10px] text-indigo-500 mt-0.5">
-                            incl. Statutory ₹{fmt(totalStatutoryCN)}
-                          </p>
-                        )}
+                        {/* REMOVED: "incl. Statutory" line - statutory is NOT part of CN Total */}
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          Pay + Verto + GST only
+                        </p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-500 uppercase tracking-wider">
@@ -2094,52 +2134,76 @@ const AddCNBadDebtModal = ({
                       </div>
                     </div>
 
-                    {/* Statutory impact line */}
-                    {totalStatutoryCN > 0 && (
-                      <div className="mt-3 pt-3 border-t border-amber-200 flex items-center gap-4 flex-wrap text-xs">
-                        {co_pf_cn > 0 && (
-                          <span className="text-indigo-700 font-medium">
-                            📋 CO PF ↓ ₹{fmt(co_pf_cn)}
+                    {/* TDS row (separate, not part of CN Total) */}
+                    {num(formData.tdsCN) > 0 && (
+                      <div className="mt-3 pt-3 border-t border-amber-200">
+                        <div className="flex items-center gap-2 text-xs text-amber-700">
+                          <span className="font-semibold">TDS Adjustment:</span>
+                          <span>₹{fmt(formData.tdsCN)}</span>
+                          <span className="text-gray-400">
+                            (govt. liability — not part of CN)
                           </span>
-                        )}
-                        {co_esi_cn > 0 && (
-                          <span className="text-teal-700 font-medium">
-                            📋 CO ESI ↓ ₹{fmt(co_esi_cn)}
-                          </span>
-                        )}
-                        {num(formData.lwfCN) > 0 && (
-                          <span className="text-orange-700 font-medium">
-                            📋 LWF ↓ ₹{fmt(formData.lwfCN)}
-                          </span>
-                        )}
-                        {num(formData.ptCN) > 0 && (
-                          <span className="text-purple-700 font-medium">
-                            📋 PT ↓ ₹{fmt(formData.ptCN)}
-                          </span>
-                        )}
-                        {num(formData.otherDedCN) > 0 && (
-                          <span className="text-gray-700 font-medium">
-                            📋 Other Ded ↓ ₹{fmt(formData.otherDedCN)}
-                          </span>
-                        )}
+                        </div>
                       </div>
                     )}
 
-                    {/* GST/TDS impact line */}
-                    {(num(formData.gstCN) > 0 || num(formData.tdsCN) > 0) && (
-                      <div className="mt-2 flex items-center gap-4 flex-wrap text-xs">
-                        {num(formData.gstCN) > 0 && (
-                          <span className="text-amber-700 font-medium">
-                            📋 Net GST ↓ ₹{fmt(formData.gstCN)}
+                    {/* Statutory row (separate, not part of CN Total) */}
+                    {totalStatutoryCN > 0 && (
+                      <div className="mt-2 pt-2 border-t border-amber-200">
+                        <div className="flex items-center gap-2 text-xs text-indigo-700">
+                          <span className="font-semibold">
+                            Statutory Adjustment:
                           </span>
-                        )}
-                        {num(formData.tdsCN) > 0 && (
-                          <span className="text-amber-700 font-medium">
-                            📋 Net TDS ↓ ₹{fmt(formData.tdsCN)}
+                          <span>₹{fmt(totalStatutoryCN)}</span>
+                          <span className="text-gray-400">
+                            (statutory liability — not part of CN)
                           </span>
-                        )}
+                        </div>
+                        <div className="mt-1 flex items-center gap-3 flex-wrap text-[10px]">
+                          {co_pf_cn > 0 && (
+                            <span className="text-indigo-600">
+                              CO PF ₹{fmt(co_pf_cn)}
+                            </span>
+                          )}
+                          {co_esi_cn > 0 && (
+                            <span className="text-teal-600">
+                              CO ESI ₹{fmt(co_esi_cn)}
+                            </span>
+                          )}
+                          {num(formData.lwfCN) > 0 && (
+                            <span className="text-orange-600">
+                              LWF ₹{fmt(formData.lwfCN)}
+                            </span>
+                          )}
+                          {num(formData.ptCN) > 0 && (
+                            <span className="text-purple-600">
+                              PT ₹{fmt(formData.ptCN)}
+                            </span>
+                          )}
+                          {num(formData.otherDedCN) > 0 && (
+                            <span className="text-gray-600">
+                              Other ₹{fmt(formData.otherDedCN)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )}
+
+                    {/* Total impact line */}
+                    <div className="mt-3 pt-3 border-t-2 border-amber-300">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-xs text-gray-500 uppercase tracking-wider">
+                          Total Impact on Invoice
+                        </span>
+                        <span className="font-bold text-amber-800">
+                          ₹{fmt(totalImpact)}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        CN ₹{fmt(totalCN)} + TDS ₹{fmt(formData.tdsCN)} +
+                        Statutory ₹{fmt(totalStatutoryCN)}
+                      </p>
+                    </div>
 
                     {/* Over-limit warning */}
                     {overLimit && (
@@ -2150,15 +2214,13 @@ const AddCNBadDebtModal = ({
                             <>
                               CN total ₹{fmt(totalCN)} exceeds the outstanding
                               amount ₹{fmt(num(selectedDetails.amountPayable))}.
-                              You cannot CN more than what is currently owed.
-                              Reduce the amounts.
+                              Reduce Pay, Verto Fee, or GST amounts.
                             </>
                           ) : (
                             <>
-                              CN total ₹{fmt(totalCN)} exceeds the invoice value
-                              excl. TDS (₹{fmt(invoiceMinusTds)}). TDS is a
-                              govt. liability and cannot be written off via CN.
-                              Reduce the amounts.
+                              CN total ₹{fmt(totalCN)} exceeds the invoice base
+                              (Pay+Verto+GST = ₹{fmt(invoiceBaseValue)}). Reduce
+                              the amounts.
                             </>
                           )}
                         </div>
@@ -2166,8 +2228,8 @@ const AddCNBadDebtModal = ({
                     )}
 
                     <p className="text-xs text-gray-500 mt-2 italic">
-                      ℹ️ CN / Bad Debt is a non-cash adjustment — affects
-                      software balance only, not bank balance.
+                      ℹ️ CN / Bad Debt reduces only Pay, Verto Fee, and GST. TDS
+                      and Statutory are separate adjustments.
                     </p>
                   </motion.div>
                 )}
@@ -2202,7 +2264,11 @@ const AddCNBadDebtModal = ({
                         </>
                       ) : (
                         <>
-                          <span>{editingEntry ? `Update ${formData.optionType}` : `Save ${formData.optionType}`}</span>
+                          <span>
+                            {editingEntry
+                              ? `Update ${formData.optionType}`
+                              : `Save ${formData.optionType}`}
+                          </span>
                           <ArrowRight className="w-4 h-4" />
                         </>
                       )}
