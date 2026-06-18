@@ -20,16 +20,12 @@ import {
 import supabase from "../lib/supabaseClient";
 import { usePerms } from "../context/PermissionsContext";
 
-const ENTITIES = [
-  "Verto India Pvt Ltd",
-  "Verto Global LLC",
-  "Verto UK Ltd",
-];
+// CHANGE 1: Removed hardcoded ENTITIES array
 
 const EMPTY_FORM = {
   entry_date: new Date().toISOString().split("T")[0],
   penalty_type: "interest",
-  entity: "Verto India Pvt Ltd",
+  entity: "", // CHANGE 4: Empty default instead of hardcoded entity
   bank_id: "",
   amount: "",
   remarks: "",
@@ -268,6 +264,20 @@ const AddInterestPenaltyModal = ({ isOpen, onClose, banks = [] }) => {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [viewOpen, setViewOpen] = useState(false);
+  // CHANGE 2: Added entitiesList state
+  const [entitiesList, setEntitiesList] = useState([]);
+
+  // CHANGE 3: Added useEffect to fetch entities from entity_master
+  useEffect(() => {
+    const fetchEntities = async () => {
+      const { data } = await supabase
+        .from("entity_master")
+        .select("id, entity_name")
+        .order("entity_name");
+      if (data) setEntitiesList(data);
+    };
+    if (isOpen) fetchEntities();
+  }, [isOpen]);
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -420,14 +430,16 @@ const AddInterestPenaltyModal = ({ isOpen, onClose, banks = [] }) => {
               </label>
               <div className="relative">
                 <Building2 className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+                {/* CHANGE 5: Updated entity dropdown to use entitiesList */}
                 <select
                   value={form.entity}
                   onChange={(e) => set("entity", e.target.value)}
                   className="w-full rounded-2xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-3 outline-none transition focus:border-red-500 focus:bg-white"
                 >
-                  {ENTITIES.map((e) => (
-                    <option key={e} value={e}>
-                      {e}
+                  <option value="">Select Entity</option>
+                  {entitiesList.map((entity) => (
+                    <option key={entity.id} value={entity.entity_name}>
+                      {entity.entity_name}
                     </option>
                   ))}
                 </select>

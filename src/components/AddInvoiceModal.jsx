@@ -126,10 +126,10 @@ const AddInvoiceModal = ({
   isOpen,
   onClose,
   clients = [],
-  entities = [],
   selectedInvoice,
 }) => {
   const { role } = useAuth();
+  const [entitiesList, setEntitiesList] = useState([]);
   const { canSave, isIntern } = usePerms();
   const [formData, setFormData] = useState({
     invoiceEntity: "",
@@ -190,15 +190,20 @@ const AddInvoiceModal = ({
   ];
 
   const fetchMasters = async () => {
-    const [banksRes, clientsRes] = await Promise.all([
+    const [banksRes, clientsRes, entitiesRes] = await Promise.all([
       supabase.from("bank_master").select("id, bank_name"),
       supabase
         .from("clients_master")
         .select("id, client_name, ledger_name")
         .order("client_name"),
+      supabase
+        .from("entity_master")
+        .select("id, entity_name")
+        .order("entity_name"),
     ]);
     if (!banksRes.error) setBanks(banksRes.data || []);
     if (!clientsRes.error) setClientsList(clientsRes.data || []);
+    if (!entitiesRes.error) setEntitiesList(entitiesRes.data || []);
   };
 
   useEffect(() => {
@@ -400,7 +405,7 @@ const AddInvoiceModal = ({
     const nextMon = nextMonth.getMonth();
     const fmt = (y, m, d) =>
       `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    
+
     setFormData((prev) => ({
       ...prev,
       expectedOutflowPF: fmt(year, month, 15),
@@ -861,9 +866,23 @@ const AddInvoiceModal = ({
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-82px)] bg-gray-50/60">
               <form onSubmit={handleSubmit} className="space-y-4">
                 {isIntern && (
-                  <div style={{background: '#f3e8ff', border: '1px solid #a855f7', borderRadius: '0.75rem', padding: '0.75rem 1rem'}}>
-                    <p style={{fontSize: '0.875rem', color: '#6b21a8', margin: 0}}>
-                      <strong>Training Mode</strong> — You can explore this form but cannot save changes.
+                  <div
+                    style={{
+                      background: "#f3e8ff",
+                      border: "1px solid #a855f7",
+                      borderRadius: "0.75rem",
+                      padding: "0.75rem 1rem",
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: "0.875rem",
+                        color: "#6b21a8",
+                        margin: 0,
+                      }}
+                    >
+                      <strong>Training Mode</strong> — You can explore this form
+                      but cannot save changes.
                     </p>
                   </div>
                 )}
@@ -910,9 +929,9 @@ const AddInvoiceModal = ({
                         className={fi("invoiceEntity")}
                       >
                         <option value="">Select Entity</option>
-                        {entities.map((entity, idx) => (
-                          <option key={idx} value={entity}>
-                            {entity}
+                        {entitiesList.map((entity) => (
+                          <option key={entity.id} value={entity.entity_name}>
+                            {entity.entity_name}
                           </option>
                         ))}
                       </select>

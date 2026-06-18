@@ -176,6 +176,7 @@ const AddInternalTeamModal = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [emailOptions, setEmailOptions] = useState([]);
+  const [entityOptions, setEntityOptions] = useState([]);
   const [loadingEmails, setLoadingEmails] = useState(false);
   const [costHistory, setCostHistory] = useState([]);
   const [emailSearch, setEmailSearch] = useState("");
@@ -207,6 +208,8 @@ const AddInternalTeamModal = ({
   // ── Fetch emails ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
+
+    // Fetch email options from user_roles
     setLoadingEmails(true);
     supabase
       .from("user_roles")
@@ -215,6 +218,17 @@ const AddInternalTeamModal = ({
       .then(({ data, error }) => {
         if (!error && data) setEmailOptions(data);
         setLoadingEmails(false);
+      });
+
+    // Fetch entity options from entity_master
+    supabase
+      .from("entity_master")
+      .select("entity_name")
+      .order("entity_name")
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setEntityOptions(data.map((e) => e.entity_name));
+        }
       });
   }, [isOpen]);
 
@@ -603,37 +617,6 @@ const AddInternalTeamModal = ({
     "ctc",
     "doj",
   ];
-  const ENTITY_OPTIONS = [
-    "Verto India Pvt Ltd",
-    "Verto Global LLC",
-    "Verto UK Ltd",
-  ];
-
-  // Change 2: Add ENTITY_ALIAS_MAP + normalizeEntity()
-  const ENTITY_ALIAS_MAP = {
-    "verto india": "Verto India Pvt Ltd",
-    "verto india pvt": "Verto India Pvt Ltd",
-    "verto india pvt ltd": "Verto India Pvt Ltd",
-    "verto india private": "Verto India Pvt Ltd",
-    "verto india private limited": "Verto India Pvt Ltd",
-    india: "Verto India Pvt Ltd",
-    "verto global": "Verto Global LLC",
-    "verto global llc": "Verto Global LLC",
-    global: "Verto Global LLC",
-    llc: "Verto Global LLC",
-    "verto uk": "Verto UK Ltd",
-    "verto uk ltd": "Verto UK Ltd",
-    uk: "Verto UK Ltd",
-  };
-
-  const normalizeEntity = (raw) => {
-    if (!raw) return "";
-    const lower = String(raw).trim().toLowerCase();
-    if (ENTITY_ALIAS_MAP[lower]) return ENTITY_ALIAS_MAP[lower];
-    const canonical = ENTITY_OPTIONS.find((e) => e.toLowerCase() === lower);
-    if (canonical) return canonical;
-    return String(raw).trim();
-  };
 
   const DEPT_OPTIONS = [
     "Common",
@@ -740,7 +723,8 @@ const AddInternalTeamModal = ({
 
       // Change 3: Add deptNorm and entityNorm variables
       const deptNorm = normalizeDept(str("department"));
-      const entityNorm = normalizeEntity(str("entity"));
+      const entityNorm = str("entity");
+
 
       const num = (k) => {
         const v = parseFloat(str(k));
@@ -758,12 +742,21 @@ const AddInternalTeamModal = ({
         rowErrors.push(`Invalid "doj" date: "${str("doj")}"`);
 
       // Change 4: Use normalized values for validation
-      if (str("entity") && !ENTITY_OPTIONS.includes(entityNorm))
+      if (
+        str("entity") &&
+        entityOptions.length > 0 &&
+        !entityOptions.some(
+          (e) =>
+            e.trim().toLowerCase() ===
+            entityNorm.trim().toLowerCase()
+        )
+      ) {
         rowErrors.push(
           `Invalid entity: "${str(
             "entity"
-          )}" — expected one of: ${ENTITY_OPTIONS.join(", ")}`
+          )}" — expected one of: ${entityOptions.join(", ")}`
         );
+      }
       if (str("department") && !DEPT_OPTIONS.includes(deptNorm))
         rowErrors.push(
           `Invalid department: "${str(
@@ -784,7 +777,12 @@ const AddInternalTeamModal = ({
         name: str("name"),
         father_name: str("father_name") || null,
         // Change 5: Use normalized values in the row object
-        entity: entityNorm,
+        entity:
+          entityOptions.find(
+            (e) =>
+              e.trim().toLowerCase() ===
+              entityNorm.trim().toLowerCase()
+          ) || entityNorm,
         department: deptNorm,
         designation: str("designation"),
         location: str("location") || null,
@@ -995,12 +993,10 @@ const AddInternalTeamModal = ({
                     className={inputCls("entity")}
                   >
                     <option value="">Select Entity</option>
-                    {[
-                      "Verto India Pvt Ltd",
-                      "Verto Global LLC",
-                      "Verto UK Ltd",
-                    ].map((e) => (
-                      <option key={e}>{e}</option>
+                    {entityOptions.map((e) => (
+                      <option key={e} value={e}>
+                        {e}
+                      </option>
                     ))}
                   </select>
                 </Field>

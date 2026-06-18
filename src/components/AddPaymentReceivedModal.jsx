@@ -44,6 +44,7 @@ const AddPaymentReceivedModal = ({
   const [showErrors, setShowErrors] = useState(false);
   const [banks, setBanks] = useState([]);
   const [clientOptions, setClientOptions] = useState([]);
+  const [entityOptions, setEntityOptions] = useState([]);
   const [saving, setSaving] = useState(false);
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [invoiceOptions, setInvoiceOptions] = useState([]);
@@ -65,6 +66,12 @@ const AddPaymentReceivedModal = ({
         .select("id, client_name")
         .order("client_name");
       setClientOptions(clientData || []);
+
+      const { data: entityData } = await supabase
+        .from("entity_master")
+        .select("id, entity_name")
+        .order("entity_name");
+      setEntityOptions(entityData || []);
 
       // Fetch active invoices for searchable dropdown
       const { data: invData } = await supabase
@@ -793,9 +800,12 @@ const AddPaymentReceivedModal = ({
                               }`}
                             >
                               <option value="">Select Entity</option>
-                              <option>Verto India Pvt Ltd</option>
-                              <option>Verto Global LLC</option>
-                              <option>Verto UK Ltd</option>
+
+                              {entityOptions.map((e) => (
+                                <option key={e.id} value={e.entity_name}>
+                                  {e.entity_name}
+                                </option>
+                              ))}
                             </select>
                             <ErrorMessage error={errors.entity} />
                           </div>
