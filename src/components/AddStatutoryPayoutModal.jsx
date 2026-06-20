@@ -143,7 +143,7 @@ const EditInput = ({
   </div>
 );
 
-// ─── Compliance Tracker Panel (UPDATED to use compliance_tracker_view) ──────
+// ─── Compliance Tracker Panel (UPDATED with table layout fixes) ─────────────
 const ComplianceTrackerPanel = ({ onClose }) => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -184,16 +184,21 @@ const ComplianceTrackerPanel = ({ onClose }) => {
     return records.filter((r) => String(r.year) === yearFilter);
   }, [records, yearFilter]);
 
-  // KPIs from the view
-  const totalPayable = filteredMonthWise.reduce(
+  // ✅ FIX 3: Only include months with actual data in KPI totals
+  const monthsWithData = useMemo(() => {
+    return filteredMonthWise.filter((r) => r.overall_status !== "No Data");
+  }, [filteredMonthWise]);
+
+  // KPIs from the view — now using monthsWithData instead of filteredMonthWise
+  const totalPayable = monthsWithData.reduce(
     (s, r) => s + Number(r.total_payable || 0),
     0
   );
-  const totalPaid = filteredMonthWise.reduce(
+  const totalPaid = monthsWithData.reduce(
     (s, r) => s + Number(r.total_paid || 0),
     0
   );
-  const totalPending = filteredMonthWise.reduce(
+  const totalPending = monthsWithData.reduce(
     (s, r) => s + Number(r.total_pending || 0),
     0
   );
@@ -370,7 +375,7 @@ const ComplianceTrackerPanel = ({ onClose }) => {
         </span>
       </div>
 
-      {/* Table */}
+      {/* Table - UPDATED with compact layout */}
       <div className="flex-1 overflow-y-auto bg-gray-50/50">
         {loading ? (
           <div className="flex items-center justify-center py-20 text-gray-300">
@@ -383,128 +388,144 @@ const ComplianceTrackerPanel = ({ onClose }) => {
             <p className="text-sm font-semibold">No compliance data</p>
           </div>
         ) : (
-          <table className="w-full text-sm border-collapse">
+          // ✅ CHANGE 1: table uses text-xs for compactness
+          <table className="w-full text-xs border-collapse">
+            {/* ✅ CHANGE 2: Updated thead with fixed widths */}
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-800 text-white">
-                <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest">
-                  Month
-                </th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-widest">
-                  Payable
-                </th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-widest">
-                  Paid
-                </th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-widest">
-                  Pending
-                </th>
-                <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-widest">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-widest">
-                  Records
-                </th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest">
-                  Company Breakdown
-                </th>
-                <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-widest">
-                  Penalty
-                </th>
+                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest w-20">Month</th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest">Payable</th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest">Paid</th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest">Pending</th>
+                <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest w-24">Status</th>
+                <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest w-16">Rec</th>
+                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest">Company Breakdown (Due / Paid / Pending)</th>
+                <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest w-20">Penalty</th>
               </tr>
             </thead>
+            {/* ✅ CHANGE 3: Updated tbody rows */}
             <tbody className="divide-y divide-gray-100">
               {filteredMonthWise.map((m, i) => {
-                const isFullyPaid = Number(m.total_pending || 0) <= 0;
-                const isPartial = Number(m.total_paid || 0) > 0 && !isFullyPaid;
+                const isNoData = m.overall_status === "No Data";
+                const isFullyPaid = Number(m.total_pending || 0) <= 0 && !isNoData;
+                const isPartial = Number(m.total_paid || 0) > 0 && !isFullyPaid && !isNoData;
+
                 return (
                   <tr
                     key={m.month_date}
-                    className={`bg-white hover:bg-violet-50/40 transition-colors ${
-                      i % 2 === 1 ? "bg-gray-50/40" : ""
+                    className={`transition-colors ${
+                      isNoData
+                        ? "bg-gray-50/60 opacity-50"
+                        : i % 2 === 1
+                        ? "bg-gray-50/40 hover:bg-violet-50/40"
+                        : "bg-white hover:bg-violet-50/40"
                     }`}
                   >
-                    <td className="px-4 py-3 font-semibold text-gray-800">
+                    {/* Month */}
+                    <td className="px-3 py-3 font-bold text-gray-800 whitespace-nowrap">
                       {m.month_label}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-blue-700">
-                      ₹ {inr(m.total_payable)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">
-                      ₹ {inr(m.total_paid)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-amber-700">
-                      ₹ {inr(m.total_pending)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
-                          isFullyPaid
-                            ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                            : isPartial
-                            ? "bg-amber-100 text-amber-700 border-amber-200"
-                            : "bg-rose-100 text-rose-700 border-rose-200"
-                        }`}
-                      >
-                        {m.overall_status || (isFullyPaid ? "Fully Paid" : isPartial ? "Partial" : "Pending")}
+
+                    {/* Payable */}
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      <span className="font-bold font-mono text-blue-700">
+                        {isNoData ? <span className="text-gray-300">—</span> : `₹${inr(m.total_payable)}`}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-500 text-xs">
-                      {m.record_count}
+
+                    {/* Paid */}
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      <span className="font-bold font-mono text-emerald-700">
+                        {isNoData ? <span className="text-gray-300">—</span> : `₹${inr(m.total_paid)}`}
+                      </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="text-[10px] space-y-0.5">
-                        <div className="flex items-center gap-1">
-                          <span className="font-bold text-blue-600">VB:</span>
-                          <span className="text-gray-600">₹{inr(m.vb_payable)}</span>
-                          <span className="text-emerald-600">/ ₹{inr(m.vb_paid)}</span>
-                          {Number(m.vb_pending) > 0 && (
-                            <span className="text-amber-600">/ ₹{inr(m.vb_pending)}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="font-bold text-purple-600">VGPL:</span>
-                          <span className="text-gray-600">₹{inr(m.vgpl_payable)}</span>
-                          <span className="text-emerald-600">/ ₹{inr(m.vgpl_paid)}</span>
-                          {Number(m.vgpl_pending) > 0 && (
-                            <span className="text-amber-600">/ ₹{inr(m.vgpl_pending)}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="font-bold text-red-600">VUK:</span>
-                          <span className="text-gray-600">₹{inr(m.vuk_payable)}</span>
-                          <span className="text-emerald-600">/ ₹{inr(m.vuk_paid)}</span>
-                          {Number(m.vuk_pending) > 0 && (
-                            <span className="text-amber-600">/ ₹{inr(m.vuk_pending)}</span>
-                          )}
-                        </div>
-                      </div>
+
+                    {/* Pending */}
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      <span className={`font-bold font-mono ${isNoData ? "text-gray-300" : "text-rose-600"}`}>
+                        {isNoData ? "—" : `₹${inr(m.total_pending)}`}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      {m.has_penalty ? (
-                        <span className="text-amber-600 text-[10px] font-bold">
-                          ⚡ ₹{inr(m.total_penalty)}
-                        </span>
+
+                    {/* Status */}
+                    <td className="px-3 py-3 text-center">
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${
+                        isNoData
+                          ? "bg-gray-100 text-gray-400 border-gray-200"
+                          : isFullyPaid
+                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                          : isPartial
+                          ? "bg-amber-100 text-amber-700 border-amber-200"
+                          : "bg-rose-100 text-rose-700 border-rose-200"
+                      }`}>
+                        {m.overall_status || (isFullyPaid ? "Paid" : isPartial ? "Partial" : "Pending")}
+                      </span>
+                    </td>
+
+                    {/* Records */}
+                    <td className="px-3 py-3 text-center text-gray-500">
+                      {isNoData ? <span className="text-gray-300">—</span> : m.record_count}
+                    </td>
+
+                    {/* Company Breakdown */}
+                    <td className="px-3 py-3">
+                      {isNoData ? (
+                        <span className="text-gray-300 text-[10px]">No invoices this month</span>
                       ) : (
-                        <span className="text-gray-300 text-[10px]">—</span>
+                        <div className="space-y-1.5">
+                          {[
+                            { label: "VB", color: "text-blue-600", due: m.vb_payable, paid: m.vb_paid, pending: m.vb_pending },
+                            { label: "VGPL", color: "text-purple-600", due: m.vgpl_payable, paid: m.vgpl_paid, pending: m.vgpl_pending },
+                            { label: "VUK", color: "text-red-600", due: m.vuk_payable, paid: m.vuk_paid, pending: m.vuk_pending },
+                          ].map(({ label, color, due, paid, pending }) => (
+                            <div key={label} className="flex items-center gap-1.5 text-[10px]">
+                              <span className={`font-black w-8 shrink-0 ${color}`}>{label}</span>
+                              <div className="flex items-center gap-1 bg-gray-50 rounded-lg px-2 py-0.5 border border-gray-100">
+                                <span className="text-blue-700 font-mono font-semibold">₹{inr(due)}</span>
+                                <span className="text-gray-300">·</span>
+                                <span className="text-emerald-600 font-mono">₹{inr(paid)}</span>
+                                {Number(pending) > 0 && (
+                                  <>
+                                    <span className="text-gray-300">·</span>
+                                    <span className="text-rose-500 font-mono font-bold">₹{inr(pending)}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Penalty */}
+                    <td className="px-3 py-3 text-center">
+                      {m.has_penalty ? (
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span className="text-amber-500 text-sm">⚡</span>
+                          <span className="text-amber-600 text-[10px] font-bold font-mono">₹{inr(m.total_penalty)}</span>
+                        </div>
+                      ) : (
+                        <span className="text-gray-200">—</span>
                       )}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
-            <tfoot>
-              <tr className="bg-slate-800 text-white font-bold">
-                <td className="px-4 py-3 text-[10px] uppercase tracking-widest">
-                  Total
+            {/* ✅ CHANGE 4: Updated tfoot */}
+            <tfoot className="sticky bottom-0">
+              <tr className="bg-slate-900 text-white">
+                <td className="px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-300">
+                  Total ({monthsWithData.length} months)
                 </td>
-                <td className="px-4 py-3 text-right font-mono text-emerald-300">
-                  ₹ {inr(totalPayable)}
+                <td className="px-3 py-3 text-right">
+                  <span className="font-black font-mono text-blue-300 text-sm">₹{inr(totalPayable)}</span>
                 </td>
-                <td className="px-4 py-3 text-right font-mono text-emerald-300">
-                  ₹ {inr(totalPaid)}
+                <td className="px-3 py-3 text-right">
+                  <span className="font-black font-mono text-emerald-300 text-sm">₹{inr(totalPaid)}</span>
                 </td>
-                <td className="px-4 py-3 text-right font-mono text-amber-300">
-                  ₹ {inr(totalPending)}
+                <td className="px-3 py-3 text-right">
+                  <span className="font-black font-mono text-rose-300 text-sm">₹{inr(totalPending)}</span>
                 </td>
                 <td colSpan={4} />
               </tr>
@@ -1052,34 +1073,31 @@ const AddStatutoryPayoutModal = ({
     { value: "Others", label: "Others", tds_direction: null, rpc_type: null },
   ];
 
+  // ✅ FIX 1: fetchMonthlyTotalCompliance now uses RPC auto-calculation
   const fetchMonthlyTotalCompliance = async (entity, month) => {
     if (!entity || !month) {
       setMonthlyTotalDue(0);
       return;
     }
-    const monthStart = `${month}-01`;
-    const monthEnd = new Date(
-      new Date(monthStart).getFullYear(),
-      new Date(monthStart).getMonth() + 1,
-      0
-    )
-      .toISOString()
-      .slice(0, 10);
-    const { data, error } = await supabase
-      .from("statutory_payments")
-      .select("total_due, pending_due")
-      .eq("entity", entity)
-      .gte("month", monthStart)
-      .lte("month", monthEnd);
-    if (error) {
-      console.error("Monthly compliance fetch error:", error);
-      return;
+    try {
+      const [gst, tds, pf, esi, lwf] = await Promise.all([
+        supabase.rpc("get_statutory_due", { selected_entity: entity, selected_month: `${month}-01`, selected_type: "GST" }),
+        supabase.rpc("get_statutory_due", { selected_entity: entity, selected_month: `${month}-01`, selected_type: "TDS" }),
+        supabase.rpc("get_statutory_due", { selected_entity: entity, selected_month: `${month}-01`, selected_type: "PF" }),
+        supabase.rpc("get_statutory_due", { selected_entity: entity, selected_month: `${month}-01`, selected_type: "ESI" }),
+        supabase.rpc("get_statutory_due", { selected_entity: entity, selected_month: `${month}-01`, selected_type: "LWF" }),
+      ]);
+      const total =
+        Number(gst.data || 0) +
+        Number(tds.data || 0) +
+        Number(pf.data || 0) +
+        Number(esi.data || 0) +
+        Number(lwf.data || 0);
+      setMonthlyTotalDue(total);
+    } catch (err) {
+      console.error("Monthly compliance fetch error:", err);
+      setMonthlyTotalDue(0);
     }
-    const total = (data || []).reduce(
-      (sum, row) => sum + Number(row.total_due || 0),
-      0
-    );
-    setMonthlyTotalDue(total);
   };
 
   const fetchAutoDue = async (entity, month, type, rpcType) => {
