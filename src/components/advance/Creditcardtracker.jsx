@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, Edit2, Trash2, X, Save, Eye,
@@ -6,8 +6,6 @@ import {
 } from "lucide-react";
 import supabase from "../../lib/supabaseClient";
 import { usePerms } from "../../context/PermissionsContext";
-
-// REMOVED: const BANK_OPTIONS = [...] — now fetched from bank_master
 
 const PAY_HEADER_OPTIONS = ["Travel", "Fuel", "Entertainment", "Office Supplies", "Food & Dining", "Utilities", "Software", "Advertising", "Medical", "Other"];
 const COST_HEAD_OPTIONS = ["Direct Expense", "Indirect Expense", "Capital", "Revenue", "Admin", "Marketing", "Operations", "IT", "Other"];
@@ -27,6 +25,7 @@ const emptyBillForm = {
   penalty: "",
   cash_back: "",
   amount_paid: "",
+  bill_date: "",        // ← ADDED
 };
 
 const emptyDetailForm = {
@@ -65,7 +64,6 @@ export default function CreditCardTracker() {
   const [billDetails, setBillDetails] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Dynamic banks from bank_master
   const [banks, setBanks] = useState([]);
 
   // Card modal
@@ -78,6 +76,11 @@ export default function CreditCardTracker() {
   const [editBill, setEditBill] = useState(null);
   const [billForm, setBillForm] = useState(emptyBillForm);
   const [selectedBillCard, setSelectedBillCard] = useState(null);
+
+  // Searchable card dropdown in bill modal
+  const [cardQuery, setCardQuery] = useState("");
+  const [showCardDropdown, setShowCardDropdown] = useState(false);
+  const cardDropdownRef = useRef(null);
 
   // Detail modal
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -92,9 +95,27 @@ export default function CreditCardTracker() {
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // ─── Advanced Filters ──────────────────────────────────────────────
+  const [advFilters, setAdvFilters] = useState({
+    dateFrom: "",
+    dateTo: "",
+    cardSearch: "",
+  });
+
   useEffect(() => {
     fetchAll();
     fetchBanks();
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (cardDropdownRef.current && !cardDropdownRef.current.contains(e.target)) {
+        setShowCardDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   async function fetchBanks() {
@@ -118,7 +139,7 @@ export default function CreditCardTracker() {
     setLoading(false);
   }
 
-  // --- CARD CRUD ---
+  // ─── CARD CRUD ──────────────────────────────────────────────────────
   function openAddCard() { setEditCard(null); setCardForm(emptyCardForm); setShowCardModal(true); }
   function openEditCard(c) {
     setEditCard(c);
@@ -134,19 +155,33 @@ export default function CreditCardTracker() {
     setSaving(false); setShowCardModal(false); fetchAll();
   }
 
-  // --- BILL CRUD ---
+  // ─── BILL CRUD ──────────────────────────────────────────────────────
   function openAddBill() {
     setEditBill(null);
     setBillForm({ ...emptyBillForm, card_master_id: cards[0]?.id || "" });
     setSelectedBillCard(cards[0] || null);
+    setCardQuery(cards[0] ? `${cards[0].bank} ••••${cards[0].card_last4} — ${cards[0].issued_to}` : "");
+    setShowCardDropdown(false);
     setShowBillModal(true);
   }
+
   function openEditBill(b) {
     setEditBill(b);
-    setBillForm({ card_master_id: b.card_master_id, amount: b.amount, penalty: b.penalty, cash_back: b.cash_back, amount_paid: b.amount_paid });
-    setSelectedBillCard(cards.find((c) => c.id === b.card_master_id) || null);
+    setBillForm({
+      card_master_id: b.card_master_id,
+      amount: b.amount,
+      penalty: b.penalty,
+      cash_back: b.cash_back,
+      amount_paid: b.amount_paid,
+      bill_date: b.bill_date || "",
+    });
+    const card = cards.find((c) => c.id === b.card_master_id);
+    setSelectedBillCard(card || null);
+    setCardQuery(card ? `${card.bank} ••••${card.card_last4} — ${card.issued_to}` : "");
+    setShowCardDropdown(false);
     setShowBillModal(true);
   }
+
   async function saveBill() {
     if (isIntern) return;
     if (!billForm.card_master_id) return;
@@ -158,7 +193,7 @@ export default function CreditCardTracker() {
     setSaving(false); setShowBillModal(false); fetchAll();
   }
 
-  // --- DETAIL CRUD ---
+  // ─── DETAIL CRUD ────────────────────────────────────────────────────
   function openViewDetails(bill) { setViewBill(bill); setEditDetail(null); setDetailForm(emptyDetailForm); setShowDetailFormInline(false); setShowDetailModal(true); }
   function startAddDetail() { setEditDetail(null); setDetailForm(emptyDetailForm); setShowDetailFormInline(true); }
   function startEditDetail(d) {
@@ -176,7 +211,7 @@ export default function CreditCardTracker() {
     setSaving(false); setShowDetailFormInline(false); setEditDetail(null); fetchAll();
   }
 
-  // --- DELETE ---
+  // ─── DELETE ─────────────────────────────────────────────────────────
   async function confirmDelete() {
     if (!deleteTarget) return;
     const { type, id } = deleteTarget;
@@ -186,9 +221,30 @@ export default function CreditCardTracker() {
     setDeleteTarget(null); fetchAll();
   }
 
+  // ─── FILTERED BILLS ────────────────────────────────────────────────
   const filteredBills = bills.filter((b) => {
     const card = cards.find((c) => c.id === b.card_master_id);
-    return !search || card?.bank?.toLowerCase().includes(search.toLowerCase()) || card?.issued_to?.toLowerCase().includes(search.toLowerCase()) || card?.card_last4?.includes(search);
+    
+    // Main search bar (bank, name, last4)
+    const matchesSearch =
+      !search ||
+      card?.bank?.toLowerCase().includes(search.toLowerCase()) ||
+      card?.issued_to?.toLowerCase().includes(search.toLowerCase()) ||
+      card?.card_last4?.includes(search);
+
+    // Advanced card search (number / name)
+    const matchesCardSearch =
+      !advFilters.cardSearch ||
+      card?.card_last4?.includes(advFilters.cardSearch) ||
+      card?.issued_to?.toLowerCase().includes(advFilters.cardSearch.toLowerCase()) ||
+      card?.bank?.toLowerCase().includes(advFilters.cardSearch.toLowerCase());
+
+    // Date range filter
+    const matchesDate =
+      (!advFilters.dateFrom || (b.bill_date && b.bill_date >= advFilters.dateFrom)) &&
+      (!advFilters.dateTo || (b.bill_date && b.bill_date <= advFilters.dateTo));
+
+    return matchesSearch && matchesCardSearch && matchesDate;
   });
 
   const totalBilled = bills.reduce((s, b) => s + (parseFloat(b.amount_payable) || 0), 0);
@@ -210,7 +266,7 @@ export default function CreditCardTracker() {
         <GoldStatCard label="Total Cash Back" value={fmt(totalCashBack)} icon={DollarSign} />
       </div>
 
-      {/* Card Master Table */}
+      {/* ─── CARD MASTER TABLE ──────────────────────────────────────── */}
       <div className="rounded-2xl overflow-hidden mb-6 shadow-lg border border-yellow-800/30" style={{ background: cardBg }}>
         <div className="px-6 py-4 flex items-center justify-between" style={{ background: goldGrad }}>
           <div className="flex items-center gap-2">
@@ -261,7 +317,7 @@ export default function CreditCardTracker() {
         </div>
       </div>
 
-      {/* Bills Table */}
+      {/* ─── BILLS TABLE ────────────────────────────────────────────── */}
       <div className="rounded-2xl overflow-hidden shadow-lg border border-yellow-800/30" style={{ background: cardBg }}>
         <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3" style={{ background: goldGrad }}>
           <div className="flex items-center gap-2">
@@ -282,20 +338,52 @@ export default function CreditCardTracker() {
             )}
           </div>
         </div>
+
+        {/* ─── ADVANCED FILTERS ─────────────────────────────────────── */}
+        <div className="px-6 py-3 flex flex-wrap gap-3 items-end border-b border-yellow-800/20" style={{ background: "#1a1000" }}>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "#d97706" }}>Date From</label>
+            <input type="date" className="px-3 py-2 rounded-xl text-xs text-white focus:outline-none"
+              style={{ background: "#2a1f00", border: "1px solid #78350f" }}
+              value={advFilters.dateFrom} onChange={(e) => setAdvFilters(f => ({ ...f, dateFrom: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "#d97706" }}>Date To</label>
+            <input type="date" className="px-3 py-2 rounded-xl text-xs text-white focus:outline-none"
+              style={{ background: "#2a1f00", border: "1px solid #78350f" }}
+              value={advFilters.dateTo} onChange={(e) => setAdvFilters(f => ({ ...f, dateTo: e.target.value }))} />
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "#d97706" }}>Search by Card / Name</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40" />
+              <input className="w-full pl-9 pr-3 py-2 rounded-xl text-xs text-white placeholder-white/40 focus:outline-none"
+                style={{ background: "#2a1f00", border: "1px solid #78350f" }}
+                placeholder="Card no, holder name or bank…"
+                value={advFilters.cardSearch}
+                onChange={(e) => setAdvFilters(f => ({ ...f, cardSearch: e.target.value }))} />
+            </div>
+          </div>
+          <button onClick={() => setAdvFilters({ dateFrom: "", dateTo: "", cardSearch: "" })}
+            className="px-4 py-2 rounded-xl text-xs font-semibold border border-yellow-800/40 text-gray-300 hover:text-white transition-colors">
+            Clear Filters
+          </button>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: "#2a1f00" }}>
-                {["Bank", "Card No", "Issued To", "Billing Cycle", "Amount", "Penalty", "Cash Back", "Amount Payable", "Amount Paid", "View", "Edit/Delete"].map((h) => (
+                {["Bank", "Card No", "Issued To", "Bill Date", "Billing Cycle", "Amount", "Penalty", "Cash Back", "Amount Payable", "Amount Paid", "View", "Edit/Delete"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "#d97706" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11} className="text-center py-16 text-yellow-800/50">Loading…</td></tr>
+                <tr><td colSpan={12} className="text-center py-16 text-yellow-800/50">Loading…</td></tr>
               ) : filteredBills.length === 0 ? (
-                <tr><td colSpan={11} className="text-center py-16 text-yellow-800/50">No bills found</td></tr>
+                <tr><td colSpan={12} className="text-center py-16 text-yellow-800/50">No bills found</td></tr>
               ) : filteredBills.map((b, i) => {
                 const card = cards.find((c) => c.id === b.card_master_id);
                 const amtPayable = (parseFloat(b.amount) || 0) + (parseFloat(b.penalty) || 0) - (parseFloat(b.cash_back) || 0);
@@ -307,6 +395,7 @@ export default function CreditCardTracker() {
                     <td className="px-4 py-3 font-semibold" style={{ color: "#d97706" }}>{card?.bank || "—"}</td>
                     <td className="px-4 py-3 font-mono text-white">••••{card?.card_last4 || "—"}</td>
                     <td className="px-4 py-3 text-gray-300">{card?.issued_to || "—"}</td>
+                    <td className="px-4 py-3 text-gray-400 whitespace-nowrap">{b.bill_date || "—"}</td>
                     <td className="px-4 py-3 text-gray-400 whitespace-nowrap">{card?.billing_cycle_from} – {card?.billing_cycle_to}</td>
                     <td className="px-4 py-3 font-mono text-white">{fmt(b.amount)}</td>
                     <td className="px-4 py-3 font-mono text-red-400">{fmt(b.penalty)}</td>
@@ -336,7 +425,7 @@ export default function CreditCardTracker() {
         </div>
       </div>
 
-      {/* --- ADD/EDIT CARD MODAL --- */}
+      {/* ─── ADD/EDIT CARD MODAL ────────────────────────────────────── */}
       <AnimatePresence>
         {showCardModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -347,7 +436,6 @@ export default function CreditCardTracker() {
                 <button onClick={() => setShowCardModal(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
               </div>
               <div className="p-6 grid grid-cols-2 gap-4">
-                {/* Bank — dynamic from bank_master */}
                 <div>
                   <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#d97706" }}>Bank *</label>
                   <select className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none text-white"
@@ -404,7 +492,7 @@ export default function CreditCardTracker() {
         )}
       </AnimatePresence>
 
-      {/* --- ADD/EDIT BILL MODAL --- */}
+      {/* ─── ADD/EDIT BILL MODAL ────────────────────────────────────── */}
       <AnimatePresence>
         {showBillModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -415,16 +503,77 @@ export default function CreditCardTracker() {
                 <button onClick={() => setShowBillModal(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
               </div>
               <div className="p-6 grid grid-cols-2 gap-4">
-                <div className="col-span-2">
+                {/* ─── SEARCHABLE CARD DROPDOWN ─────────────────────── */}
+                <div className="col-span-2 relative" ref={cardDropdownRef}>
                   <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#d97706" }}>Card *</label>
-                  <select className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none text-white"
-                    style={{ background: "#2a1f00", border: "1px solid #78350f" }}
-                    value={billForm.card_master_id}
-                    onChange={(e) => { setBillForm((f) => ({ ...f, card_master_id: e.target.value })); setSelectedBillCard(cards.find((c) => c.id === e.target.value)); }}>
-                    <option value="">Select Card</option>
-                    {cards.map((c) => <option key={c.id} value={c.id}>{c.bank} ••••{c.card_last4} — {c.issued_to}</option>)}
-                  </select>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+                    <input
+                      className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm focus:outline-none text-white"
+                      style={{ background: "#2a1f00", border: "1px solid #78350f" }}
+                      placeholder="Search card no, name or bank…"
+                      value={cardQuery}
+                      onChange={(e) => {
+                        setCardQuery(e.target.value);
+                        setShowCardDropdown(true);
+                      }}
+                      onFocus={() => setShowCardDropdown(true)}
+                    />
+                  </div>
+                  
+                  {showCardDropdown && (
+                    <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto rounded-xl border shadow-lg"
+                         style={{ background: "#2a1f00", borderColor: "#78350f" }}>
+                      {cards.filter((c) => {
+                        const q = cardQuery.toLowerCase();
+                        return !q ||
+                          c.card_last4.includes(q) ||
+                          c.issued_to.toLowerCase().includes(q) ||
+                          c.bank.toLowerCase().includes(q);
+                      }).length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-gray-500">No cards found</div>
+                      ) : (
+                        cards.filter((c) => {
+                          const q = cardQuery.toLowerCase();
+                          return !q ||
+                            c.card_last4.includes(q) ||
+                            c.issued_to.toLowerCase().includes(q) ||
+                            c.bank.toLowerCase().includes(q);
+                        }).map((c) => (
+                          <div
+                            key={c.id}
+                            onClick={() => {
+                              setBillForm((f) => ({ ...f, card_master_id: c.id }));
+                              setSelectedBillCard(c);
+                              setCardQuery(`${c.bank} ••••${c.card_last4} — ${c.issued_to}`);
+                              setShowCardDropdown(false);
+                            }}
+                            className="px-3 py-2.5 text-sm text-gray-300 hover:bg-yellow-900/20 cursor-pointer border-b border-yellow-900/10 last:border-0"
+                          >
+                            <span className="font-semibold" style={{ color: "#d97706" }}>{c.bank}</span>
+                            <span className="mx-1.5 text-gray-500">••••{c.card_last4}</span>
+                            <span className="text-gray-400">— {c.issued_to}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                  
+                  {selectedBillCard && (
+                    <p className="text-[10px] mt-1.5 text-gray-500">
+                      Selected: <span className="text-gray-300">{selectedBillCard.bank} ••••{selectedBillCard.card_last4}</span>
+                    </p>
+                  )}
                 </div>
+
+                {/* ─── BILL DATE ─────────────────────────────────────── */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#d97706" }}>Bill Date</label>
+                  <input type="date" className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none text-white"
+                    style={{ background: "#2a1f00", border: "1px solid #78350f" }}
+                    value={billForm.bill_date} onChange={(e) => setBillForm((f) => ({ ...f, bill_date: e.target.value }))} />
+                </div>
+
                 {[
                   { key: "amount", label: "Amount" },
                   { key: "penalty", label: "Penalty" },
@@ -458,7 +607,7 @@ export default function CreditCardTracker() {
         )}
       </AnimatePresence>
 
-      {/* --- DETAIL MODAL --- */}
+      {/* ─── DETAIL MODAL ────────────────────────────────────────────── */}
       <AnimatePresence>
         {showDetailModal && viewBill && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -600,7 +749,7 @@ export default function CreditCardTracker() {
         )}
       </AnimatePresence>
 
-      {/* Delete Confirm */}
+      {/* ─── DELETE CONFIRM ──────────────────────────────────────────── */}
       <AnimatePresence>
         {deleteTarget && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">

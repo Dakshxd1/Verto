@@ -9,7 +9,7 @@ import supabase from "../../lib/supabaseClient";
 import { usePerms } from "../../context/PermissionsContext";
 
 const STATUS_OPTIONS = ["Pending", "Partially Paid", "Closed"];
-const DEPT_OPTIONS = ["HR", "Finance", "Operations", "Sales", "IT", "Admin", "Marketing"];
+const DEPT_OPTIONS = ["OS", "REC", "Common", "Temp", "Project", "Other"];
 
 const emptyForm = {
   employee_name: "",

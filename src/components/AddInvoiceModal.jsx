@@ -126,10 +126,10 @@ const AddInvoiceModal = ({
   isOpen,
   onClose,
   clients = [],
+  entities = [],
   selectedInvoice,
 }) => {
   const { role } = useAuth();
-  const [entitiesList, setEntitiesList] = useState([]);
   const { canSave, isIntern } = usePerms();
   const [formData, setFormData] = useState({
     invoiceEntity: "",
@@ -152,7 +152,8 @@ const AddInvoiceModal = ({
     expectedCollectionDate: "",
     bankName: "",
     invoiceDescription: "",
-    refNoPaymentMade: "",
+    // CHANGED: now an array of ref strings instead of a single string
+    refNoPaymentMade: [""],
     employeeCount: "",
     grossValue: "",
     netInHand: "",
@@ -190,20 +191,15 @@ const AddInvoiceModal = ({
   ];
 
   const fetchMasters = async () => {
-    const [banksRes, clientsRes, entitiesRes] = await Promise.all([
+    const [banksRes, clientsRes] = await Promise.all([
       supabase.from("bank_master").select("id, bank_name"),
       supabase
         .from("clients_master")
         .select("id, client_name, ledger_name")
         .order("client_name"),
-      supabase
-        .from("entity_master")
-        .select("id, entity_name")
-        .order("entity_name"),
     ]);
     if (!banksRes.error) setBanks(banksRes.data || []);
     if (!clientsRes.error) setClientsList(clientsRes.data || []);
-    if (!entitiesRes.error) setEntitiesList(entitiesRes.data || []);
   };
 
   useEffect(() => {
@@ -240,10 +236,17 @@ const AddInvoiceModal = ({
     setIsManualGst(false);
     setIsManualReceivable(false);
 
-    // FIX 1: Find bank by ID first, fall back to bank_name string
     const selectedBank =
       banks.find((b) => b.id === selectedInvoice.bank_id) ||
       banks.find((b) => b.bank_name === selectedInvoice.bank_name);
+
+    // Normalise existing ref — could be string or array from DB
+    const existingRef = selectedInvoice?.ref_no_payment_made;
+    const normalisedRef = Array.isArray(existingRef)
+      ? existingRef
+      : existingRef
+      ? [existingRef]
+      : [""];
 
     setFormData((prev) => ({
       ...prev,
@@ -253,7 +256,6 @@ const AddInvoiceModal = ({
       client: selectedInvoice?.client_name ?? "",
       ledgerName: selectedInvoice?.ledger_name ?? "",
       payHead: selectedInvoice?.pay_head ?? "",
-      // FIX 1: Use bank_name string so <select> value matches options
       bankName: selectedBank?.bank_name ?? selectedInvoice?.bank_name ?? "",
       invoiceDate: selectedInvoice?.invoice_date ?? "",
       impactMonth: selectedInvoice?.impact_month
@@ -268,8 +270,8 @@ const AddInvoiceModal = ({
       gst: selectedInvoice?.gst ?? "",
       tds: selectedInvoice?.tds ?? "",
       invoiceValue: selectedInvoice?.invoice_value ?? "",
-      // FIX 5: Show current DB receivable for display; DB trigger protects write
       receivableRs: selectedInvoice?.receivable_amount ?? "",
+      refNoPaymentMade: normalisedRef,
       employeeCount: selectedInvoice?.employee_count ?? "",
       grossValue: selectedInvoice?.gross_value ?? "",
       netInHand: selectedInvoice?.net_in_hand ?? "",
@@ -603,14 +605,19 @@ const AddInvoiceModal = ({
         if (!window.confirm(mismatchDetails)) return;
       }
 
-      // FIX 1: Look up bank by name from the loaded banks list
       const selectedBank = banks.find((b) => b.bank_name === formData.bankName);
       if (!selectedBank || !selectedBank.id) {
         alert("❌ Invalid Bank Selected");
         return;
       }
 
-      // Base payload — all editable fields
+      // Normalise refs: filter empty strings, join as comma-separated for DB
+      const refs = Array.isArray(formData.refNoPaymentMade)
+        ? formData.refNoPaymentMade.filter((r) => r.trim())
+        : formData.refNoPaymentMade
+        ? [formData.refNoPaymentMade]
+        : [];
+
       const payload = {
         invoice_number: formData.invoiceNo,
         employee_name: formData.employeeName || null,
@@ -626,8 +633,6 @@ const AddInvoiceModal = ({
         gst: Number(formData.gst),
         invoice_value: Number(formData.invoiceValue),
         tds: Number(formData.tds),
-        // NOTE: receivable_amount included for INSERT only —
-        // on UPDATE the DB BEFORE trigger recalculates it correctly
         receivable_amount: Number(formData.receivableRs),
         expected_collection_date: formData.expectedCollectionDate,
         employee_count: Number(formData.employeeCount) || 0,
@@ -645,9 +650,6 @@ const AddInvoiceModal = ({
       let insertedInvoice = null;
 
       if (selectedInvoice) {
-        // FIX 3: Strip DB-owned calculated fields on UPDATE
-        // DB BEFORE UPDATE trigger (guard_invoice_receivable_on_edit) recalculates
-        // receivable_amount, amount_received, cn_amount, status from source-of-truth tables
         const { receivable_amount, ...editableFields } = payload;
         const res = await supabase
           .from("invoices")
@@ -663,43 +665,47 @@ const AddInvoiceModal = ({
         error = res.error;
         insertedInvoice = res.data;
 
-        // Link advance payment if ref provided
-        if (formData.refNoPaymentMade && insertedInvoice) {
-          const { data: advancePayment, error: advanceError } = await supabase
-            .from("advance_payments")
-            .select("*")
-            .eq("payment_ref", formData.refNoPaymentMade)
-            .maybeSingle();
+        // Link ALL advance payments provided
+        if (refs.length > 0 && insertedInvoice) {
+          for (const ref of refs) {
+            const { data: advancePayment, error: advanceError } = await supabase
+              .from("advance_payments")
+              .select("*")
+              .eq("payment_ref", ref)
+              .maybeSingle();
 
-          if (advanceError) console.log(advanceError);
+            if (advanceError) console.log(advanceError);
 
-          if (advancePayment) {
-            const { error: moveError } = await supabase
-              .from("payments_received")
-              .insert([
-                {
-                  invoice_id: insertedInvoice.id,
-                  amount_received: advancePayment.amount,
-                  payment_date: advancePayment.payment_date,
-                  payment_ref: advancePayment.payment_ref,
-                },
-              ]);
+            if (advancePayment) {
+              const { error: moveError } = await supabase
+                .from("payments_received")
+                .insert([
+                  {
+                    invoice_id: insertedInvoice.id,
+                    amount_received: advancePayment.amount,
+                    payment_date: advancePayment.payment_date,
+                    payment_ref: advancePayment.payment_ref,
+                  },
+                ]);
 
-            if (moveError) {
-              console.log(moveError);
-              alert("❌ Failed to link payment");
-            } else {
-              await supabase
-                .from("advance_payments")
-                .update({
-                  linked_invoice_id: insertedInvoice.id,
-                  is_adjusted: true,
-                })
-                .eq("id", advancePayment.id);
-              alert(
-                `✅ Advance Payment Linked Successfully\nRef: ${advancePayment.payment_ref}`
-              );
+              if (moveError) {
+                console.log(moveError);
+                alert(`❌ Failed to link payment: ${ref}`);
+              } else {
+                await supabase
+                  .from("advance_payments")
+                  .update({
+                    linked_invoice_id: insertedInvoice.id,
+                    is_adjusted: true,
+                  })
+                  .eq("id", advancePayment.id);
+              }
             }
+          }
+          if (refs.length > 0) {
+            alert(
+              `✅ Advance Payment(s) Linked Successfully\nRefs: ${refs.join(", ")}`
+            );
           }
         }
       }
@@ -742,7 +748,7 @@ const AddInvoiceModal = ({
       expectedCollectionDate: "",
       bankName: "",
       invoiceDescription: "",
-      refNoPaymentMade: "",
+      refNoPaymentMade: [""],
       employeeCount: "",
       grossValue: "",
       netInHand: "",
@@ -809,6 +815,13 @@ const AddInvoiceModal = ({
 
   const isOS = formData.department === "OS";
 
+  // Helper: normalise refNoPaymentMade to always be an array for rendering
+  const refList = Array.isArray(formData.refNoPaymentMade)
+    ? formData.refNoPaymentMade
+    : formData.refNoPaymentMade
+    ? [formData.refNoPaymentMade]
+    : [""];
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -866,23 +879,9 @@ const AddInvoiceModal = ({
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-82px)] bg-gray-50/60">
               <form onSubmit={handleSubmit} className="space-y-4">
                 {isIntern && (
-                  <div
-                    style={{
-                      background: "#f3e8ff",
-                      border: "1px solid #a855f7",
-                      borderRadius: "0.75rem",
-                      padding: "0.75rem 1rem",
-                    }}
-                  >
-                    <p
-                      style={{
-                        fontSize: "0.875rem",
-                        color: "#6b21a8",
-                        margin: 0,
-                      }}
-                    >
-                      <strong>Training Mode</strong> — You can explore this form
-                      but cannot save changes.
+                  <div style={{background: '#f3e8ff', border: '1px solid #a855f7', borderRadius: '0.75rem', padding: '0.75rem 1rem'}}>
+                    <p style={{fontSize: '0.875rem', color: '#6b21a8', margin: 0}}>
+                      <strong>Training Mode</strong> — You can explore this form but cannot save changes.
                     </p>
                   </div>
                 )}
@@ -929,9 +928,9 @@ const AddInvoiceModal = ({
                         className={fi("invoiceEntity")}
                       >
                         <option value="">Select Entity</option>
-                        {entitiesList.map((entity) => (
-                          <option key={entity.id} value={entity.entity_name}>
-                            {entity.entity_name}
+                        {entities.map((entity, idx) => (
+                          <option key={idx} value={entity}>
+                            {entity}
                           </option>
                         ))}
                       </select>
@@ -1018,7 +1017,6 @@ const AddInvoiceModal = ({
                       <label className={lbl}>
                         Ledger Name <span className="text-rose-500">*</span>
                       </label>
-                      {/* FIX 2: Removed readOnly — ledger editable in both add and edit mode */}
                       <input
                         type="text"
                         value={formData.ledgerName || ""}
@@ -1298,7 +1296,6 @@ const AddInvoiceModal = ({
                       </p>
                     </div>
 
-                    {/* FIX 1: Replaced <input list> + <datalist> with proper <select> */}
                     <div>
                       <label className={lbl}>
                         Bank Name &amp; Acct No{" "}
@@ -1335,20 +1332,62 @@ const AddInvoiceModal = ({
                         placeholder="Optional description"
                       />
                     </div>
+
+                    {/* ── MULTI-REF PAYMENT INPUT ── */}
                     <div>
                       <label className={lbl}>
                         Ref No of payment made against Invoice (If Any)
                       </label>
-                      <textarea
-                        value={formData.refNoPaymentMade}
-                        onChange={(e) =>
-                          handleChange("refNoPaymentMade", e.target.value)
-                        }
-                        rows={2}
-                        className={`${inpNormal} resize-none`}
-                        placeholder="e.g. PI-DD-120526-01"
-                      />
-                      <p className="text-xs text-amber-500 mt-1">
+                      <div className="space-y-2">
+                        {refList.map((ref, idx) => (
+                          <div key={idx} className="flex items-center gap-2 w-full">
+                            <input
+                              type="text"
+                              value={ref}
+                              onChange={(e) => {
+                                const updated = [...refList];
+                                updated[idx] = e.target.value;
+                                handleChange("refNoPaymentMade", updated);
+                              }}
+                              className="flex-1 min-w-0 bg-white border border-gray-200 text-gray-800 px-3.5 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors placeholder-gray-400"
+                              placeholder="e.g. PI-DD-120526-01"
+                            />
+
+                            {refList.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = refList.filter(
+                                    (_, i) => i !== idx
+                                  );
+                                  handleChange("refNoPaymentMade", updated);
+                                }}
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition flex-shrink-0"
+                                title="Remove this ref"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+
+                            {idx === refList.length - 1 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleChange("refNoPaymentMade", [
+                                    ...refList,
+                                    "",
+                                  ])
+                                }
+                                className="p-1.5 rounded-lg text-blue-500 hover:text-blue-700 hover:bg-blue-50 transition flex-shrink-0"
+                                title="Add another ref"
+                              >
+                                <Plus className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-amber-500 mt-1.5">
                         Enter advance payment ref to auto-link
                       </p>
                     </div>

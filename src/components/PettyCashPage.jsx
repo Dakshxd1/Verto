@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Minus, Wallet, AlertCircle, ChevronDown,
   CheckCircle2, Loader2, X, RefreshCw, TrendingUp, TrendingDown,
-  History, Search,
+  History, Search, Pencil,
 } from "lucide-react";
 import PettyCashHistoryModal from "./Pettycashhistorymodal.jsx";
 import { usePerms } from "../context/PermissionsContext";
@@ -14,7 +14,10 @@ const DEPARTMENTS = [
   "Common","OS","Temp","Rec","BD","Accts","HR","Admin","IT","Legal","Projects","Others",
 ];
 
-const COST_HEADS  = ["OS","temp","recruitment","projects","others"];
+// FIX #5: COST_HEADS keys must match the breakup object keys (ops, temp, etc.)
+//         COST_LABELS maps those same keys to display labels — "OS" label was
+//         previously missing because the key "OS" ≠ object key "ops".
+const COST_HEADS  = ["ops","temp","recruitment","projects","others"];
 const COST_LABELS = { ops:"OS", temp:"Temp", recruitment:"Rec", projects:"Projects", others:"Others" };
 
 const DEFAULT_EXPENSE = {
@@ -76,10 +79,8 @@ const HeaderDropdown = ({ value, onChange, headers, setHeaders, error }) => {
   const [saving, setSaving]   = useState(false);
   const ref                   = useRef(null);
 
-  // Sync display when value changes externally (e.g. form reset)
   useEffect(() => { setSearch(value || ""); }, [value]);
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener("mousedown", handler);
@@ -151,7 +152,6 @@ const HeaderDropdown = ({ value, onChange, headers, setHeaders, error }) => {
               </button>
             ))}
 
-            {/* Add new header option */}
             {!exactMatch && search.trim() !== "" && (
               <button type="button" onClick={addHeader} disabled={saving}
                 className="w-full text-left px-3 py-2.5 bg-violet-50 hover:bg-violet-100 text-violet-700 text-sm font-semibold border-t border-violet-100 flex items-center gap-2 transition">
@@ -174,6 +174,7 @@ const Modal = ({ open, onClose, title, accentColor, icon: Icon, children, footer
     red:    "from-red-600 to-orange-600",
     green:  "from-emerald-600 to-teal-600",
     violet: "from-violet-600 to-purple-600",
+    amber:  "from-amber-500 to-orange-500",
   };
   return (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
@@ -214,6 +215,16 @@ const CostHeadSection = ({ breakup, onChange, error }) => {
     const n = Math.min(Math.max(parseInt(val) || 0, 0), 100);
     onChange({ ...breakup, [head]: n });
   };
+
+  // FIX #6: Expanded quick-allocation presets — 100% OS, 100% REC, 50-50 OS-REC, Even Split, Reset
+  const presets = [
+    { label: "OS 100%",     fn: () => onChange({ ops:100, temp:0, recruitment:0, projects:0, others:0 }) },
+    { label: "REC 100%",    fn: () => onChange({ ops:0,   temp:0, recruitment:100, projects:0, others:0 }) },
+    { label: "50% OS-REC",  fn: () => onChange({ ops:50,  temp:0, recruitment:50,  projects:0, others:0 }) },
+    { label: "Split",       fn: () => { const e=Math.floor(100/5); onChange({ ops:e,temp:e,recruitment:e,projects:e,others:100-e*4 }); } },
+    { label: "Reset",       fn: () => onChange({ ops:0, temp:0, recruitment:0, projects:0, others:0 }) },
+  ];
+
   return (
     <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
       <div className="flex items-center justify-between mb-2">
@@ -225,6 +236,7 @@ const CostHeadSection = ({ breakup, onChange, error }) => {
           {total}% {total===100 ? "✓" : `(need ${100-total}%)`}
         </span>
       </div>
+      {/* FIX #5: COST_HEADS now iterates over correct keys ("ops","temp",...) so COST_LABELS[h] resolves correctly */}
       <div className="grid grid-cols-5 gap-2">
         {COST_HEADS.map((h) => (
           <div key={h}>
@@ -246,12 +258,9 @@ const CostHeadSection = ({ breakup, onChange, error }) => {
           return p > 0 ? <div key={h} className={`${colors[i]} transition-all`} style={{ width:`${Math.min(p,100)}%` }} /> : null;
         })}
       </div>
-      <div className="flex gap-3 mt-2">
-        {[
-          { label:"OS 100%", fn: () => onChange({ ops:100, temp:0, recruitment:0, projects:0, others:0 }) },
-          { label:"Split",   fn: () => { const e=Math.floor(100/5); onChange({ ops:e,temp:e,recruitment:e,projects:e,others:100-e*4 }); } },
-          { label:"Reset",   fn: () => onChange({ ops:0, temp:0, recruitment:0, projects:0, others:0 }) },
-        ].map((b) => (
+      {/* FIX #6: Render all presets */}
+      <div className="flex flex-wrap gap-3 mt-2">
+        {presets.map((b) => (
           <button key={b.label} type="button" onClick={b.fn}
             className="text-[11px] text-violet-600 hover:text-violet-800 underline">{b.label}</button>
         ))}
@@ -269,12 +278,17 @@ const PettyCashPage = () => {
   const [entries, setEntries]               = useState([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
 
-  // DB-driven headers
   const [headers, setHeaders]               = useState([]);
 
   const [expenseOpen, setExpenseOpen]       = useState(false);
   const [cashInOpen, setCashInOpen]         = useState(false);
   const [historyOpen, setHistoryOpen]       = useState(false);
+
+  // FIX #7: Edit modal state
+  const [editOpen, setEditOpen]             = useState(false);
+  const [editingEntry, setEditingEntry]     = useState(null);
+  const [editForm, setEditForm]             = useState(DEFAULT_EXPENSE);
+  const [editErrors, setEditErrors]         = useState({});
 
   const [expenseForm, setExpenseForm]       = useState(DEFAULT_EXPENSE);
   const [cashInForm, setCashInForm]         = useState(DEFAULT_CASH_IN);
@@ -293,7 +307,6 @@ const PettyCashPage = () => {
     if (!selectedBox && data?.length) setSelectedBox(data[0]);
   };
 
-  // ── Load DB headers ──
   const loadHeaders = async () => {
     const { data } = await supabase
       .from("petty_cash_headers")
@@ -307,7 +320,6 @@ const PettyCashPage = () => {
     loadHeaders();
   }, []);
 
-  // ── Load entries for selected box ──
   const loadEntries = async () => {
     if (!selectedBox) return;
     setLoadingEntries(true);
@@ -322,7 +334,6 @@ const PettyCashPage = () => {
 
   useEffect(() => { loadEntries(); }, [selectedBox]);
 
-  // ── Refresh box balance after save ──
   const refreshBox = async () => {
     const { data } = await supabase
       .from("petty_cash_master")
@@ -406,14 +417,20 @@ const PettyCashPage = () => {
       const amt = parseFloat(cashInForm.amount);
 
       const { error: entryErr } = await supabase.from("petty_cash_entries").insert([{
-        petty_cash_id:   selectedBox.id,
-        payment_made_id: null,
-        entry_date:      cashInForm.entry_date,
-        amount:          amt,
-        type:            "credit",
-        entry_mode:      "CASH_RECEIVED",
-        header:          "Cash Received",
-        remarks:         cashInForm.remarks,
+        petty_cash_id:    selectedBox.id,
+        payment_made_id:  null,
+        entry_date:       expenseForm.entry_date,
+        amount:           amt,
+        type:             "debit",
+        entry_mode:       "EXPENSE",        // ← Explicitly set
+        header:           expenseForm.header,
+        department:       expenseForm.department,
+        cost_ops:         expenseForm.costHeadBreakup.ops,
+        cost_temp:        expenseForm.costHeadBreakup.temp,
+        cost_recruitment: expenseForm.costHeadBreakup.recruitment,
+        cost_projects:    expenseForm.costHeadBreakup.projects,
+        cost_others:      expenseForm.costHeadBreakup.others,
+        remarks:          expenseForm.remarks,
       }]);
       if (entryErr) throw entryErr;
 
@@ -434,6 +451,88 @@ const PettyCashPage = () => {
       alert("Error: " + err.message);
     } finally { setSaving(false); }
   };
+
+  // ─── FIX #7: EDIT EXPENSE ──────────────────────────────────────────────────
+  const openEditModal = (row) => {
+    if (row.entry_mode !== "CASH_RECEIVED") return; // ← SAFETY GUARD
+    setEditingEntry(row);
+    setEditForm({
+      entry_date: row.entry_date || "",
+      amount:     String(row.amount || ""),
+      header:     row.header || "",
+      department: row.department || "",
+      remarks:    row.remarks || "",
+      costHeadBreakup: {
+        ops:         row.cost_ops         || 0,
+        temp:        row.cost_temp        || 0,
+        recruitment: row.cost_recruitment || 0,
+        projects:    row.cost_projects    || 0,
+        others:      row.cost_others      || 0,
+      },
+    });
+    setEditErrors({});
+    setEditOpen(true);
+  };
+
+  const validateEdit = () => {
+    const e = {};
+    if (!editForm.entry_date) e.entry_date = "Date required";
+    if (!editForm.amount || parseFloat(editForm.amount) <= 0) e.amount = "Amount must be > 0";
+    if (!editForm.header) e.header = "Header required";
+    if (!editForm.department) e.department = "Department required";
+    const total = Object.values(editForm.costHeadBreakup).reduce((a,b)=>a+b,0);
+    if (Math.round(total) !== 100) e.costHead = `Total must be 100% (currently ${total}%)`;
+    setEditErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const saveEdit = async () => {
+    if (isIntern || !editingEntry) return;
+    if (!validateEdit() || !selectedBox) return;
+    setSaving(true);
+    try {
+      const newAmt = parseFloat(editForm.amount);
+      const oldAmt = parseFloat(editingEntry.amount);
+      const diff   = newAmt - oldAmt; // positive = more spent, negative = less spent
+
+      const { error: updErr } = await supabase
+        .from("petty_cash_entries")
+        .update({
+          entry_date:       editForm.entry_date,
+          amount:           newAmt,
+          header:           editForm.header,
+          department:       editForm.department,
+          cost_ops:         editForm.costHeadBreakup.ops,
+          cost_temp:        editForm.costHeadBreakup.temp,
+          cost_recruitment: editForm.costHeadBreakup.recruitment,
+          cost_projects:    editForm.costHeadBreakup.projects,
+          cost_others:      editForm.costHeadBreakup.others,
+          remarks:          editForm.remarks,
+        })
+        .eq("id", editingEntry.id);
+      if (updErr) throw updErr;
+
+      // Adjust balance only if amount changed
+      if (diff !== 0) {
+        const { error: balErr } = await supabase
+          .from("petty_cash_master")
+          .update({ current_balance: selectedBox.current_balance - diff })
+          .eq("id", selectedBox.id);
+        if (balErr) throw balErr;
+      }
+
+      await refreshBox();
+      await loadEntries();
+      setEditOpen(false);
+      setEditingEntry(null);
+      setEditErrors({});
+      setSavedMsg("Entry updated");
+      setTimeout(() => setSavedMsg(""), 2500);
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally { setSaving(false); }
+  };
+  // ──────────────────────────────────────────────────────────────────────────
 
   const costDisplay = (row) => {
     const parts = [];
@@ -540,7 +639,6 @@ const PettyCashPage = () => {
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition" title="Refresh">
                   <RefreshCw className="w-4 h-4" />
                 </button>
-                {/* View History */}
                 <button onClick={() => setHistoryOpen(true)}
                   className="flex items-center gap-1.5 px-4 py-2 bg-violet-500 hover:bg-violet-600 text-white rounded-lg text-sm font-semibold transition">
                   <History className="w-4 h-4" />View History
@@ -574,15 +672,19 @@ const PettyCashPage = () => {
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[100px]">Department</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cost Break Up</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Remarks</th>
+                    {/* FIX #7: Edit column header (hidden for interns) */}
+                    {!isIntern && (
+                      <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[60px]">Edit</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {loadingEntries ? (
-                    <tr><td colSpan={7} className="text-center py-10 text-gray-400">
+                    <tr><td colSpan={isIntern ? 7 : 8} className="text-center py-10 text-gray-400">
                       <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />Loading...
                     </td></tr>
                   ) : entries.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-gray-400">
+                    <tr><td colSpan={isIntern ? 7 : 8} className="text-center py-12 text-gray-400">
                       <Wallet className="w-8 h-8 mx-auto mb-2 opacity-30" />
                       <p className="text-sm">No entries yet</p>
                       <p className="text-xs mt-1">Add an expense or cash received above</p>
@@ -609,6 +711,21 @@ const PettyCashPage = () => {
                       <td className="px-4 py-3 text-gray-700 text-xs">{row.department || "—"}</td>
                       <td className="px-4 py-3 text-gray-500 text-[11px] font-mono">{row.type==="debit" ? costDisplay(row) : "—"}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs max-w-[200px] truncate">{row.remarks || "—"}</td>
+                      {/* FIX #7: Edit button — only for expense (debit) rows, hidden for interns */}
+                      {!isIntern && (
+  <td className="px-4 py-3 text-center">
+    {row.entry_mode === "CASH_RECEIVED" ? (
+      <button
+        onClick={() => openEditModal(row)}
+        title="Edit cash received"
+        className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition">
+        <Pencil className="w-3.5 h-3.5" />
+      </button>
+    ) : (
+      <span className="text-gray-200">—</span>
+    )}
+  </td>
+)}
                     </tr>
                   ))}
                 </tbody>
@@ -620,7 +737,7 @@ const PettyCashPage = () => {
                         <div className="text-[11px] text-emerald-600 font-bold">+₹{totalCredits.toLocaleString("en-IN")}</div>
                         <div className="text-[11px] text-red-500 font-bold">−₹{totalDebits.toLocaleString("en-IN")}</div>
                       </td>
-                      <td colSpan={4} className="px-4 py-3 text-xs text-gray-500">
+                      <td colSpan={isIntern ? 4 : 5} className="px-4 py-3 text-xs text-gray-500">
                         Balance: <span className={`font-bold ${Number(selectedBox.current_balance)<0?"text-red-600":"text-violet-700"}`}>
                           ₹{Number(selectedBox.current_balance||0).toLocaleString("en-IN")}
                         </span>
@@ -693,7 +810,6 @@ const PettyCashPage = () => {
           <div className="grid grid-cols-2 gap-3">
             <Field error={expenseErrors.header}>
               <Label required>Header</Label>
-              {/* DB-driven searchable header dropdown */}
               <HeaderDropdown
                 value={expenseForm.header}
                 onChange={(v) => setExpenseForm((p) => ({ ...p, header: v }))}
@@ -791,6 +907,91 @@ const PettyCashPage = () => {
               </p>
             </div>
           )}
+        </div>
+      </Modal>
+
+      {/* ══ FIX #7: EDIT EXPENSE MODAL ══ */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)}
+        title="Edit Expense Entry" accentColor="amber" icon={Pencil}
+        footer={<>
+          <button onClick={() => setEditOpen(false)}
+            className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-100 transition">
+            Cancel
+          </button>
+          <button onClick={saveEdit} disabled={saving}
+            className="px-5 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 disabled:opacity-60 bg-amber-500 hover:bg-amber-600 text-white">
+            {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Pencil className="w-4 h-4" />Save Changes</>}
+          </button>
+        </>}
+      >
+        <div className="space-y-4">
+          {selectedBox && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex justify-between items-center">
+              <div>
+                <p className="text-xs text-amber-600 font-medium">Editing entry in</p>
+                <p className="font-bold text-gray-800 text-sm">{selectedBox.cash_name}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-500">Current Balance</p>
+                <p className={`font-bold text-lg ${Number(selectedBox.current_balance)<0 ? "text-red-600":"text-emerald-600"}`}>
+                  ₹{Number(selectedBox.current_balance||0).toLocaleString("en-IN")}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field error={editErrors.entry_date}>
+              <Label required>Date</Label>
+              <input type="date" value={editForm.entry_date}
+                onChange={(e) => setEditForm((p) => ({ ...p, entry_date:e.target.value }))}
+                className={inputCls(editErrors.entry_date)} />
+            </Field>
+            <Field error={editErrors.amount}>
+              <Label required>Amount (₹)</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-2 text-gray-400 text-sm">₹</span>
+                <input type="number" value={editForm.amount}
+                  onChange={(e) => setEditForm((p) => ({ ...p, amount:e.target.value }))}
+                  placeholder="0"
+                  className={`${inputCls(editErrors.amount)} pl-7`} />
+              </div>
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field error={editErrors.header}>
+              <Label required>Header</Label>
+              <HeaderDropdown
+                value={editForm.header}
+                onChange={(v) => setEditForm((p) => ({ ...p, header: v }))}
+                headers={headers}
+                setHeaders={setHeaders}
+                error={editErrors.header}
+              />
+            </Field>
+            <Field error={editErrors.department}>
+              <Label required>Department</Label>
+              <SelectInput value={editForm.department}
+                onChange={(v) => setEditForm((p) => ({ ...p, department:v }))}
+                options={DEPARTMENTS} placeholder="Select dept..."
+                error={editErrors.department} />
+            </Field>
+          </div>
+
+          <CostHeadSection
+            breakup={editForm.costHeadBreakup}
+            onChange={(v) => setEditForm((p) => ({ ...p, costHeadBreakup:v }))}
+            error={editErrors.costHead}
+          />
+
+          <Field>
+            <Label>Remarks</Label>
+            <textarea value={editForm.remarks}
+              onChange={(e) => setEditForm((p) => ({ ...p, remarks:e.target.value }))}
+              rows={2} placeholder="Optional notes..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none placeholder:text-gray-400" />
+          </Field>
         </div>
       </Modal>
 
