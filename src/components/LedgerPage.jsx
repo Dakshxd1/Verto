@@ -874,8 +874,9 @@ const LedgerPage = () => {
         </div>
       </div>
 
-      {/* ── Net in Hand Summary (only when OS payouts exist) ── */}
-      {osPayouts.length > 0 && (
+      {/* ── Net in Hand Summary (show for any OS invoice, even before payouts) ── */}
+      {/* ✅ FIX: Changed condition from osPayouts.length > 0 to netInHand > 0 */}
+      {netInHand > 0 && (
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="bg-violet-50 border border-violet-200 rounded-2xl p-3 text-center">
             <p className="text-xs text-violet-600 font-semibold uppercase tracking-wider mb-1">
@@ -891,7 +892,6 @@ const LedgerPage = () => {
               OS Paid Out
             </p>
             <p className="text-lg font-bold text-rose-700">
-              {/* CHANGE 3: Uses helper with BB deduction */}
               {fmt(osPaidTotal)}
             </p>
             <p className="text-xs text-rose-400 mt-0.5">3rd party paid</p>
@@ -915,7 +915,6 @@ const LedgerPage = () => {
                 leftToPay <= 0 ? "text-emerald-700" : "text-amber-700"
               }`}
             >
-              {/* CHANGE 3: Uses helper with BB deduction */}
               {fmt(leftToPay)}
             </p>
             <p

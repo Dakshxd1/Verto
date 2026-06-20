@@ -17,8 +17,11 @@ import {
   Building2,
   User,
   RefreshCw,
+  Upload,
+  FileSpreadsheet,
 } from "lucide-react";
-import ExpenseViewModal from "./ExpenseViewModal";
+import * as XLSX from "xlsx";
+import ExpenseViewModal, { BulkUploadModal } from "./ExpenseViewModal";
 
 // ─── MASTER DATA ──────────────────────────────────────────────────────────────
 const DEPARTMENTS = [
@@ -250,6 +253,7 @@ const AddExpenseDetailsModal = ({
   const [vendors, setVendors] = useState([]);
 
   const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [invoiceResults, setInvoiceResults] = useState([]);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -412,16 +416,16 @@ const AddExpenseDetailsModal = ({
         return String(e.type).toLowerCase() === "debit" ? sum - amt : sum + amt;
       }, 0);
       const currentBalance = opening + movement;
-       if (Number(amount || 0) > currentBalance) {
-      return window.confirm(
-        `⚠️ Bank payment (₹${Number(amount).toLocaleString("en-IN")}) exceeds current balance (₹${Number(currentBalance).toLocaleString("en-IN")}).\n\nClick OK to proceed, or Cancel to go back and fix the amount.`
-      );
+      if (Number(amount || 0) > currentBalance) {
+        return window.confirm(
+          `⚠️ Bank payment (₹${Number(amount).toLocaleString("en-IN")}) exceeds current balance (₹${Number(currentBalance).toLocaleString("en-IN")}).\n\nClick OK to proceed, or Cancel to go back and fix the amount.`
+        );
+      }
+    } catch (err) {
+      return true; // don't block on check failure
     }
-  } catch (err) {
-    return true; // don't block on check failure
-  }
-  return true;
-};
+    return true;
+  };
 
   const costTotal = Object.values(form.costHeadBreakup).reduce(
     (a, b) => a + b,
@@ -434,6 +438,100 @@ const AddExpenseDetailsModal = ({
     selectedInvoice?.dbId || selectedInvoice?.id || invoice?.dbId || null;
 
   const paymentSourceMap = { bank: "BANK", cash: "CASH" };
+
+  // ── Download Template ──
+  const downloadTemplate = () => {
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Data template
+    const headers = [
+      "expense_nature",     // Internal or Client
+      "client_name",        // Client name (if Client)
+      "entity",             // REQUIRED — e.g. "Verto India Pvt Ltd"
+      "paid_to_type",       // Vendor or Employee
+      "vendor_name",        // Vendor name
+      "emp_code",           // Employee code (if Employee)
+      "employee_name",      // Employee name (if Employee)
+      "department",         // REQUIRED — e.g. OS, Rec, Temp, Admin, Common
+      "pay_head",           // REQUIRED — e.g. Stationery, Rental, Consultant Fee
+      "month_of_expense",   // YYYY-MM format e.g. 2026-06
+      "payment_description",// Description of what was paid
+      "due_amount",         // REQUIRED — gross amount before TDS
+      "tds_amount",         // TDS deducted (0 if none)
+      "payment_date",       // REQUIRED — YYYY-MM-DD e.g. 2026-06-15
+      "payment_mode",       // REQUIRED — "bank" or "cash"
+      "bank_name",          // Bank name (REQUIRED if payment_mode = bank)
+      "cost_ops",           // % allocated to OS dept (all 5 must total 100)
+      "cost_temp",          // % allocated to Temp dept
+      "cost_recruitment",   // % allocated to Recruitment dept
+      "cost_projects",      // % allocated to Projects dept
+      "cost_others",        // % allocated to Others
+      "is_billable",        // TRUE or FALSE
+      "invoice_number",     // Invoice number (if billable)
+      "asset_description",  // Asset details (if Asset Purchase pay head)
+      "asset_warranty",     // Warranty period
+      "asset_stock_status", // In Use / In Stock / Defective / Disposed
+      "remarks",            // Optional notes
+    ];
+
+    const sample = [
+      [
+        "Internal", "", "Verto India Pvt Ltd", "Vendor", "ABC Office Supplies", "", "",
+        "Admin", "Stationery", "2026-06", "Monthly office stationery",
+        "5000", "0", "2026-06-15", "bank", "HDFC Bank-8772",
+        "100", "0", "0", "0", "0", "FALSE", "",
+        "", "", "", "Monthly stationery purchase",
+      ],
+      [
+        "Internal", "", "Verto India Pvt Ltd", "Vendor", "Tata Power", "", "",
+        "Common", "Electricity", "2026-06", "Office electricity bill June",
+        "12000", "0", "2026-06-20", "bank", "HDFC Bank-8772",
+        "50", "0", "25", "25", "0", "FALSE", "",
+        "", "", "", "June electricity",
+      ],
+      [
+        "Client", "Acme Corp", "Verto India Pvt Ltd", "Vendor", "XYZ Consulting", "", "",
+        "Projects", "Consultant Fee", "2026-06", "Client project consulting",
+        "25000", "2500", "2026-06-10", "bank", "IDFC Bank",
+        "0", "0", "0", "100", "0", "TRUE", "2606001",
+        "", "", "", "Client billable consultant",
+      ],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...sample]);
+    ws["!cols"] = headers.map(() => ({ wch: 22 }));
+    XLSX.utils.book_append_sheet(wb, ws, "Expense Upload");
+
+    // Sheet 2: Instructions
+    const instrRows = [
+      ["EXPENSE BULK UPLOAD — INSTRUCTIONS"],
+      [""],
+      ["COLUMN", "REQUIRED?", "NOTES"],
+      ["entity", "YES", "Must match exactly with entity_master.entity_name"],
+      ["department", "YES", "One of: OS / Rec / Temp / Projects / Common / Admin / BD / Accts / HR / IT / Legal / Others"],
+      ["pay_head", "YES", "One of: Stationery / Rental / Electricity / Consultant Fee / Asset Purchase / CC Bill / Others etc."],
+      ["due_amount", "YES", "Gross amount before TDS. Must be > 0"],
+      ["payment_date", "YES", "Format: YYYY-MM-DD e.g. 2026-06-15"],
+      ["payment_mode", "YES", "bank or cash (lowercase)"],
+      ["bank_name", "CONDITIONAL", "Required if payment_mode = bank. Must match exactly with bank_master.bank_name"],
+      ["cost_ops + cost_temp + cost_recruitment + cost_projects + cost_others", "YES", "Must total exactly 100"],
+      ["month_of_expense", "NO", "Format: YYYY-MM e.g. 2026-06"],
+      ["tds_amount", "NO", "Defaults to 0 if blank. Transfer = due_amount - tds_amount"],
+      ["is_billable", "NO", "TRUE or FALSE. If TRUE, invoice_number should be provided"],
+      ["invoice_number", "NO", "Must match an existing invoice in the system if provided"],
+      [""],
+      ["IMPORTANT:"],
+      ["1.", "Bank name must match EXACTLY what is in bank_master (case-insensitive match used)"],
+      ["2.", "If cost_ops + cost_temp + cost_recruitment + cost_projects + cost_others = 0, system defaults to OS 100%"],
+      ["3.", "Bad rows are skipped — good rows still go through. You will see a count of skipped rows after upload"],
+      ["4.", "Each uploaded row fires bank entry, software entry, cashflow projection, and audit log automatically"],
+    ];
+    const wsInstr = XLSX.utils.aoa_to_sheet(instrRows);
+    wsInstr["!cols"] = [{ wch: 50 }, { wch: 14 }, { wch: 70 }];
+    XLSX.utils.book_append_sheet(wb, wsInstr, "Instructions");
+
+    XLSX.writeFile(wb, "Expense_Bulk_Upload_Template.xlsx");
+  };
 
   // ── Validate ──
   const validate = () => {
@@ -469,9 +567,9 @@ const AddExpenseDetailsModal = ({
 
       // Non-blocking warning if payment exceeds bank balance
       if (form.paymentMode === "bank" && form.bankId && transferAmt > 0) {
-  const proceed = await warnIfBankShort(form.bankId, transferAmt);
-  if (proceed === false) { setLoading(false); return; }
-}
+        const proceed = await warnIfBankShort(form.bankId, transferAmt);
+        if (proceed === false) { setLoading(false); return; }
+      }
 
       const payload = {
         amount: transferAmt,
@@ -611,6 +709,7 @@ const AddExpenseDetailsModal = ({
                   <Wallet className="w-4 h-4" />
                   <span>Petty Cash</span>
                 </button>
+                {/* View Data button */}
                 <button
                   onClick={() => setViewModalOpen(true)}
                   type="button"
@@ -619,6 +718,7 @@ const AddExpenseDetailsModal = ({
                   <Eye className="w-4 h-4" />
                   <span>View Data</span>
                 </button>
+                {/* Close button */}
                 <button
                   onClick={onClose}
                   type="button"
@@ -1474,16 +1574,25 @@ const AddExpenseDetailsModal = ({
 
             {/* ── Footer ── */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex-shrink-0">
-              <div className="text-xs text-gray-500">
-                {costTotal === 100 ? (
-                  <span className="text-emerald-600 font-medium flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Cost head complete
-                  </span>
-                ) : (
-                  <span className="text-amber-600">
-                    ⚠ Cost head: {costTotal}% of 100%
-                  </span>
-                )}
+              <div className="flex items-center gap-2">
+                {/* Small Bulk Upload button */}
+                <button
+                  onClick={() => setBulkUploadOpen(true)}
+                  type="button"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-medium transition border border-emerald-200"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Bulk Upload</span>
+                </button>
+                {/* Small Template button */}
+                <button
+                  onClick={downloadTemplate}
+                  type="button"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-lg text-xs font-medium transition border border-orange-200"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Template</span>
+                </button>
               </div>
               <div className="flex gap-3">
                 <button
@@ -1527,9 +1636,21 @@ const AddExpenseDetailsModal = ({
         </div>
       </div>
 
+      {/* View Modal */}
       <ExpenseViewModal
         open={viewModalOpen}
         onClose={() => setViewModalOpen(false)}
+      />
+
+      {/* Bulk Upload Modal */}
+      <BulkUploadModal
+        open={bulkUploadOpen}
+        onClose={() => setBulkUploadOpen(false)}
+        onUploaded={() => {
+          onSaved?.();
+          window.refreshDashboard?.();
+          setBulkUploadOpen(false);
+        }}
       />
     </>,
     document.body
