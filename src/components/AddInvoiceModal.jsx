@@ -126,10 +126,10 @@ const AddInvoiceModal = ({
   isOpen,
   onClose,
   clients = [],
-  entities = [],
   selectedInvoice,
 }) => {
   const { role } = useAuth();
+  const [entitiesList, setEntitiesList] = useState([]);
   const { canSave, isIntern } = usePerms();
   const [formData, setFormData] = useState({
     invoiceEntity: "",
@@ -152,7 +152,6 @@ const AddInvoiceModal = ({
     expectedCollectionDate: "",
     bankName: "",
     invoiceDescription: "",
-    // CHANGED: now an array of ref strings instead of a single string
     refNoPaymentMade: [""],
     employeeCount: "",
     grossValue: "",
@@ -191,15 +190,20 @@ const AddInvoiceModal = ({
   ];
 
   const fetchMasters = async () => {
-    const [banksRes, clientsRes] = await Promise.all([
+    const [banksRes, clientsRes, entitiesRes] = await Promise.all([
       supabase.from("bank_master").select("id, bank_name"),
       supabase
         .from("clients_master")
         .select("id, client_name, ledger_name")
         .order("client_name"),
+      supabase
+        .from("entity_master")
+        .select("id, entity_name")
+        .order("entity_name"),
     ]);
     if (!banksRes.error) setBanks(banksRes.data || []);
     if (!clientsRes.error) setClientsList(clientsRes.data || []);
+    if (!entitiesRes.error) setEntitiesList(entitiesRes.data || []);
   };
 
   useEffect(() => {
@@ -240,14 +244,6 @@ const AddInvoiceModal = ({
       banks.find((b) => b.id === selectedInvoice.bank_id) ||
       banks.find((b) => b.bank_name === selectedInvoice.bank_name);
 
-    // Normalise existing ref — could be string or array from DB
-    const existingRef = selectedInvoice?.ref_no_payment_made;
-    const normalisedRef = Array.isArray(existingRef)
-      ? existingRef
-      : existingRef
-      ? [existingRef]
-      : [""];
-
     setFormData((prev) => ({
       ...prev,
       invoiceEntity: selectedInvoice?.entity_name ?? "",
@@ -271,7 +267,6 @@ const AddInvoiceModal = ({
       tds: selectedInvoice?.tds ?? "",
       invoiceValue: selectedInvoice?.invoice_value ?? "",
       receivableRs: selectedInvoice?.receivable_amount ?? "",
-      refNoPaymentMade: normalisedRef,
       employeeCount: selectedInvoice?.employee_count ?? "",
       grossValue: selectedInvoice?.gross_value ?? "",
       netInHand: selectedInvoice?.net_in_hand ?? "",
@@ -281,6 +276,9 @@ const AddInvoiceModal = ({
       ptTax: selectedInvoice?.pt_tax ?? "",
       otherDed: selectedInvoice?.other_ded ?? "",
       ctc: selectedInvoice?.ctc ?? "",
+      refNoPaymentMade: selectedInvoice?.advance_ref_nos?.length > 0
+        ? selectedInvoice.advance_ref_nos
+        : [""],
     }));
   }, [selectedInvoice, banks]);
 
@@ -521,6 +519,14 @@ const AddInvoiceModal = ({
         return;
       }
 
+      // Parse refs from the refNoPaymentMade field
+      // Parse refs from the refNoPaymentMade field
+      const refs = Array.isArray(formData.refNoPaymentMade)
+        ? formData.refNoPaymentMade.filter((r) => r.trim())
+        : formData.refNoPaymentMade
+        ? [formData.refNoPaymentMade].filter((r) => r.trim())
+        : [];
+
       const { data: existingClient } = await supabase
         .from("clients_master")
         .select("id")
@@ -611,13 +617,7 @@ const AddInvoiceModal = ({
         return;
       }
 
-      // Normalise refs: filter empty strings, join as comma-separated for DB
-      const refs = Array.isArray(formData.refNoPaymentMade)
-        ? formData.refNoPaymentMade.filter((r) => r.trim())
-        : formData.refNoPaymentMade
-        ? [formData.refNoPaymentMade]
-        : [];
-
+      // Base payload — all editable fields
       const payload = {
         invoice_number: formData.invoiceNo,
         employee_name: formData.employeeName || null,
@@ -644,12 +644,14 @@ const AddInvoiceModal = ({
         pt_tax: Number(formData.ptTax) || 0,
         other_ded: Number(formData.otherDed) || 0,
         ctc: Number(formData.ctc) || 0,
+        advance_ref_nos: refs.length > 0 ? refs : [], // ← ADDED THIS LINE
       };
 
       let error;
       let insertedInvoice = null;
 
       if (selectedInvoice) {
+        // Strip DB-owned calculated fields on UPDATE
         const { receivable_amount, ...editableFields } = payload;
         const res = await supabase
           .from("invoices")
@@ -665,7 +667,7 @@ const AddInvoiceModal = ({
         error = res.error;
         insertedInvoice = res.data;
 
-        // Link ALL advance payments provided
+        // Link advance payment if ref provided (keep this existing logic)
         if (refs.length > 0 && insertedInvoice) {
           for (const ref of refs) {
             const { data: advancePayment, error: advanceError } = await supabase
@@ -690,7 +692,7 @@ const AddInvoiceModal = ({
 
               if (moveError) {
                 console.log(moveError);
-                alert(`❌ Failed to link payment: ${ref}`);
+                alert("❌ Failed to link payment");
               } else {
                 await supabase
                   .from("advance_payments")
@@ -699,15 +701,18 @@ const AddInvoiceModal = ({
                     is_adjusted: true,
                   })
                   .eq("id", advancePayment.id);
+                alert(
+                  `✅ Advance Payment Linked Successfully\nRef: ${advancePayment.payment_ref}`
+                );
               }
             }
           }
-          if (refs.length > 0) {
-            alert(
-              `✅ Advance Payment(s) Linked Successfully\nRefs: ${refs.join(", ")}`
-            );
-          }
         }
+
+        // ══════════════════════════════════════════════════════════════
+        // LINK CLIENT ADVANCE TRACKER REF → OS PAYOUTS
+        // THIS BLOCK HAS BEEN DELETED - DB TRIGGER HANDLES IT NOW
+        // ══════════════════════════════════════════════════════════════
       }
 
       if (error) {
@@ -815,13 +820,6 @@ const AddInvoiceModal = ({
 
   const isOS = formData.department === "OS";
 
-  // Helper: normalise refNoPaymentMade to always be an array for rendering
-  const refList = Array.isArray(formData.refNoPaymentMade)
-    ? formData.refNoPaymentMade
-    : formData.refNoPaymentMade
-    ? [formData.refNoPaymentMade]
-    : [""];
-
   return (
     <AnimatePresence>
       {isOpen && (
@@ -879,9 +877,23 @@ const AddInvoiceModal = ({
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-82px)] bg-gray-50/60">
               <form onSubmit={handleSubmit} className="space-y-4">
                 {isIntern && (
-                  <div style={{background: '#f3e8ff', border: '1px solid #a855f7', borderRadius: '0.75rem', padding: '0.75rem 1rem'}}>
-                    <p style={{fontSize: '0.875rem', color: '#6b21a8', margin: 0}}>
-                      <strong>Training Mode</strong> — You can explore this form but cannot save changes.
+                  <div
+                    style={{
+                      background: "#f3e8ff",
+                      border: "1px solid #a855f7",
+                      borderRadius: "0.75rem",
+                      padding: "0.75rem 1rem",
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: "0.875rem",
+                        color: "#6b21a8",
+                        margin: 0,
+                      }}
+                    >
+                      <strong>Training Mode</strong> — You can explore this form
+                      but cannot save changes.
                     </p>
                   </div>
                 )}
@@ -928,9 +940,9 @@ const AddInvoiceModal = ({
                         className={fi("invoiceEntity")}
                       >
                         <option value="">Select Entity</option>
-                        {entities.map((entity, idx) => (
-                          <option key={idx} value={entity}>
-                            {entity}
+                        {entitiesList.map((entity) => (
+                          <option key={entity.id} value={entity.entity_name}>
+                            {entity.entity_name}
                           </option>
                         ))}
                       </select>
@@ -1332,20 +1344,18 @@ const AddInvoiceModal = ({
                         placeholder="Optional description"
                       />
                     </div>
-
-                    {/* ── MULTI-REF PAYMENT INPUT ── */}
                     <div>
                       <label className={lbl}>
                         Ref No of payment made against Invoice (If Any)
                       </label>
                       <div className="space-y-2">
-                        {refList.map((ref, idx) => (
+                        {formData.refNoPaymentMade.map((ref, idx) => (
                           <div key={idx} className="flex items-center gap-2 w-full">
                             <input
                               type="text"
                               value={ref}
                               onChange={(e) => {
-                                const updated = [...refList];
+                                const updated = [...formData.refNoPaymentMade];
                                 updated[idx] = e.target.value;
                                 handleChange("refNoPaymentMade", updated);
                               }}
@@ -1353,11 +1363,11 @@ const AddInvoiceModal = ({
                               placeholder="e.g. PI-DD-120526-01"
                             />
 
-                            {refList.length > 1 && (
+                            {formData.refNoPaymentMade.length > 1 && (
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const updated = refList.filter(
+                                  const updated = formData.refNoPaymentMade.filter(
                                     (_, i) => i !== idx
                                   );
                                   handleChange("refNoPaymentMade", updated);
@@ -1369,12 +1379,12 @@ const AddInvoiceModal = ({
                               </button>
                             )}
 
-                            {idx === refList.length - 1 && (
+                            {idx === formData.refNoPaymentMade.length - 1 && (
                               <button
                                 type="button"
                                 onClick={() =>
                                   handleChange("refNoPaymentMade", [
-                                    ...refList,
+                                    ...formData.refNoPaymentMade,
                                     "",
                                   ])
                                 }

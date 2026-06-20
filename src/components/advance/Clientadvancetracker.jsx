@@ -17,6 +17,7 @@ const STATUS_OPTIONS = ["Pending", "Partially Paid", "Closed"];
 const emptyForm = {
   client_name: "", ledger_name: "", date: "", amount: "",
   interest: "", paid_back: "", status: "Pending", remarks: "",
+  ref_no: "", // ← ADDED
 };
 
 // ─── Excel column map ─────────────────────────────────────────────────────────
@@ -201,6 +202,12 @@ const InlineEditRow = ({ row, onSave, onCancel }) => {
     <tr className="bg-orange-50/60 border-b-2 border-orange-300">
       {/* # */}
       <td className="px-4 py-2 text-gray-400 text-xs align-top pt-3">✏️</td>
+      {/* Ref No */}
+      <td className="px-2 py-2 align-top">
+        <div className="px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono text-gray-500 text-center">
+          {row.ref_no || "—"}
+        </div>
+      </td>
       {/* Client Name */}
       <td className="px-2 py-2 align-top">
         <input className={inp} value={f.client_name}
@@ -401,10 +408,10 @@ const BulkDetailModal = ({ upload, onClose, onDataChanged }) => {
               <Loader2 className="w-6 h-6 animate-spin" /><span>Loading rows…</span>
             </div>
           ) : (
-            <table className="w-full text-sm min-w-[1000px]">
+            <table className="w-full text-sm min-w-[1200px]">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
-                  {["#", "Client Name", "Ledger", "Date", "Amount", "Interest", "Paid Back", "Pending Due", "Status", "Remarks", "Actions"].map((h) => (
+                  {["#", "Ref No", "Client Name", "Ledger", "Date", "Amount", "Interest", "Paid Back", "Pending Due", "Status", "Remarks", "Actions"].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -421,6 +428,7 @@ const BulkDetailModal = ({ upload, onClose, onDataChanged }) => {
                   ) : (
                     <tr key={r.id} className="hover:bg-orange-50/30 transition-colors">
                       <td className="px-4 py-3 text-gray-400 text-xs">{i + 1}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-orange-700">{r.ref_no || "—"}</td>
                       <td className="px-4 py-3 font-semibold text-orange-900">{r.client_name}</td>
                       <td className="px-4 py-3 text-gray-600">{r.ledger_name || "—"}</td>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(r.date)}</td>
@@ -539,9 +547,20 @@ export default function ClientAdvanceTracker() {
   }
 
   function openAdd() { setEditRecord(null); setForm(emptyForm); setShowModal(true); }
+  
   function openEdit(rec) {
     setEditRecord(rec);
-    setForm({ client_name: rec.client_name || "", ledger_name: rec.ledger_name || "", date: rec.date || "", amount: rec.amount || "", interest: rec.interest || "", paid_back: rec.paid_back || "", status: rec.status || "Pending", remarks: rec.remarks || "" });
+    setForm({
+      client_name: rec.client_name || "",
+      ledger_name: rec.ledger_name || "",
+      date: rec.date || "",
+      amount: rec.amount || "",
+      interest: rec.interest || "",
+      paid_back: rec.paid_back || "",
+      status: rec.status || "Pending",
+      remarks: rec.remarks || "",
+      ref_no: rec.ref_no || "", // ← ADDED
+    });
     setShowModal(true);
   }
 
@@ -551,10 +570,16 @@ export default function ClientAdvanceTracker() {
     setSaving(true);
     const pending_due = calcPendingDue(form.amount, form.interest, form.paid_back);
     const payload = {
-      client_name: form.client_name, ledger_name: form.ledger_name,
-      date: form.date || null, amount: parseFloat(form.amount) || 0,
-      interest: parseFloat(form.interest) || 0, paid_back: parseFloat(form.paid_back) || 0,
-      pending_due, status: form.status, remarks: form.remarks,
+      client_name: form.client_name,
+      ledger_name: form.ledger_name,
+      date: form.date || null,
+      amount: parseFloat(form.amount) || 0,
+      interest: parseFloat(form.interest) || 0,
+      paid_back: parseFloat(form.paid_back) || 0,
+      pending_due,
+      status: form.status,
+      remarks: form.remarks,
+      ...(editRecord ? { ref_no: editRecord.ref_no } : {}),  // ← CHANGED
     };
     if (editRecord) {
       await supabase.from("client_advance_tracker").update(payload).eq("id", editRecord.id);
@@ -893,27 +918,28 @@ export default function ClientAdvanceTracker() {
           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{filtered.length} records</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[1200px]">
             <thead>
               <tr className="bg-gradient-to-r from-[#7c2d12] to-[#ea580c]">
-                {["Client Name","Ledger","Date","Amount (LA)","Interest","Paid Back","Pending Due","Status","Remarks","Actions"].map((h) => (
+                {["Ref No", "Client Name", "Ledger", "Date", "Amount (LA)", "Interest", "Paid Back", "Pending Due", "Status", "Remarks", "Actions"].map((h) => (
                   <th key={h} className="px-4 py-3.5 text-left text-white font-semibold text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={10} className="text-center py-16 text-orange-400">
+                <tr><td colSpan={11} className="text-center py-16 text-orange-400">
                   <div className="flex items-center justify-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /><span>Loading…</span></div>
                 </td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-16 text-gray-400">No records found</td></tr>
+                <tr><td colSpan={11} className="text-center py-16 text-gray-400">No records found</td></tr>
               ) : (
                 filtered.map((r, i) => {
                   const pendingDue = calcPendingDue(r.amount, r.interest, r.paid_back);
                   return (
                     <motion.tr key={r.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
                       className="border-b border-orange-50 hover:bg-orange-50/30 transition-colors">
+                      <td className="px-4 py-3.5 font-mono text-xs text-orange-700">{r.ref_no || "—"}</td>
                       <td className="px-4 py-3.5 font-semibold text-orange-900">{r.client_name}</td>
                       <td className="px-4 py-3.5 text-gray-600">{r.ledger_name || "—"}</td>
                       <td className="px-4 py-3.5 text-gray-600 whitespace-nowrap">{fmtDate(r.date)}</td>
@@ -957,6 +983,13 @@ export default function ClientAdvanceTracker() {
                 <button onClick={() => setShowModal(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
               </div>
               <div className="p-6 grid grid-cols-2 gap-4">
+                {/* Ref No */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-orange-800 mb-1.5 uppercase tracking-wide">Reference No (Auto-Generated)</label>
+                  <input type="text" readOnly
+                    className="w-full px-3 py-2.5 border border-orange-200 rounded-xl text-sm bg-orange-50 text-orange-800 font-mono cursor-not-allowed"
+                    value={editRecord ? editRecord.ref_no || "—" : "Will auto-generate on save"} />
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-orange-800 mb-1.5 uppercase tracking-wide">Client Name *</label>
                   <input type="text" className="w-full px-3 py-2.5 border border-orange-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
