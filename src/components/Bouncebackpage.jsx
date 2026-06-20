@@ -18,9 +18,19 @@ import {
   Loader2,
   Zap,
   ArrowUpRight,
+  Lock,
 } from "lucide-react";
 import AddBounceBackModal from "./AddBounceBackModal";
 import { usePerms } from "../context/PermissionsContext";
+
+const isLocked = (issueDate) => {
+  if (!issueDate) return false;
+  const date = new Date(issueDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
+};
 
 // ─── Toast ─────────────────────────────────────────────────────────────────────
 const Toast = ({ message, type, onDismiss }) => (
@@ -148,7 +158,7 @@ const BounceBackPage = () => {
   const [sortDir, setSortDir] = useState("desc");
   const [invoices, setInvoices] = useState([]);
   const [paymentReferences, setPaymentReferences] = useState([]);
-  const { canSave, canDelete, isIntern } = usePerms();
+  const { canSave, canDelete, isIntern, isAdmin } = usePerms();
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -589,10 +599,16 @@ const BounceBackPage = () => {
                             canDelete && (
                               <button
                                 onClick={() => setConfirmRow(row)}
-                                className="opacity-0 group-hover:opacity-100 flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white rounded-lg text-xs font-bold border border-rose-200 hover:border-rose-600 transition-all"
+                                disabled={isLocked(row.bounce_date) && !isAdmin}
+                                title={isLocked(row.bounce_date) && !isAdmin ? "Locked — entries older than 45 days can only be edited by an Admin." : "Delete"}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                  isLocked(row.bounce_date) && !isAdmin
+                                    ? "opacity-100 bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                    : "opacity-0 group-hover:opacity-100 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border-rose-200 hover:border-rose-600"
+                                }`}
                               >
-                                <Trash2 className="w-3 h-3" />
-                                Delete
+                                {isLocked(row.bounce_date) && !isAdmin ? <Lock className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
+                                {isLocked(row.bounce_date) && !isAdmin ? "Locked" : "Delete"}
                               </button>
                             )
                           )}

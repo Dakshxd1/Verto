@@ -11,8 +11,18 @@ import {
   Loader2,
   ChevronLeft,
   CheckCircle2,
+  Lock,
 } from "lucide-react";
 import { usePerms } from "../context/PermissionsContext";
+
+const isLocked = (issueDate) => {
+  if (!issueDate) return false;
+  const date = new Date(issueDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
+};
 
 // ─── Inline View Panel ─────────────────────────────────────────────────────────
 const BounceBackRecordsPanel = ({ onClose }) => {
@@ -21,6 +31,7 @@ const BounceBackRecordsPanel = ({ onClose }) => {
   const [deletingId, setDeletingId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [toast, setToast] = useState(null);
+  const { isAdmin } = usePerms();
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -190,10 +201,16 @@ const BounceBackRecordsPanel = ({ onClose }) => {
                   ) : (
                     <button
                       onClick={() => setConfirmId(row.id)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-semibold border border-rose-100 transition-colors"
+                      disabled={isLocked(row.bounce_date) && !isAdmin}
+                      title={isLocked(row.bounce_date) && !isAdmin ? "Locked — entries older than 45 days can only be edited by an Admin." : "Delete"}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                        isLocked(row.bounce_date) && !isAdmin
+                          ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                          : "bg-rose-50 hover:bg-rose-100 text-rose-600 border-rose-100"
+                      }`}
                     >
-                      <Trash2 className="w-3 h-3" />
-                      Delete
+                      {isLocked(row.bounce_date) && !isAdmin ? <Lock className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
+                      {isLocked(row.bounce_date) && !isAdmin ? "Locked" : "Delete"}
                     </button>
                   )}
                 </div>
@@ -249,7 +266,7 @@ const AddBounceBackModal = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const suggestionsRef = useRef(null);
-  const { canSave, canDelete, isIntern } = usePerms();
+  const { canSave, canDelete, isIntern, isAdmin } = usePerms();
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));

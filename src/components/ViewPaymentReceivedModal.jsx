@@ -27,6 +27,7 @@ import {
   Clock,
   ArrowUpDown,
   ChevronUp,
+  Lock,
 } from "lucide-react";
 
 import supabase from "../lib/supabaseClient";
@@ -71,6 +72,15 @@ const formatMonthKey = (key) => {
   if (key === "Unknown") return "Unknown";
   const [yr, mo] = key.split("-");
   return `${MONTH_NAMES[parseInt(mo, 10) - 1]} ${yr}`;
+};
+
+const isLocked = (paymentDate) => {
+  if (!paymentDate) return false;
+  const date = new Date(paymentDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
 };
 
 const TypeBadge = ({ type }) => {
@@ -897,7 +907,7 @@ const MonthlyReportTab = ({ rows, invoices }) => {
    Main Component
 ───────────────────────────────────────────── */
 const ViewPaymentReceivedModal = ({ isOpen, onClose, invoice, onRefresh }) => {
-  const { canEdit, canDelete, canExport } = usePerms();
+  const { canEdit, canDelete, canExport, isAdmin } = usePerms();
   const [rows, setRows] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1562,41 +1572,72 @@ const ViewPaymentReceivedModal = ({ isOpen, onClose, invoice, onRefresh }) => {
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap">
                                 <div className="flex items-center gap-1.5">
-                                  {canEdit && (
-                                    <button
-                                      onClick={() =>
-                                        isEditing
-                                          ? setEditingRow(null)
-                                          : startEdit(r)
-                                      }
-                                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                        isEditing
-                                          ? "bg-slate-100 text-slate-700"
-                                          : "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
-                                      }`}
-                                    >
-                                      <Edit3 size={11} />
-                                      {isEditing ? "Cancel" : "Edit"}
-                                    </button>
-                                  )}
-                                  {canDelete && (
-                                    <button
-                                      onClick={() =>
-                                        isDeleting
-                                          ? setDeletingRow(null)
-                                          : setDeletingRow(r)
-                                      }
-                                      disabled={isEditing || deleting}
-                                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                        isDeleting
-                                          ? "bg-slate-100 text-slate-700"
-                                          : "bg-rose-100 text-rose-800 hover:bg-rose-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                      }`}
-                                    >
-                                      <Trash2 size={11} />
-                                      {isDeleting ? "Cancel" : "Delete"}
-                                    </button>
-                                  )}
+                                  {(() => {
+                                    const rowLocked = isLocked(r.payment_date);
+                                    const lockedByDate = rowLocked && !isAdmin;
+                                    return (
+                                      <>
+                                        {canEdit && (
+                                          <button
+                                            onClick={() =>
+                                              isEditing
+                                                ? setEditingRow(null)
+                                                : startEdit(r)
+                                            }
+                                            disabled={lockedByDate}
+                                            title={
+                                              lockedByDate
+                                                ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                                : undefined
+                                            }
+                                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                              isEditing
+                                                ? "bg-slate-100 text-slate-700"
+                                                : lockedByDate
+                                                ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                                : "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                                            }`}
+                                          >
+                                            {lockedByDate ? (
+                                              <Lock size={11} />
+                                            ) : (
+                                              <Edit3 size={11} />
+                                            )}
+                                            {isEditing ? "Cancel" : "Edit"}
+                                          </button>
+                                        )}
+                                        {canDelete && (
+                                          <button
+                                            onClick={() =>
+                                              isDeleting
+                                                ? setDeletingRow(null)
+                                                : setDeletingRow(r)
+                                            }
+                                            disabled={isEditing || deleting || lockedByDate}
+                                            title={
+                                              lockedByDate
+                                                ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                                : undefined
+                                            }
+                                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                              isDeleting
+                                                ? "bg-slate-100 text-slate-700"
+                                                : lockedByDate
+                                                ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                                : "bg-rose-100 text-rose-800 hover:bg-rose-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            }`}
+                                          >
+                                            {lockedByDate ? (
+                                              <Lock size={11} />
+                                            ) : (
+                                              <Trash2 size={11} />
+                                            )}
+                                            {isDeleting ? "Cancel" : "Delete"}
+                                          </button>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               </td>
                             </tr>

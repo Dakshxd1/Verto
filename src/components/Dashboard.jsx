@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback } from "react";
 import supabase from "../lib/supabaseClient";
+import { usePerms } from "../context/PermissionsContext";
 import AgingReport from "./AgingReport";
 import PaymentHistoryDrawer from "./PaymentHistoryDrawer";
 import InvoiceDetailsDrawer from "./InvoiceDetailsDrawer";
@@ -28,6 +29,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  Lock,
 } from "lucide-react";
 import Button from "./ui/button";
 import Card from "./ui/Card";
@@ -368,6 +370,15 @@ const dashboardStyles = `
   .pagination-btn.active-emerald { background: var(--c-emerald-light); color: var(--c-emerald); border-color: var(--c-emerald-mid); }
 `;
 
+const isLocked = (invoiceDate) => {
+  if (!invoiceDate) return false;
+  const date = new Date(invoiceDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
+};
+
 // ─── Dashboard Component ─────────────────────────────────────────────────────
 const Dashboard = ({
   refreshFlag,
@@ -375,6 +386,7 @@ const Dashboard = ({
   setShowBounceBackModal,
   setSelectedInvoice,
 }) => {
+  const { isAdmin } = usePerms();
   const [expandedRow, setExpandedRow] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -1656,28 +1668,52 @@ const matchesSearch = searchableText.includes(search);
                                 >
                                   View
                                 </button>
-                                <button
-                                  className="action-btn edit"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    const { data, error } = await supabase
-                                      .from("invoice_finance_view")
-                                      .select("*")
-                                      .eq("id", row.dbId)
-                                      .single();
-                                    if (error) {
-                                      alert("Error fetching invoice");
-                                      return;
-                                    }
-                                    setSelectedInvoiceData({
-                                      ...data,
-                                      dbId: data.id,
-                                    });
-                                    setShowInvoiceModal(true);
-                                  }}
-                                >
-                                  Edit
-                                </button>
+                                {(() => {
+                                  const rowLocked = isLocked(row.invoice_date);
+                                  const lockedByDate = rowLocked && !isAdmin;
+                                  return (
+                                    <button
+                                      className={`action-btn edit${lockedByDate ? ' disabled' : ''}`}
+                                      onClick={async (e) => {
+                                        if (lockedByDate) return;
+                                        e.stopPropagation();
+                                        const { data, error } = await supabase
+                                          .from("invoice_finance_view")
+                                          .select("*")
+                                          .eq("id", row.dbId)
+                                          .single();
+                                        if (error) {
+                                          alert("Error fetching invoice");
+                                          return;
+                                        }
+                                        setSelectedInvoiceData({
+                                          ...data,
+                                          dbId: data.id,
+                                        });
+                                        setShowInvoiceModal(true);
+                                      }}
+                                      disabled={lockedByDate}
+                                      title={
+                                        lockedByDate
+                                          ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                          : undefined
+                                      }
+                                      style={
+                                        lockedByDate
+                                          ? { background: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' }
+                                          : undefined
+                                      }
+                                    >
+                                      {lockedByDate ? (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                                          <Lock size={11} /> Locked
+                                        </span>
+                                      ) : (
+                                        'Edit'
+                                      )}
+                                    </button>
+                                  );
+                                })()}
                               </div>
 
                               <div className="action-card">
@@ -1694,16 +1730,40 @@ const matchesSearch = searchableText.includes(search);
                                 >
                                   View
                                 </button>
-                                <button
-                                  className="action-btn edit"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedInvoice(row);
-                                    setShowPaymentModal(true);
-                                  }}
-                                >
-                                  Edit
-                                </button>
+                                {(() => {
+                                  const rowLocked = isLocked(row.invoice_date);
+                                  const lockedByDate = rowLocked && !isAdmin;
+                                  return (
+                                    <button
+                                      className={`action-btn edit${lockedByDate ? ' disabled' : ''}`}
+                                      onClick={(e) => {
+                                        if (lockedByDate) return;
+                                        e.stopPropagation();
+                                        setSelectedInvoice(row);
+                                        setShowPaymentModal(true);
+                                      }}
+                                      disabled={lockedByDate}
+                                      title={
+                                        lockedByDate
+                                          ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                          : undefined
+                                      }
+                                      style={
+                                        lockedByDate
+                                          ? { background: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' }
+                                          : undefined
+                                      }
+                                    >
+                                      {lockedByDate ? (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                                          <Lock size={11} /> Locked
+                                        </span>
+                                      ) : (
+                                        'Edit'
+                                      )}
+                                    </button>
+                                  );
+                                })()}
                               </div>
 
                               <div className="action-card">
@@ -1720,26 +1780,50 @@ const matchesSearch = searchableText.includes(search);
                                 >
                                   View
                                 </button>
-                                <button
-                                  className="action-btn edit"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPaymentMadeInvoice({
-                                      ...row,
-                                      dbId: row.dbId || row.id,
-                                      invoice_number:
-                                        row.invoice_number || row.id,
-                                      bank_id: row.bank_id || "",
-                                      entity:
-                                        row.entity ||
-                                        row.entity_name ||
-                                        "Pvt Ltd",
-                                    });
-                                    setShowPaymentMadeModal(true);
-                                  }}
-                                >
-                                  Edit
-                                </button>
+                                {(() => {
+                                  const rowLocked = isLocked(row.invoice_date);
+                                  const lockedByDate = rowLocked && !isAdmin;
+                                  return (
+                                    <button
+                                      className={`action-btn edit${lockedByDate ? ' disabled' : ''}`}
+                                      onClick={(e) => {
+                                        if (lockedByDate) return;
+                                        e.stopPropagation();
+                                        setPaymentMadeInvoice({
+                                          ...row,
+                                          dbId: row.dbId || row.id,
+                                          invoice_number:
+                                            row.invoice_number || row.id,
+                                          bank_id: row.bank_id || "",
+                                          entity:
+                                            row.entity ||
+                                            row.entity_name ||
+                                            "Pvt Ltd",
+                                        });
+                                        setShowPaymentMadeModal(true);
+                                      }}
+                                      disabled={lockedByDate}
+                                      title={
+                                        lockedByDate
+                                          ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                          : undefined
+                                      }
+                                      style={
+                                        lockedByDate
+                                          ? { background: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' }
+                                          : undefined
+                                      }
+                                    >
+                                      {lockedByDate ? (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                                          <Lock size={11} /> Locked
+                                        </span>
+                                      ) : (
+                                        'Edit'
+                                      )}
+                                    </button>
+                                  );
+                                })()}
                               </div>
 
                               <div className="action-card">
@@ -1754,15 +1838,39 @@ const matchesSearch = searchableText.includes(search);
                                 >
                                   View
                                 </button>
-                                <button
-                                  className="action-btn edit"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setShowBounceBackModal(true);
-                                  }}
-                                >
-                                  Edit
-                                </button>
+                                {(() => {
+                                  const rowLocked = isLocked(row.invoice_date);
+                                  const lockedByDate = rowLocked && !isAdmin;
+                                  return (
+                                    <button
+                                      className={`action-btn edit${lockedByDate ? ' disabled' : ''}`}
+                                      onClick={(e) => {
+                                        if (lockedByDate) return;
+                                        e.stopPropagation();
+                                        setShowBounceBackModal(true);
+                                      }}
+                                      disabled={lockedByDate}
+                                      title={
+                                        lockedByDate
+                                          ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                          : undefined
+                                      }
+                                      style={
+                                        lockedByDate
+                                          ? { background: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' }
+                                          : undefined
+                                      }
+                                    >
+                                      {lockedByDate ? (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                                          <Lock size={11} /> Locked
+                                        </span>
+                                      ) : (
+                                        'Edit'
+                                      )}
+                                    </button>
+                                  );
+                                })()}
                               </div>
 
                               <div className="action-card">
@@ -1779,16 +1887,40 @@ const matchesSearch = searchableText.includes(search);
                                 >
                                   View
                                 </button>
-                                <button
-                                  className="action-btn edit"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedInvoiceData(row);
-                                    setShowCNBadDebtModal(true);
-                                  }}
-                                >
-                                  Edit
-                                </button>
+                                {(() => {
+                                  const rowLocked = isLocked(row.invoice_date);
+                                  const lockedByDate = rowLocked && !isAdmin;
+                                  return (
+                                    <button
+                                      className={`action-btn edit${lockedByDate ? ' disabled' : ''}`}
+                                      onClick={(e) => {
+                                        if (lockedByDate) return;
+                                        e.stopPropagation();
+                                        setSelectedInvoiceData(row);
+                                        setShowCNBadDebtModal(true);
+                                      }}
+                                      disabled={lockedByDate}
+                                      title={
+                                        lockedByDate
+                                          ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                          : undefined
+                                      }
+                                      style={
+                                        lockedByDate
+                                          ? { background: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' }
+                                          : undefined
+                                      }
+                                    >
+                                      {lockedByDate ? (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                                          <Lock size={11} /> Locked
+                                        </span>
+                                      ) : (
+                                        'Edit'
+                                      )}
+                                    </button>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </motion.div>

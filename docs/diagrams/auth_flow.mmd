@@ -1,0 +1,77 @@
+---
+title: Login & Session Validation Flow
+config:
+  layout: elk
+  look: handDrawn
+  theme: dark
+---
+
+sequenceDiagram
+    participant User as 👤 User
+    participant Browser as 🌐 Browser
+    participant Auth as 🔐 AuthContext
+    participant Supabase as 📡 Supabase
+    participant DB as 💾 PostgreSQL
+    participant RPC as ⚙️ RPC Functions
+    
+    User->>Browser: 1. Enter credentials
+    Browser->>Auth: 2. signInWithPassword()
+    Auth->>Supabase: 3. POST /auth/v1/token
+    Supabase->>Supabase: 4. Validate JWT
+    Supabase-->>Auth: 5. Return JWT + user object
+    
+    Auth->>Supabase: 6. Fetch role from user_roles
+    Supabase->>DB: 7. SELECT role FROM user_roles
+    DB-->>Supabase: 8. Return role
+    Supabase-->>Auth: 9. Return role
+    
+    Auth->>Supabase: 10. INSERT into sessions table
+    Supabase->>DB: 11. INSERT session record
+    DB-->>Supabase: 12. Confirmed
+    Supabase-->>Auth: 13. Session created
+    
+    Auth->>Browser: 14. Store JWT in localStorage
+    Browser->>Browser: 15. sessionStorage: store popup flag
+    
+    Auth-->>User: 16. Redirect to Dashboard
+    
+    Note over Browser,RPC: === SESSION POLLING LOOP (Every 3 seconds) ===
+    
+    Browser->>Auth: 17. validateSession()
+    Auth->>Supabase: 18. RPC validate_session(email, token)
+    Supabase->>RPC: 19. Call validation function
+    RPC->>DB: 20. SELECT from sessions table
+    DB-->>RPC: 21. Return session record
+    
+    alt Valid Session
+        RPC->>RPC: 22. token matches latest session
+        RPC-->>Supabase: 23. Return { valid: true }
+        Supabase-->>Auth: 24. Valid response
+        Auth-->>Browser: 25. Session continues
+    else Session Invalid or Kicked
+        RPC->>RPC: 26. token mismatch (login from another device)
+        RPC-->>Supabase: 27. Return { valid: false }
+        Supabase-->>Auth: 28. Invalid response
+        Auth->>Browser: 29. setSessionKicked = true
+        Browser->>Browser: 30. Clear localStorage (JWT, email, session)
+        Auth->>Browser: 31. Show "You've been kicked out" popup
+        Browser->>User: 32. Redirect to Login
+    end
+    
+    Note over User,Browser: === LOGOUT FLOW ===
+    
+    User->>Browser: 33. Click Logout
+    Browser->>Auth: 34. signOut()
+    Auth->>Supabase: 35. DELETE from sessions
+    Supabase->>DB: 36. DELETE session record
+    DB-->>Supabase: 37. Confirmed
+    Browser->>Browser: 38. Clear all localStorage
+    Browser->>Browser: 39. Clear sessionStorage
+    Browser->>User: 40. Redirect to Login page
+    
+    style User fill:#1e40af,stroke:#3b82f6,color:#fff
+    style Browser fill:#059669,stroke:#10b981,color:#fff
+    style Auth fill:#dc2626,stroke:#f87171,color:#fff
+    style Supabase fill:#7c3aed,stroke:#a78bfa,color:#fff
+    style DB fill:#ea580c,stroke:#fb923c,color:#fff
+    style RPC fill:#d97706,stroke:#fbbf24,color:#fff

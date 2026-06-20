@@ -1,0 +1,75 @@
+---
+title: Verto Application Architecture
+config:
+  layout: elk
+  look: handDrawn
+  theme: dark
+---
+
+graph TB
+    subgraph Browser["🌐 Browser Layer"]
+        UI["React Application"]
+        LocalStorage["localStorage<br/>- Settings<br/>- Session Token<br/>- User Email"]
+        SessionStorage["sessionStorage<br/>- Session ID<br/>- Popup Flag"]
+    end
+    
+    subgraph Frontend["⚛️ Frontend Architecture"]
+        Context["Context Providers<br/>────────<br/>• AuthContext<br/>• SettingsContext<br/>• PermissionsContext"]
+        
+        Pages["📄 Pages<br/>────────<br/>• Dashboard<br/>• Analytics<br/>• Ledger<br/>• BankReco<br/>• Reports"]
+        
+        Modals["🪟 Modals<br/>────────<br/>• AddInvoice<br/>• AddPayment<br/>• AddExpense<br/>• Bulk Upload"]
+        
+        Components["🧩 Components<br/>────────<br/>• UI Elements<br/>• Drawers<br/>• Charts"]
+        
+        Hooks["🎣 Custom Hooks<br/>────────<br/>• useAuth<br/>• usePermissions<br/>• useKeyboardShortcuts<br/>• useInternGuard"]
+        
+        Utils["🛠️ Utilities<br/>────────<br/>• exportExcel<br/>• Auditlog<br/>• popupManager<br/>• shortcutDefaults"]
+    end
+    
+    subgraph API["🌐 Network Layer"]
+        SuperbaseAuth["Supabase Auth<br/>- JWT Tokens<br/>- Session Management"]
+        SupabaseRest["Supabase REST API<br/>- CRUD Operations<br/>- Batch Uploads"]
+        SupabaseRT["Supabase Real-time<br/>- postgres_changes<br/>- Live Updates"]
+    end
+    
+    subgraph Backend["💾 Backend Layer"]
+        DB["PostgreSQL 14+<br/>────────<br/>Tables:<br/>• invoices<br/>• payments_received<br/>• internal_team<br/>• audit_logs<br/>+ More"]
+        
+        Auth["Auth Service<br/>- Supabase Auth<br/>- JWT Validation<br/>- Session RPC"]
+        
+        RPC["RPC Functions<br/>- validate_session<br/>- delete_employee_complete"]
+    end
+    
+    UI --> Context
+    UI --> Pages
+    UI --> Modals
+    UI --> Components
+    Pages --> Hooks
+    Modals --> Hooks
+    Components --> Hooks
+    Hooks --> Utils
+    
+    Context --> SuperbaseAuth
+    Context --> SupabaseRest
+    
+    Components --> SupabaseRT
+    Pages --> SupabaseRest
+    Modals --> SupabaseRest
+    
+    Utils --> SupabaseRest
+    LocalStorage --> UI
+    SessionStorage --> UI
+    
+    SuperbaseAuth --> Auth
+    SupabaseRest --> DB
+    SupabaseRest --> RPC
+    SupabaseRT --> DB
+    
+    Auth --> DB
+    RPC --> DB
+    
+    style Browser fill:#1e40af,stroke:#3b82f6,color:#fff
+    style Frontend fill:#059669,stroke:#10b981,color:#fff
+    style API fill:#7c3aed,stroke:#a78bfa,color:#fff
+    style Backend fill:#dc2626,stroke:#f87171,color:#fff

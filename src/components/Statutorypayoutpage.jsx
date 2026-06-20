@@ -20,8 +20,10 @@ import {
   Loader2,
   TrendingDown,
   AlertTriangle,
+  Lock,
 } from "lucide-react";
 import AddStatutoryPayoutModal from "./AddStatutoryPayoutModal";
+import { usePerms } from "../context/PermissionsContext";
 
 // ─── Toast ─────────────────────────────────────────────────────────────────────
 const Toast = ({ message, type, onDismiss }) => (
@@ -129,8 +131,18 @@ const StatusBadge = ({ status }) => {
   );
 };
 
+const isLocked = (issueDate) => {
+  if (!issueDate) return false;
+  const date = new Date(issueDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
+};
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 const StatutoryPayoutPage = () => {
+  const { isAdmin } = usePerms();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
@@ -600,12 +612,33 @@ const StatutoryPayoutPage = () => {
                             {deletingId === row.id ? (
                               <Loader2 className="w-4 h-4 animate-spin text-rose-400" />
                             ) : (
-                              <button
-                                onClick={() => setConfirmRow(row)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-semibold border border-rose-200 transition-colors"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" /> Delete
-                              </button>
+                              (() => {
+                                const rowLocked = isLocked(row.month);
+                                const lockedByDate = rowLocked && !isAdmin;
+                                return (
+                                  <button
+                                    onClick={() => { if (!lockedByDate) setConfirmRow(row); }}
+                                    disabled={lockedByDate}
+                                    title={
+                                      lockedByDate
+                                        ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                        : "Delete"
+                                    }
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                      lockedByDate
+                                        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                        : "bg-rose-50 hover:bg-rose-100 text-rose-600 border-rose-200"
+                                    }`}
+                                  >
+                                    {lockedByDate ? (
+                                      <Lock className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    )}
+                                    {lockedByDate ? "Locked" : "Delete"}
+                                  </button>
+                                );
+                              })()
                             )}
                           </td>
 
@@ -636,22 +669,45 @@ const StatutoryPayoutPage = () => {
                                 </button>
                               </div>
                             ) : (
-                              <button
-                                onClick={() => {
-                                  setEditRow(row);
-                                  setEditForm({
-                                    total_due: row.total_due,
-                                    total_paid: row.total_paid,
-                                    bank_id: row.bank_id,
-                                    remarks: row.remarks || "",
-                                    penalty: row.penalty,
-                                    penalty_amount: row.penalty_amount || 0,
-                                  });
-                                }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 rounded-lg text-xs font-semibold border border-cyan-200 transition-colors"
-                              >
-                                <Pencil className="w-3.5 h-3.5" /> Edit
-                              </button>
+                              (() => {
+                                const rowLocked = isLocked(row.month);
+                                const lockedByDate = rowLocked && !isAdmin;
+                                return (
+                                  <button
+                                    onClick={() => {
+                                      if (!lockedByDate) {
+                                        setEditRow(row);
+                                        setEditForm({
+                                          total_due: row.total_due,
+                                          total_paid: row.total_paid,
+                                          bank_id: row.bank_id,
+                                          remarks: row.remarks || "",
+                                          penalty: row.penalty,
+                                          penalty_amount: row.penalty_amount || 0,
+                                        });
+                                      }
+                                    }}
+                                    disabled={lockedByDate}
+                                    title={
+                                      lockedByDate
+                                        ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                        : "Edit"
+                                    }
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                      lockedByDate
+                                        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                        : "bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border-cyan-200"
+                                    }`}
+                                  >
+                                    {lockedByDate ? (
+                                      <Lock className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    )}
+                                    {lockedByDate ? "Locked" : "Edit"}
+                                  </button>
+                                );
+                              })()
                             )}
                           </td>
                         </motion.tr>

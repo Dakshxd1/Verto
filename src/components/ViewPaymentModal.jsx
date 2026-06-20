@@ -24,6 +24,7 @@ import {
   Save,
   Ban,
   Loader2,
+  Lock,
 } from "lucide-react";
 
 /* ─────────────────────────────────────────────
@@ -36,6 +37,15 @@ const fmtDate = (d) =>
   d
     ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
     : "—";
+
+const isLocked = (paymentDate) => {
+  if (!paymentDate) return false;
+  const date = new Date(paymentDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
+};
 
 const TYPE_COLORS = {
   Invoice:      { bg: "bg-indigo-50", text: "text-indigo-700", dot: "bg-indigo-400" },
@@ -245,7 +255,7 @@ const exportToExcel = (rows) => {
    Main Component
 ───────────────────────────────────────────── */
 const ViewPaymentModal = ({ isOpen, onClose, invoice }) => {
-  const { canEdit, canDelete, canExport, isIntern } = usePerms();
+  const { canEdit, canDelete, canExport, isIntern, isAdmin } = usePerms();
   const [payments, setPayments]     = useState([]);
   const [loading, setLoading]       = useState(false);
   const [search, setSearch]         = useState("");
@@ -584,24 +594,50 @@ const ViewPaymentModal = ({ isOpen, onClose, invoice }) => {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
-                            {canEdit && !isIntern && (
-                              <button
-                                onClick={() => { setEditingId(p.id); setDeleteTarget(null); }}
-                                title="Edit"
-                                className="w-7 h-7 flex items-center justify-center rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
-                              >
-                                <Pencil size={13} />
-                              </button>
-                            )}
-                            {canDelete && !isIntern && (
-                              <button
-                                onClick={() => { setDeleteTarget(p); setEditingId(null); }}
-                                title="Delete"
-                                className="w-7 h-7 flex items-center justify-center rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            )}
+                            {(() => {
+                              const rowLocked = isLocked(p.payment_date);
+                              const lockedByDate = rowLocked && !isAdmin;
+                              return (
+                                <>
+                                  {canEdit && !isIntern && (
+                                    <button
+                                      onClick={() => { if (!lockedByDate) { setEditingId(p.id); setDeleteTarget(null); } }}
+                                      disabled={lockedByDate}
+                                      title={
+                                        lockedByDate
+                                          ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                          : "Edit"
+                                      }
+                                      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
+                                        lockedByDate
+                                          ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                          : "bg-indigo-50 hover:bg-indigo-100 text-indigo-600"
+                                      }`}
+                                    >
+                                      {lockedByDate ? <Lock size={13} /> : <Pencil size={13} />}
+                                    </button>
+                                  )}
+                                  {canDelete && !isIntern && (
+                                    <button
+                                      onClick={() => { if (!lockedByDate) { setDeleteTarget(p); setEditingId(null); } }}
+                                      disabled={lockedByDate}
+                                      title={
+                                        lockedByDate
+                                          ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                          : "Delete"
+                                      }
+                                      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
+                                        lockedByDate
+                                          ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                          : "bg-rose-50 hover:bg-rose-100 text-rose-600"
+                                      }`}
+                                    >
+                                      {lockedByDate ? <Lock size={13} /> : <Trash2 size={13} />}
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>

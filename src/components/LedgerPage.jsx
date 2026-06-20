@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import supabase from "../lib/supabaseClient";
+import { usePerms } from "../context/PermissionsContext";
 import Card from "./ui/Card";
 import { exportInvoiceLedgerXlsx, exportInvoicePDF } from "../utils/Invoiceexport";
 import {
@@ -19,6 +20,7 @@ import {
   ChevronUp,
   FileDown,
   FileSpreadsheet,
+  Lock,
 } from "lucide-react";
 
 // ─── TYPE CONFIG ───────────────────────────────────────────────────────────────
@@ -65,6 +67,15 @@ const TYPE_CONFIG = {
     badge: "bg-gray-100 text-gray-600",
     sign: "—",
   },
+};
+
+const isLocked = (invoiceDate) => {
+  if (!invoiceDate) return false;
+  const date = new Date(invoiceDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
 };
 
 // ─── DELETE CONFIRMATION MODAL ─────────────────────────────────────────────────
@@ -355,6 +366,7 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────────────────────
 const LedgerPage = () => {
+  const { isAdmin } = usePerms();
   const [ledger, setLedger] = useState([]);
   const [opening, setOpening] = useState(0);
   const [invoice, setInvoice] = useState(null);
@@ -368,6 +380,7 @@ const LedgerPage = () => {
   const [osPayouts, setOsPayouts] = useState([]);
   const [invoiceTds, setInvoiceTds] = useState(0);
   const [exportLoading, setExportLoading] = useState(false);
+  const [invoiceDate, setInvoiceDate] = useState(null);
 
   // ── Get invoice from global state ──
   useEffect(() => {
@@ -385,7 +398,7 @@ const LedgerPage = () => {
       const { data: inv, error: invErr } = await supabase
         .from("invoices")
         .select(
-          `id, invoice_value, receivable_amount, invoice_number, is_completed, net_in_hand, tds`
+          `id, invoice_value, receivable_amount, invoice_number, is_completed, net_in_hand, tds, invoice_date`
         )
         .eq("id", invoice.dbId)
         .single();
@@ -399,6 +412,7 @@ const LedgerPage = () => {
       setNetInHand(Number(inv.net_in_hand || 0));
       setIsCompleted(inv.is_completed || false);
       setInvoiceTds(Number(inv.tds || 0));
+      setInvoiceDate(inv.invoice_date || null);
 
       const [
         { data: payments },
@@ -760,22 +774,41 @@ const LedgerPage = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleCompleteInvoice}
-            disabled={completeLoading}
-            className={`flex items-center gap-2 px-3 py-2 text-sm text-white rounded-xl transition disabled:opacity-50 ${
-              isCompleted
-                ? "bg-amber-500 hover:bg-amber-600"
-                : "bg-emerald-600 hover:bg-emerald-700"
-            }`}
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            {completeLoading
-              ? "Updating..."
-              : isCompleted
-              ? "Move To Active"
-              : "Mark Complete"}
-          </button>
+          {(() => {
+            const rowLocked = isLocked(invoiceDate);
+            const lockedByDate = rowLocked && !isAdmin;
+            return (
+              <button
+                onClick={() => { if (!lockedByDate) handleCompleteInvoice(); }}
+                disabled={completeLoading || lockedByDate}
+                title={
+                  lockedByDate
+                    ? "Locked — entries older than 45 days can only be edited by an Admin."
+                    : undefined
+                }
+                className={`flex items-center gap-2 px-3 py-2 text-sm text-white rounded-xl transition disabled:opacity-50 ${
+                  lockedByDate
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : isCompleted
+                    ? "bg-amber-500 hover:bg-amber-600"
+                    : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
+              >
+                {lockedByDate ? (
+                  <Lock className="w-4 h-4" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4" />
+                )}
+                {lockedByDate
+                  ? "Locked"
+                  : completeLoading
+                  ? "Updating..."
+                  : isCompleted
+                  ? "Move To Active"
+                  : "Mark Complete"}
+              </button>
+            );
+          })()}
 
           <button
             onClick={fetchLedger}
@@ -804,14 +837,33 @@ const LedgerPage = () => {
             {exportLoading ? "..." : "Excel"}
           </button>
 
-          <button
-            onClick={() => setShowDeleteModal(true)}
-            disabled={deleteLoading}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-white bg-red-600 rounded-xl hover:bg-red-700 transition disabled:opacity-50"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete Invoice
-          </button>
+          {(() => {
+            const rowLocked = isLocked(invoiceDate);
+            const lockedByDate = rowLocked && !isAdmin;
+            return (
+              <button
+                onClick={() => { if (!lockedByDate) setShowDeleteModal(true); }}
+                disabled={deleteLoading || lockedByDate}
+                title={
+                  lockedByDate
+                    ? "Locked — entries older than 45 days can only be edited by an Admin."
+                    : undefined
+                }
+                className={`flex items-center gap-2 px-3 py-2 text-sm text-white rounded-xl transition disabled:opacity-50 ${
+                  lockedByDate
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-red-600 hover:bg-red-700"
+                }`}
+              >
+                {lockedByDate ? (
+                  <Lock className="w-4 h-4" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                {lockedByDate ? "Locked" : "Delete Invoice"}
+              </button>
+            );
+          })()}
         </div>
       </div>
 
