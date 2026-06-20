@@ -16,6 +16,8 @@ import {
   AlertTriangle,
   StickyNote,
   ShieldCheck,
+  Calendar,
+  Info,
 } from "lucide-react";
 import { usePerms } from "../context/PermissionsContext";
 
@@ -242,12 +244,18 @@ const StatutoryRecordsPanel = ({ onClose }) => {
           const opening = Number(bank?.opening_balance || 0);
           const movement = (entries || []).reduce((sum, e) => {
             const amt = Number(e.amount || 0);
-            return String(e.type).toLowerCase() === "debit" ? sum - amt : sum + amt;
+            return String(e.type).toLowerCase() === "debit"
+              ? sum - amt
+              : sum + amt;
           }, 0);
           const currentBalance = opening + movement;
           if (newPaid > currentBalance) {
             showToast(
-              `⚠️ Entered bank payment (₹${newPaid.toLocaleString("en-IN")}) is greater than current bank balance (₹${Number(currentBalance).toLocaleString("en-IN")}). Proceeding anyway.`,
+              `⚠️ Entered bank payment (₹${newPaid.toLocaleString(
+                "en-IN"
+              )}) is greater than current bank balance (₹${Number(
+                currentBalance
+              ).toLocaleString("en-IN")}). Proceeding anyway.`,
               "error"
             );
           }
@@ -651,12 +659,18 @@ const AddStatutoryPayoutModal = ({
   const [entitiesList, setEntitiesList] = useState([]);
   const { canSave, isIntern } = usePerms();
 
+  // ── Monthly total state ──
+  const [monthlyTotalDue, setMonthlyTotalDue] = useState(0);
+
   // CHANGE 2: Updated useEffect to fetch both banks and entities
   useEffect(() => {
     const fetchMasters = async () => {
       const [banksRes, entitiesRes] = await Promise.all([
         supabase.from("bank_master").select("id, bank_name").order("bank_name"),
-        supabase.from("entity_master").select("id, entity_name").order("entity_name"),
+        supabase
+          .from("entity_master")
+          .select("id, entity_name")
+          .order("entity_name"),
       ]);
       if (banksRes.data && banksRes.data.length > 0) setBanks(banksRes.data);
       if (entitiesRes.data) setEntitiesList(entitiesRes.data);
@@ -675,7 +689,7 @@ const AddStatutoryPayoutModal = ({
     statutoryPayoutType: "GST",
     tds_direction: null,
     rpc_type: "GST",
-    forTheMonth: "",
+    forTheMonth: new Date().toISOString().slice(0, 7), // defaults to current month
     totalDue: "",
     totalPaid: "",
     pendingDue: "",
@@ -697,16 +711,65 @@ const AddStatutoryPayoutModal = ({
   const [viewOpen, setViewOpen] = useState(false);
 
   const statutoryTypes = [
-    { value: "GST",            label: "GST",                              tds_direction: null,         rpc_type: "GST" },
-    { value: "TDS",            label: "TDS Payout — We Pay Govt",         tds_direction: "payout",     rpc_type: "TDS" },
-    { value: "TDS Receivable", label: "TDS Receivable — Client Deducted", tds_direction: "receivable", rpc_type: "TDS RECEIVABLE" },
-    { value: "EPF",            label: "EPF",                              tds_direction: null,         rpc_type: "EPF" },
-    { value: "ESI",            label: "ESI",                              tds_direction: null,         rpc_type: "ESI" },
-    { value: "LWF",            label: "LWF",                              tds_direction: null,         rpc_type: "LWF" },
-    { value: "PF",             label: "PF",                               tds_direction: null,         rpc_type: "PF" },
-    { value: "Income Tax",     label: "Income Tax",                       tds_direction: null,         rpc_type: "INCOME TAX" },
-    { value: "Others",         label: "Others",                           tds_direction: null,         rpc_type: null },
+    { value: "GST", label: "GST", tds_direction: null, rpc_type: "GST" },
+    {
+      value: "TDS",
+      label: "TDS Payout — We Pay Govt",
+      tds_direction: "payout",
+      rpc_type: "TDS",
+    },
+    {
+      value: "TDS Receivable",
+      label: "TDS Receivable — Client Deducted",
+      tds_direction: "receivable",
+      rpc_type: "TDS RECEIVABLE",
+    },
+    { value: "EPF", label: "EPF", tds_direction: null, rpc_type: "EPF" },
+    { value: "ESI", label: "ESI", tds_direction: null, rpc_type: "ESI" },
+    { value: "LWF", label: "LWF", tds_direction: null, rpc_type: "LWF" },
+    { value: "PF", label: "PF", tds_direction: null, rpc_type: "PF" },
+    {
+      value: "Income Tax",
+      label: "Income Tax",
+      tds_direction: null,
+      rpc_type: "INCOME TAX",
+    },
+    { value: "Others", label: "Others", tds_direction: null, rpc_type: null },
   ];
+
+  // ── Fetch total compliance payable for the month (all types) ──
+  const fetchMonthlyTotalCompliance = async (entity, month) => {
+    if (!entity || !month) {
+      setMonthlyTotalDue(0);
+      return;
+    }
+    const monthStart = `${month}-01`;
+    const monthEnd = new Date(
+      new Date(monthStart).getFullYear(),
+      new Date(monthStart).getMonth() + 1,
+      0
+    )
+      .toISOString()
+      .slice(0, 10);
+
+    const { data, error } = await supabase
+      .from("statutory_payments")
+      .select("total_due, pending_due")
+      .eq("entity", entity)
+      .gte("month", monthStart)
+      .lte("month", monthEnd);
+
+    if (error) {
+      console.error("Monthly compliance fetch error:", error);
+      return;
+    }
+    // Sum of total_due for all statutory records in that month
+    const total = (data || []).reduce(
+      (sum, row) => sum + Number(row.total_due || 0),
+      0
+    );
+    setMonthlyTotalDue(total);
+  };
 
   const fetchAutoDue = async (entity, month, type, rpcType) => {
     if (!entity || !month || !type) return;
@@ -734,6 +797,31 @@ const AddStatutoryPayoutModal = ({
     }));
   };
 
+  // ── Fetch monthly total whenever entity or month changes ──
+  useEffect(() => {
+    fetchMonthlyTotalCompliance(formData.entity, formData.forTheMonth);
+  }, [formData.entity, formData.forTheMonth]);
+
+  useEffect(() => {
+    if (
+      formData.entity &&
+      formData.forTheMonth &&
+      formData.statutoryPayoutType
+    ) {
+      fetchAutoDue(
+        formData.entity,
+        formData.forTheMonth,
+        formData.statutoryPayoutType,
+        formData.rpc_type
+      );
+    }
+  }, [
+    formData.entity,
+    formData.forTheMonth,
+    formData.statutoryPayoutType,
+    formData.rpc_type,
+  ]);
+
   const handleChange = (field, value) => {
     setFormData((prev) => {
       let updated = { ...prev, [field]: value };
@@ -758,26 +846,6 @@ const AddStatutoryPayoutModal = ({
       pendingDue: pending >= 0 ? pending.toFixed(2) : "0.00",
     }));
   }, [formData.totalDue, formData.totalPaid]);
-
-  useEffect(() => {
-    if (
-      formData.entity &&
-      formData.forTheMonth &&
-      formData.statutoryPayoutType
-    ) {
-      fetchAutoDue(
-        formData.entity,
-        formData.forTheMonth,
-        formData.statutoryPayoutType,
-        formData.rpc_type
-      );
-    }
-  }, [
-    formData.entity,
-    formData.forTheMonth,
-    formData.statutoryPayoutType,
-    formData.rpc_type,
-  ]);
 
   const calculateTotalPercentage = () =>
     ["OS", "temp", "recruitment", "projects", "others"].reduce(
@@ -828,7 +896,10 @@ const AddStatutoryPayoutModal = ({
           bank_id: formData.bank_id,
           month,
           payment_date: formData.payment_date,
-          type: formData.statutoryPayoutType === "TDS Receivable" ? "TDS" : formData.statutoryPayoutType,
+          type:
+            formData.statutoryPayoutType === "TDS Receivable"
+              ? "TDS"
+              : formData.statutoryPayoutType,
           tds_direction: formData.tds_direction,
           total_due: Number(formData.totalDue),
           total_paid: Number(formData.totalPaid),
@@ -866,7 +937,7 @@ const AddStatutoryPayoutModal = ({
       statutoryPayoutType: "GST",
       tds_direction: null,
       rpc_type: "GST",
-      forTheMonth: "",
+      forTheMonth: new Date().toISOString().slice(0, 7),
       totalDue: "",
       totalPaid: "",
       pendingDue: "",
@@ -885,6 +956,7 @@ const AddStatutoryPayoutModal = ({
     setShowErrors(false);
     setViewOpen(false);
     setLoading(false);
+    setMonthlyTotalDue(0);
   };
 
   const handleClose = () => {
@@ -974,7 +1046,6 @@ const AddStatutoryPayoutModal = ({
                         className={selCls(showErrors && errors.entity)}
                       >
                         <option value="">Select Entity</option>
-                        {/* CHANGE 3: Use entitiesList instead of entities prop */}
                         {entitiesList.map((entity) => (
                           <option key={entity.id} value={entity.entity_name}>
                             {entity.entity_name}
@@ -992,7 +1063,9 @@ const AddStatutoryPayoutModal = ({
                       <select
                         value={formData.statutoryPayoutType}
                         onChange={(e) => {
-                          const selected = statutoryTypes.find((t) => t.value === e.target.value);
+                          const selected = statutoryTypes.find(
+                            (t) => t.value === e.target.value
+                          );
                           if (selected) {
                             setFormData((prev) => ({
                               ...prev,
@@ -1002,7 +1075,10 @@ const AddStatutoryPayoutModal = ({
                               totalDue: "",
                             }));
                             if (errors.statutoryPayoutType)
-                              setErrors((prev) => ({ ...prev, statutoryPayoutType: "" }));
+                              setErrors((prev) => ({
+                                ...prev,
+                                statutoryPayoutType: "",
+                              }));
                           }
                         }}
                         className={selCls(
@@ -1056,6 +1132,55 @@ const AddStatutoryPayoutModal = ({
                     </Field>
                   </div>
                 </Section>
+
+                {/* ── Monthly Compliance Summary ── */}
+                {formData.entity && formData.forTheMonth && (
+                  <Section
+                    icon={Calendar}
+                    title="Monthly Compliance View"
+                    color="blue"
+                  >
+                    <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-xl px-5 py-4">
+                      <div>
+                        <p className="text-[11px] font-bold text-blue-600 uppercase tracking-widest">
+                          Total Compliance Payable —{" "}
+                          {new Date(
+                            `${formData.forTheMonth}-01`
+                          ).toLocaleDateString("en-IN", {
+                            month: "long",
+                            year: "numeric",
+                          })}
+                        </p>
+                        <p className="text-3xl font-black text-blue-800 mt-1">
+                          ₹ {inr(monthlyTotalDue)}
+                        </p>
+                        <p className="text-[11px] text-blue-400 mt-1">
+                          All statutory types combined for {formData.entity}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center">
+                          <ShieldCheck className="w-6 h-6 text-blue-600" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mini breakdown hint */}
+                    <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-500">
+                      <Info className="w-3.5 h-3.5 text-blue-400" />
+                      <span>
+                        Selected type due:{" "}
+                        <span className="font-bold text-gray-700">
+                          ₹ {inr(formData.totalDue || 0)}
+                        </span>{" "}
+                        of monthly total{" "}
+                        <span className="font-bold text-blue-700">
+                          ₹ {inr(monthlyTotalDue)}
+                        </span>
+                      </span>
+                    </div>
+                  </Section>
+                )}
 
                 {/* ── Payment Info ── */}
                 <Section
@@ -1313,7 +1438,8 @@ const AddStatutoryPayoutModal = ({
                         </>
                       ) : (
                         <>
-                          Save Statutory Payout <ArrowRight className="w-4 h-4" />
+                          Save Statutory Payout{" "}
+                          <ArrowRight className="w-4 h-4" />
                         </>
                       )}
                     </button>

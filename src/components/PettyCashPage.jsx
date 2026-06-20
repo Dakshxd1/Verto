@@ -419,18 +419,18 @@ const PettyCashPage = () => {
       const { error: entryErr } = await supabase.from("petty_cash_entries").insert([{
         petty_cash_id:    selectedBox.id,
         payment_made_id:  null,
-        entry_date:       expenseForm.entry_date,
+        entry_date:       cashInForm.entry_date,
         amount:           amt,
-        type:             "debit",
-        entry_mode:       "EXPENSE",        // ← Explicitly set
-        header:           expenseForm.header,
-        department:       expenseForm.department,
-        cost_ops:         expenseForm.costHeadBreakup.ops,
-        cost_temp:        expenseForm.costHeadBreakup.temp,
-        cost_recruitment: expenseForm.costHeadBreakup.recruitment,
-        cost_projects:    expenseForm.costHeadBreakup.projects,
-        cost_others:      expenseForm.costHeadBreakup.others,
-        remarks:          expenseForm.remarks,
+        type:             "credit",
+        entry_mode:       "CASH_RECEIVED",
+        header:           null,
+        department:       null,
+        cost_ops:         0,
+        cost_temp:        0,
+        cost_recruitment: 0,
+        cost_projects:    0,
+        cost_others:      0,
+        remarks:          cashInForm.remarks,
       }]);
       if (entryErr) throw entryErr;
 
@@ -454,7 +454,7 @@ const PettyCashPage = () => {
 
   // ─── FIX #7: EDIT EXPENSE ──────────────────────────────────────────────────
   const openEditModal = (row) => {
-    if (row.entry_mode !== "CASH_RECEIVED") return; // ← SAFETY GUARD
+    if (row.payment_made_id) return; // system-generated from expense modal — edit at source instead
     setEditingEntry(row);
     setEditForm({
       entry_date: row.entry_date || "",
@@ -486,40 +486,26 @@ const PettyCashPage = () => {
     return Object.keys(e).length === 0;
   };
 
+  // ─── FIX #3: Replace saveEdit body to use the safe RPC ───────────────────
   const saveEdit = async () => {
     if (isIntern || !editingEntry) return;
     if (!validateEdit() || !selectedBox) return;
     setSaving(true);
     try {
-      const newAmt = parseFloat(editForm.amount);
-      const oldAmt = parseFloat(editingEntry.amount);
-      const diff   = newAmt - oldAmt; // positive = more spent, negative = less spent
-
-      const { error: updErr } = await supabase
-        .from("petty_cash_entries")
-        .update({
-          entry_date:       editForm.entry_date,
-          amount:           newAmt,
-          header:           editForm.header,
-          department:       editForm.department,
-          cost_ops:         editForm.costHeadBreakup.ops,
-          cost_temp:        editForm.costHeadBreakup.temp,
-          cost_recruitment: editForm.costHeadBreakup.recruitment,
-          cost_projects:    editForm.costHeadBreakup.projects,
-          cost_others:      editForm.costHeadBreakup.others,
-          remarks:          editForm.remarks,
-        })
-        .eq("id", editingEntry.id);
-      if (updErr) throw updErr;
-
-      // Adjust balance only if amount changed
-      if (diff !== 0) {
-        const { error: balErr } = await supabase
-          .from("petty_cash_master")
-          .update({ current_balance: selectedBox.current_balance - diff })
-          .eq("id", selectedBox.id);
-        if (balErr) throw balErr;
-      }
+      const { error } = await supabase.rpc("update_petty_cash_entry_manual", {
+        p_entry_id: editingEntry.id,
+        p_entry_date: editForm.entry_date,
+        p_amount: parseFloat(editForm.amount),
+        p_header: editForm.header,
+        p_department: editForm.department,
+        p_remarks: editForm.remarks,
+        p_cost_ops: editForm.costHeadBreakup.ops,
+        p_cost_temp: editForm.costHeadBreakup.temp,
+        p_cost_recruitment: editForm.costHeadBreakup.recruitment,
+        p_cost_projects: editForm.costHeadBreakup.projects,
+        p_cost_others: editForm.costHeadBreakup.others,
+      });
+      if (error) throw error;
 
       await refreshBox();
       await loadEntries();
@@ -531,6 +517,29 @@ const PettyCashPage = () => {
     } catch (err) {
       alert("Error: " + err.message);
     } finally { setSaving(false); }
+  };
+
+  // ─── FIX #1: DELETE ENTRY (manual entries only) ──────────────────────────
+  const deleteEntry = async (row) => {
+    if (isIntern) return;
+    if (row.payment_made_id) {
+      alert("This entry was created from an expense record (Pay Head = Petty Cash). Delete it from that expense record instead — the wallet updates automatically.");
+      return;
+    }
+    if (!window.confirm(`Delete this ${row.type === "credit" ? "cash received" : "expense"} entry of ₹${Number(row.amount).toLocaleString("en-IN")}?`)) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.rpc("delete_petty_cash_entry_manual", { p_entry_id: row.id });
+      if (error) throw error;
+      await refreshBox();
+      await loadEntries();
+      setSavedMsg("Entry deleted");
+      setTimeout(() => setSavedMsg(""), 2500);
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setSaving(false);
+    }
   };
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -674,7 +683,7 @@ const PettyCashPage = () => {
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Remarks</th>
                     {/* FIX #7: Edit column header (hidden for interns) */}
                     {!isIntern && (
-                      <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[60px]">Edit</th>
+                      <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[100px]">Actions</th>
                     )}
                   </tr>
                 </thead>
@@ -711,21 +720,29 @@ const PettyCashPage = () => {
                       <td className="px-4 py-3 text-gray-700 text-xs">{row.department || "—"}</td>
                       <td className="px-4 py-3 text-gray-500 text-[11px] font-mono">{row.type==="debit" ? costDisplay(row) : "—"}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs max-w-[200px] truncate">{row.remarks || "—"}</td>
-                      {/* FIX #7: Edit button — only for expense (debit) rows, hidden for interns */}
+                      {/* FIX #4: Edit + Delete — manual entries only. System-generated rows show a lock icon. */}
                       {!isIntern && (
-  <td className="px-4 py-3 text-center">
-    {row.entry_mode === "CASH_RECEIVED" ? (
-      <button
-        onClick={() => openEditModal(row)}
-        title="Edit cash received"
-        className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition">
-        <Pencil className="w-3.5 h-3.5" />
-      </button>
-    ) : (
-      <span className="text-gray-200">—</span>
-    )}
-  </td>
-)}
+                        <td className="px-4 py-3 text-center">
+                          {row.payment_made_id ? (
+                            <span className="text-gray-300 text-[10px]" title="Created from an expense record — edit/delete there">🔒</span>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => openEditModal(row)}
+                                title="Edit entry"
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => deleteEntry(row)}
+                                title="Delete entry"
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -910,9 +927,9 @@ const PettyCashPage = () => {
         </div>
       </Modal>
 
-      {/* ══ FIX #7: EDIT EXPENSE MODAL ══ */}
+      {/* ══ FIX #5: EDIT EXPENSE MODAL — dynamic title ── */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)}
-        title="Edit Expense Entry" accentColor="amber" icon={Pencil}
+        title={editingEntry?.type === "credit" ? "Edit Cash Received" : "Edit Expense Entry"} accentColor="amber" icon={Pencil}
         footer={<>
           <button onClick={() => setEditOpen(false)}
             className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-100 transition">
