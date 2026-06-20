@@ -1,0 +1,106 @@
+---
+title: Bulk Employee Upload Flow
+config:
+  layout: elk
+  look: handDrawn
+  theme: dark
+---
+
+sequenceDiagram
+    participant User as 👤 User
+    participant UI as 🖥️ AddExpenseDetailsManModal
+    participant XLSX as 📊 XLSX Library
+    participant Validation as ✓ Validation
+    participant Supabase as 📡 Supabase
+    participant DB as 💾 PostgreSQL
+    participant Audit as 📋 Auditlog
+    
+    User->>UI: 1. Click "Bulk Upload"
+    UI-->>User: 2. Show file picker
+    User->>UI: 3. Select Excel file
+    
+    UI->>XLSX: 4. Read file (XLSX.read)
+    XLSX->>XLSX: 5. Parse Excel sheets
+    XLSX-->>UI: 6. Return JSON array of rows
+    
+    Note over UI: File loaded<br/>Example: 1000 rows
+    
+    UI->>Validation: 7. Validate each row
+    
+    loop For each row (1 to 1000)
+        Validation->>Validation: Check required fields
+        Note over Validation: • emp_code<br/>• emp_name<br/>• amount<br/>• month
+        
+        alt Row Valid
+            Validation-->>Validation: ✓ Pass
+        else Row Invalid
+            Validation-->>Validation: ✗ Fail, store error
+        end
+    end
+    
+    Validation->>Validation: Calculate stats
+    Note over Validation: Valid: 980<br/>Invalid: 20<br/>Total: 1000
+    
+    alt Errors Found
+        Validation-->>UI: Return error report
+        UI-->>User: Show validation errors
+        Note over User: "20 rows have errors<br/>See error report"
+        User->>UI: Fix Excel and retry
+    else All Valid
+        Validation-->>UI: All rows pass
+        
+        UI->>Supabase: 8. INSERT bulk_upload_batches
+        
+        Supabase->>DB: 9. INSERT batch record
+        Note over DB: batch_id, file_name,<br/>row_count, status=pending
+        
+        DB-->>Supabase: 10. Return batch_id
+        Supabase-->>UI: 11. batch_id created
+        
+        UI->>Supabase: 12. INSERT employee_expense_payouts (bulk)
+        
+        Note over Supabase: INSERT 980 rows in batch
+        
+        Supabase->>DB: 13. Bulk INSERT with batch_id
+        Note over DB: Loop 980 inserts:<br/>emp_code, emp_name, amount,<br/>month, batch_id, status
+        
+        DB-->>Supabase: 14. All inserts confirmed
+        Supabase-->>UI: 15. Bulk operation success
+        
+        UI->>Audit: 16. logExport(action=BULK_UPLOAD)
+        Audit->>Supabase: 17. INSERT into audit_logs
+        Supabase->>DB: 18. INSERT audit record
+        DB-->>Supabase: 19. Confirmed
+        
+        UI->>Supabase: 20. UPDATE bulk_upload_batches
+        Supabase->>DB: 21. SET status=completed
+        DB-->>Supabase: 22. Updated
+        
+        UI->>UI: 23. Close modal
+        UI-->>User: 24. Show success
+        Note over User: "Successfully uploaded 980 rows<br/>Batch ID: xyz123"
+        
+        User->>User: 25. Navigate to ExpenseRecordsView
+        User->>User: 26. See new payouts in list
+        
+        Note over Supabase: === REAL-TIME UPDATES ===
+        
+        DB->>DB: 27. Broadcast 980 INSERT events
+        Supabase->>Supabase: 28. Batch process events
+        Supabase-->>UI: 29. Emit aggregated update
+        UI->>UI: 30. Refresh expense records table
+        UI-->>User: 31. New records visible
+    end
+    
+    rect rgba(100, 149, 237, 0.2)
+    Note over DB: === ROLLBACK SCENARIO ===
+    Note over DB: If validation fails for all rows,<br/>no batch is created, no inserts happen
+    end
+    
+    style User fill:#1e40af,stroke:#3b82f6,color:#fff
+    style UI fill:#059669,stroke:#10b981,color:#fff
+    style XLSX fill:#7c3aed,stroke:#a78bfa,color:#fff
+    style Validation fill:#dc2626,stroke:#f87171,color:#fff
+    style Supabase fill:#ea580c,stroke:#fb923c,color:#fff
+    style DB fill:#d97706,stroke:#fbbf24,color:#fff
+    style Audit fill:#b91c1c,stroke:#fca5a5,color:#fff

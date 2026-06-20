@@ -22,6 +22,7 @@ import {
   Hash,
   MoreHorizontal,
   Download,
+  Lock,
 } from "lucide-react";
 
 // ─── Stat Card ──────────────────────────────────────────────
@@ -181,6 +182,15 @@ const exportCSV = (records) => {
   URL.revokeObjectURL(url);
 };
 
+const isLocked = (issueDate) => {
+  if (!issueDate) return false;
+  const date = new Date(issueDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
+};
+
 // ─── Main View Page ─────────────────────────────────────────
 const CNBadDebtRecordsPage = () => {
   const [records, setRecords]         = useState([]);
@@ -194,7 +204,7 @@ const CNBadDebtRecordsPage = () => {
   const [deletingId, setDeletingId]   = useState(null);
   const [toast, setToast]             = useState(null);
   const [expandedId, setExpandedId]   = useState(null);
-  const { canDelete, isIntern } = usePerms();
+  const { canDelete, isIntern, isAdmin } = usePerms();
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -552,13 +562,32 @@ const CNBadDebtRecordsPage = () => {
                         {deletingId === row.id ? (
                           <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
                         ) : canDelete ? (
-                          <button
-                            onClick={() => setConfirmRecord(row)}
-                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          (() => {
+                            const rowLocked = isLocked(row.issue_date);
+                            const lockedByDate = rowLocked && !isAdmin;
+                            return (
+                              <button
+                                onClick={() => { if (!lockedByDate) setConfirmRecord(row); }}
+                                disabled={lockedByDate}
+                                title={
+                                  lockedByDate
+                                    ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                    : "Delete"
+                                }
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  lockedByDate
+                                    ? "text-gray-300 cursor-not-allowed"
+                                    : "text-red-400 hover:text-red-600 hover:bg-red-50"
+                                }`}
+                              >
+                                {lockedByDate ? (
+                                  <Lock className="w-4 h-4" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4" />
+                                )}
+                              </button>
+                            );
+                          })()
                         ) : null}
                       </div>
                     </div>
@@ -653,12 +682,32 @@ const CNBadDebtRecordsPage = () => {
                           {deletingId === row.id ? (
                             <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
                           ) : canDelete ? (
-                            <button
-                              onClick={() => setConfirmRecord(row)}
-                              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            (() => {
+                              const rowLocked = isLocked(row.issue_date);
+                              const lockedByDate = rowLocked && !isAdmin;
+                              return (
+                                <button
+                                  onClick={() => { if (!lockedByDate) setConfirmRecord(row); }}
+                                  disabled={lockedByDate}
+                                  title={
+                                    lockedByDate
+                                      ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                      : "Delete"
+                                  }
+                                  className={`p-2 rounded-xl transition-colors ${
+                                    lockedByDate
+                                      ? "text-gray-300 cursor-not-allowed"
+                                      : "text-red-400 hover:text-red-600 hover:bg-red-50"
+                                  }`}
+                                >
+                                  {lockedByDate ? (
+                                    <Lock className="w-4 h-4" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                              );
+                            })()
                           ) : null}
                         </div>
                       </div>

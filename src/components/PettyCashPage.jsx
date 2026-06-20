@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Minus, Wallet, AlertCircle, ChevronDown,
   CheckCircle2, Loader2, X, RefreshCw, TrendingUp, TrendingDown,
-  History, Search, Pencil,
+  History, Search, Pencil, Lock,
 } from "lucide-react";
 import PettyCashHistoryModal from "./Pettycashhistorymodal.jsx";
 import { usePerms } from "../context/PermissionsContext";
@@ -19,6 +19,15 @@ const DEPARTMENTS = [
 //         previously missing because the key "OS" ≠ object key "ops".
 const COST_HEADS  = ["ops","temp","recruitment","projects","others"];
 const COST_LABELS = { ops:"OS", temp:"Temp", recruitment:"Rec", projects:"Projects", others:"Others" };
+
+const isLocked = (issueDate) => {
+  if (!issueDate) return false;
+  const date = new Date(issueDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
+};
 
 const DEFAULT_EXPENSE = {
   entry_date: "",
@@ -272,7 +281,7 @@ const CostHeadSection = ({ breakup, onChange, error }) => {
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 const PettyCashPage = () => {
-  const { isIntern } = usePerms?.() || {};
+  const { isIntern, isAdmin } = usePerms?.() || {};
   const [pettyCashes, setPettyCashes]       = useState([]);
   const [selectedBox, setSelectedBox]       = useState(null);
   const [entries, setEntries]               = useState([]);
@@ -725,22 +734,36 @@ const PettyCashPage = () => {
                         <td className="px-4 py-3 text-center">
                           {row.payment_made_id ? (
                             <span className="text-gray-300 text-[10px]" title="Created from an expense record — edit/delete there">🔒</span>
-                          ) : (
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => openEditModal(row)}
-                                title="Edit entry"
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition">
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => deleteEntry(row)}
-                                title="Delete entry"
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition">
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
+                          ) : (() => {
+                            const rowLocked = isLocked(row.entry_date);
+                            const lockedByDate = rowLocked && !isAdmin;
+                            return (
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => { if (!lockedByDate) openEditModal(row); }}
+                                  disabled={lockedByDate}
+                                  title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : "Edit entry"}
+                                  className={`p-1.5 rounded-lg transition ${
+                                    lockedByDate
+                                      ? "text-gray-300 cursor-not-allowed"
+                                      : "text-gray-400 hover:text-amber-600 hover:bg-amber-50"
+                                  }`}>
+                                  {lockedByDate ? <Lock className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                                </button>
+                                <button
+                                  onClick={() => { if (!lockedByDate) deleteEntry(row); }}
+                                  disabled={lockedByDate}
+                                  title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : "Delete entry"}
+                                  className={`p-1.5 rounded-lg transition ${
+                                    lockedByDate
+                                      ? "text-gray-300 cursor-not-allowed"
+                                      : "text-gray-400 hover:text-red-600 hover:bg-red-50"
+                                  }`}>
+                                  {lockedByDate ? <Lock className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+                            );
+                          })()}
                         </td>
                       )}
                     </tr>

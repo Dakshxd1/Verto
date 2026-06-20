@@ -1,0 +1,90 @@
+---
+title: Payment Received Flow
+config:
+  layout: elk
+  look: handDrawn
+  theme: dark
+---
+
+sequenceDiagram
+    participant User as 👤 User
+    participant UI as 🖥️ AddPaymentReceivedModal
+    participant View as 📊 outstanding_invoice_view
+    participant Hook as 🎣 useAuth/usePerms
+    participant Supabase as 📡 Supabase
+    participant DB as 💾 PostgreSQL
+    participant Audit as 📋 Auditlog
+    
+    User->>UI: 1. Click "Payment Received"
+    
+    Hook->>Supabase: 2. Fetch outstanding invoices
+    Supabase->>View: 3. Query outstanding_invoice_view
+    Note over View: Calculates:<br/>outstanding = invoice_value - paid_amount
+    
+    View->>DB: 4. LEFT JOIN invoices & payments
+    DB-->>View: 5. Return with calculations
+    View-->>Supabase: 6. Return unpaid invoices
+    Supabase-->>Hook: 7. Filter invoices > 0
+    Hook-->>UI: 8. Return outstanding invoices
+    
+    UI-->>User: 9. Show outstanding invoices list
+    User->>UI: 10. Select invoice
+    UI-->>User: 11. Show invoice details + outstanding amount
+    
+    User->>UI: 12. Enter payment amount
+    User->>UI: 13. Enter payment date & method
+    User->>UI: 14. Click "Save Payment"
+    
+    UI->>UI: 15. Validate payment
+    Note over UI: • Amount <= outstanding<br/>• Valid date<br/>• Payment method selected
+    
+    alt Validation Failed
+        UI-->>User: 16. Show error (over-payment not allowed)
+    else Validation Passed
+        UI->>Supabase: 17. INSERT into payments_received
+        
+        Supabase->>DB: 18. INSERT payment record
+        Note over DB: invoice_id, payment_amount,<br/>payment_date, payment_method,<br/>reference_number
+        
+        DB-->>Supabase: 19. Return success
+        Supabase-->>UI: 20. Payment recorded
+        
+        UI->>Audit: 21. logExport(category=PAYMENT)
+        Audit->>Supabase: 22. INSERT into audit_logs
+        Supabase->>DB: 23. INSERT audit record
+        DB-->>Supabase: 24. Confirmed
+        
+        Note over DB: === AUTO-CALCULATION ===
+        
+        DB->>View: 25. View recalculates outstanding
+        Note over View: NEW outstanding =<br/>invoice_value - (paid + new_payment)
+        
+        View-->>DB: 26. Updated view state
+        
+        Note over DB: === REAL-TIME BROADCAST ===
+        
+        DB->>DB: 27. Broadcast INSERT event
+        Supabase->>Supabase: 28. Listen to postgres_changes
+        Supabase-->>UI: 29. Emit real-time update
+        UI->>UI: 30. Update Dashboard state
+        
+        UI->>UI: 31. Close modal
+        UI-->>User: 32. Show success notification
+        User->>User: 33. View updated Dashboard
+        Note over User: Outstanding amount<br/>decreased by payment
+    end
+    
+    Note over DB: === MULTI-PAYMENT SCENARIO ===
+    
+    rect rgba(100, 149, 237, 0.2)
+    Note over DB: Same invoice can receive<br/>multiple payments over time
+    Note over DB: Each INSERT updates view<br/>outstanding total is recalculated
+    end
+    
+    style User fill:#1e40af,stroke:#3b82f6,color:#fff
+    style UI fill:#059669,stroke:#10b981,color:#fff
+    style View fill:#7c3aed,stroke:#a78bfa,color:#fff
+    style Hook fill:#dc2626,stroke:#f87171,color:#fff
+    style Supabase fill:#ea580c,stroke:#fb923c,color:#fff
+    style DB fill:#d97706,stroke:#fbbf24,color:#fff
+    style Audit fill:#b91c1c,stroke:#fca5a5,color:#fff

@@ -1,0 +1,76 @@
+---
+title: Invoice Creation Flow
+config:
+  layout: elk
+  look: handDrawn
+  theme: dark
+---
+
+sequenceDiagram
+    participant User as 👤 User
+    participant UI as 🖥️ AddInvoiceModal
+    participant Hook as 🎣 useAuth/usePerms
+    participant Utils as 🛠️ utils/Auditlog
+    participant Supabase as 📡 Supabase
+    participant DB as 💾 PostgreSQL
+    
+    User->>UI: 1. Click "Add Invoice"
+    UI->>Hook: 2. Fetch masters (entities, clients)
+    Hook->>Supabase: 3. SELECT from entities_master
+    Supabase->>DB: 4. Query entities
+    DB-->>Supabase: 5. Return entities
+    Supabase-->>Hook: 6. Return data
+    
+    Hook->>Supabase: 7. SELECT from clients_master
+    Supabase->>DB: 8. Query clients
+    DB-->>Supabase: 9. Return clients
+    Supabase-->>Hook: 10. Return data
+    
+    Hook-->>UI: 11. Populate form dropdowns
+    UI-->>User: 12. Show AddInvoiceModal
+    
+    User->>UI: 13. Fill invoice details
+    User->>UI: 14. Select entity, client, amounts
+    User->>UI: 15. Click "Save Invoice"
+    
+    UI->>UI: 16. Validate form
+    Note over UI: • Non-empty fields<br/>• Valid amounts<br/>• Valid dates<br/>• Permissions check
+    
+    alt Validation Failed
+        UI-->>User: 17. Show error message
+    else Validation Passed
+        UI->>Supabase: 18. INSERT into invoices table
+        
+        Supabase->>DB: 19. INSERT invoice record
+        Note over DB: id, invoice_number,<br/>entity_id, client_name,<br/>invoice_value, date
+        
+        DB-->>Supabase: 20. Return inserted record
+        Supabase-->>UI: 21. Confirm INSERT success
+        
+        UI->>Utils: 22. logExport(action=INSERT)
+        Utils->>Supabase: 23. INSERT into audit_logs
+        Supabase->>DB: 24. INSERT audit record
+        DB-->>Supabase: 25. Confirmed
+        Supabase-->>Utils: 26. Success
+        
+        UI->>UI: 27. Close modal
+        UI->>UI: 28. Invalidate Dashboard cache
+        UI-->>User: 29. Show success toast
+        
+        Note over DB: === REAL-TIME UPDATES ===
+        
+        DB->>DB: 30. Broadcast INSERT event (postgres_changes)
+        Supabase->>Supabase: 31. Receive event
+        Supabase->>Supabase: 32. Notify subscribers (websocket)
+        
+        Supabase-->>UI: 33. Emit real-time event
+        UI->>UI: 34. Update component state
+        UI-->>User: 35. Dashboard refreshes automatically
+    end
+    
+    style User fill:#1e40af,stroke:#3b82f6,color:#fff
+    style UI fill:#059669,stroke:#10b981,color:#fff
+    style Hook fill:#7c3aed,stroke:#a78bfa,color:#fff
+    style Utils fill:#dc2626,stroke:#f87171,color:#fff
+    style Supabase fill:#ea580c,stroke:#fb923c,color:#fff
+    style DB fill:#d97706,stroke:#fbbf24,color:#fff

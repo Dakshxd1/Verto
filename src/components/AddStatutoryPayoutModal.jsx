@@ -24,12 +24,22 @@ import {
   TrendingUp,
   TrendingDown,
   Building2,
+  Lock,
 } from "lucide-react";
 import { usePerms } from "../context/PermissionsContext";
 import * as XLSX from "xlsx";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const inr = (v) => Number(v || 0).toLocaleString("en-IN");
+
+const isLocked = (issueDate) => {
+  if (!issueDate) return false;
+  const date = new Date(issueDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
+};
 
 // ─── Section Card ─────────────────────────────────────────────────────────────
 const Section = ({ icon: Icon, title, color, children }) => {
@@ -547,7 +557,7 @@ const StatutoryRecordsPanel = ({ onClose }) => {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState("");
-  const { canEdit, canDelete, isIntern } = usePerms();
+  const { canEdit, canDelete, isIntern, isAdmin } = usePerms();
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -840,22 +850,42 @@ const StatutoryRecordsPanel = ({ onClose }) => {
                     </div>
                   ) : (
                     <>
-                      {canEdit && (
-                        <button
-                          onClick={() => startEdit(row)}
-                          className="p-2 text-gray-300 hover:text-cyan-500 hover:bg-cyan-50 rounded-xl border-2 border-transparent hover:border-cyan-100 transition-all"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          onClick={() => setConfirmId(row.id)}
-                          className="p-2 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl border-2 border-transparent hover:border-rose-100 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      {canEdit && (() => {
+                        const rowLocked = isLocked(row.month);
+                        const lockedByDate = rowLocked && !isAdmin;
+                        return (
+                          <button
+                            onClick={() => { if (!lockedByDate) startEdit(row); }}
+                            disabled={lockedByDate}
+                            title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : "Edit"}
+                            className={`p-2 rounded-xl border-2 transition-all ${
+                              lockedByDate
+                                ? "text-gray-300 bg-gray-50 border-gray-100 cursor-not-allowed"
+                                : "text-gray-300 hover:text-cyan-500 hover:bg-cyan-50 border-transparent hover:border-cyan-100"
+                            }`}
+                          >
+                            {lockedByDate ? <Lock className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+                          </button>
+                        );
+                      })()}
+                      {canDelete && (() => {
+                        const rowLocked = isLocked(row.month);
+                        const lockedByDate = rowLocked && !isAdmin;
+                        return (
+                          <button
+                            onClick={() => { if (!lockedByDate) setConfirmId(row.id); }}
+                            disabled={lockedByDate}
+                            title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : "Delete"}
+                            className={`p-2 rounded-xl border-2 transition-all ${
+                              lockedByDate
+                                ? "text-gray-300 bg-gray-50 border-gray-100 cursor-not-allowed"
+                                : "text-gray-300 hover:text-rose-500 hover:bg-rose-50 border-transparent hover:border-rose-100"
+                            }`}
+                          >
+                            {lockedByDate ? <Lock className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
+                          </button>
+                        );
+                      })()}
                     </>
                   )}
                 </div>

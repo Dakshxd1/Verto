@@ -28,11 +28,21 @@ import {
   Users,
   ShieldCheck,
   Pencil,
+  Lock,
 } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (v) => Number(v || 0).toLocaleString("en-IN");
 const num = (v) => parseFloat(v || 0);
+
+const isLocked = (issueDate) => {
+  if (!issueDate) return false;
+  const date = new Date(issueDate);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 45);
+  cutoff.setHours(0, 0, 0, 0);
+  return date < cutoff;
+};
 
 // ─── Searchable Invoice Dropdown ──────────────────────────────────────────────
 const SearchableInvoiceDropdown = ({
@@ -348,7 +358,7 @@ const InvoiceCard = ({ d }) => (
 );
 
 // ─── CN Records Panel ─────────────────────────────────────────────────────────
-const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete }) => {
+const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
@@ -821,22 +831,44 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete }) => {
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5">
-                          {canEdit && (
-                            <button
-                              onClick={() => onEdit?.(row)}
-                              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-semibold border border-amber-200 transition-colors"
-                            >
-                              <Pencil className="w-3 h-3" /> Edit
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button
-                              onClick={() => setConfirmId(row.id)}
-                              className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold border border-red-100 transition-colors"
-                            >
-                              <Trash2 className="w-3 h-3" /> Delete
-                            </button>
-                          )}
+                          {canEdit && (() => {
+                            const rowLocked = isLocked(row.issue_date);
+                            const lockedByDate = rowLocked && !isAdmin;
+                            return (
+                              <button
+                                onClick={() => { if (!lockedByDate) onEdit?.(row); }}
+                                disabled={lockedByDate}
+                                title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : "Edit"}
+                                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                  lockedByDate
+                                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                    : "bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200"
+                                }`}
+                              >
+                                {lockedByDate ? <Lock className="w-3 h-3" /> : <Pencil className="w-3 h-3" />}
+                                {lockedByDate ? "Locked" : "Edit"}
+                              </button>
+                            );
+                          })()}
+                          {canDelete && (() => {
+                            const rowLocked = isLocked(row.issue_date);
+                            const lockedByDate = rowLocked && !isAdmin;
+                            return (
+                              <button
+                                onClick={() => { if (!lockedByDate) setConfirmId(row.id); }}
+                                disabled={lockedByDate}
+                                title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : "Delete"}
+                                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                  lockedByDate
+                                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                    : "bg-red-50 hover:bg-red-100 text-red-600 border-red-100"
+                                }`}
+                              >
+                                {lockedByDate ? <Lock className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
+                                {lockedByDate ? "Locked" : "Delete"}
+                              </button>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
@@ -946,7 +978,7 @@ const AddCNBadDebtModal = ({
   const [refStatus, setRefStatus] = useState(null);
   const [invoiceList, setInvoiceList] = useState([]);
   const refCheckTimer = useRef(null);
-  const { canSave, isIntern, canEdit, canDelete } = usePerms();
+  const { canSave, isIntern, canEdit, canDelete, isAdmin } = usePerms();
 
   // ── Fetch invoice list ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -1435,6 +1467,7 @@ const AddCNBadDebtModal = ({
                   onEdit={handleEditEntry}
                   canEdit={canEdit}
                   canDelete={canDelete}
+                  isAdmin={isAdmin}
                 />
               )}
             </AnimatePresence>
