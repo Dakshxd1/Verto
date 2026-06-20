@@ -37,6 +37,14 @@ const emptyDetailForm = {
   bill_supporting_received: "No",
 };
 
+const BILL_FIELD_LABELS = {
+  card_master_id: "Card",
+  bill_date: "Bill Date",
+  amount: "Amount",
+  cash_back: "Cash Back",
+  amount_paid: "Amount Paid",
+};
+
 function fmt(n) {
   return `₹${parseFloat(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 0 })}`;
 }
@@ -75,7 +83,10 @@ export default function CreditCardTracker() {
   const [showBillModal, setShowBillModal] = useState(false);
   const [editBill, setEditBill] = useState(null);
   const [billForm, setBillForm] = useState(emptyBillForm);
+  const [billErrors, setBillErrors] = useState({});
+  const [billPopup, setBillPopup] = useState(null);
   const [selectedBillCard, setSelectedBillCard] = useState(null);
+
 
   // Searchable card dropdown in bill modal
   const [cardQuery, setCardQuery] = useState("");
@@ -118,6 +129,14 @@ export default function CreditCardTracker() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Auto-dismiss the bill validation popup
+  useEffect(() => {
+    if (billPopup) {
+      const t = setTimeout(() => setBillPopup(null), 4500);
+      return () => clearTimeout(t);
+    }
+  }, [billPopup]);
+
   async function fetchBanks() {
     const { data } = await supabase
       .from("bank_master")
@@ -158,6 +177,8 @@ export default function CreditCardTracker() {
   // ─── BILL CRUD ──────────────────────────────────────────────────────
   function openAddBill() {
     setEditBill(null);
+    setBillErrors({});
+    setBillPopup(null);
     setBillForm({ ...emptyBillForm, card_master_id: cards[0]?.id || "" });
     setSelectedBillCard(cards[0] || null);
     setCardQuery(cards[0] ? `${cards[0].bank} ••••${cards[0].card_last4} — ${cards[0].issued_to}` : "");
@@ -167,6 +188,8 @@ export default function CreditCardTracker() {
 
   function openEditBill(b) {
     setEditBill(b);
+    setBillErrors({});
+    setBillPopup(null);
     setBillForm({
       card_master_id: b.card_master_id,
       amount: b.amount,
@@ -182,12 +205,39 @@ export default function CreditCardTracker() {
     setShowBillModal(true);
   }
 
+  function validateBillForm() {
+    const errs = {};
+    if (!billForm.card_master_id) errs.card_master_id = "Please select a card";
+    if (!billForm.bill_date) errs.bill_date = "Bill date is required";
+    if (billForm.amount === "" || billForm.amount === null) errs.amount = "Amount is required";
+    if (billForm.cash_back === "" || billForm.cash_back === null) errs.cash_back = "Cash back is required";
+    if (billForm.amount_paid === "" || billForm.amount_paid === null) errs.amount_paid = "Amount paid is required";
+    // penalty intentionally skipped — optional
+    setBillErrors(errs);
+
+    const missingKeys = Object.keys(errs);
+    if (missingKeys.length > 0) {
+      const missingLabels = missingKeys.map((k) => BILL_FIELD_LABELS[k]).join(", ");
+      setBillPopup(
+        `Please fill in the required field${missingKeys.length > 1 ? "s" : ""}: ${missingLabels}`
+      );
+      return false;
+    }
+    setBillPopup(null);
+    return true;
+  }
+
   async function saveBill() {
     if (isIntern) return;
-    if (!billForm.card_master_id) return;
+    if (!validateBillForm()) return;
     setSaving(true);
+
     const amount_payable = Math.max(0, (parseFloat(billForm.amount) || 0) + (parseFloat(billForm.penalty) || 0) - (parseFloat(billForm.cash_back) || 0));
-    const payload = { ...billForm, amount_payable };
+    const payload = {
+  ...billForm,
+  penalty: billForm.penalty === "" || billForm.penalty === null ? 0 : billForm.penalty,
+  amount_payable,
+};
     if (editBill) { await supabase.from("credit_card_bills").update(payload).eq("id", editBill.id); }
     else { await supabase.from("credit_card_bills").insert([payload]); }
     setSaving(false); setShowBillModal(false); fetchAll();
@@ -256,6 +306,13 @@ export default function CreditCardTracker() {
 
   const viewDetails = viewBill ? billDetails.filter((d) => d.bill_id === viewBill.id) : [];
   const viewCard = viewBill ? cards.find((c) => c.id === viewBill.card_master_id) : null;
+
+  function billFieldStyle(key) {
+    return {
+      background: "#2a1f00",
+      border: billErrors[key] ? "1px solid #dc2626" : "1px solid #78350f",
+    };
+  }
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -502,6 +559,28 @@ export default function CreditCardTracker() {
                 <h2 className="text-white font-bold text-lg">{editBill ? "Edit Bill" : "Add Credit Card Bill"}</h2>
                 <button onClick={() => setShowBillModal(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
               </div>
+
+              {/* ─── VALIDATION POPUP ───────────────────────────────── */}
+              <AnimatePresence>
+                {billPopup && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: "auto" }}
+                    exit={{ opacity: 0, y: -8, height: 0 }}
+                    className="mx-6 mt-4 overflow-hidden"
+                  >
+                    <div className="px-4 py-3 rounded-xl flex items-start gap-2.5 border"
+                         style={{ background: "rgba(220, 38, 38, 0.12)", borderColor: "#dc2626" }}>
+                      <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-red-300 flex-1 leading-snug">{billPopup}</p>
+                      <button onClick={() => setBillPopup(null)} className="text-red-400 hover:text-red-200 flex-shrink-0">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <div className="p-6 grid grid-cols-2 gap-4">
                 {/* ─── SEARCHABLE CARD DROPDOWN ─────────────────────── */}
                 <div className="col-span-2 relative" ref={cardDropdownRef}>
@@ -510,7 +589,7 @@ export default function CreditCardTracker() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
                     <input
                       className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm focus:outline-none text-white"
-                      style={{ background: "#2a1f00", border: "1px solid #78350f" }}
+                      style={billFieldStyle("card_master_id")}
                       placeholder="Search card no, name or bank…"
                       value={cardQuery}
                       onChange={(e) => {
@@ -570,7 +649,7 @@ export default function CreditCardTracker() {
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#d97706" }}>Bill Date</label>
                   <input type="date" className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none text-white"
-                    style={{ background: "#2a1f00", border: "1px solid #78350f" }}
+                    style={billFieldStyle("bill_date")}
                     value={billForm.bill_date} onChange={(e) => setBillForm((f) => ({ ...f, bill_date: e.target.value }))} />
                 </div>
 
@@ -583,7 +662,7 @@ export default function CreditCardTracker() {
                   <div key={key}>
                     <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#d97706" }}>{label}</label>
                     <input type="number" className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none text-white"
-                      style={{ background: "#2a1f00", border: "1px solid #78350f" }}
+                      style={billFieldStyle(key)}
                       value={billForm[key]} onChange={(e) => setBillForm((f) => ({ ...f, [key]: e.target.value }))} placeholder="0.00" />
                   </div>
                 ))}
