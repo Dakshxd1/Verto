@@ -23,6 +23,7 @@ import {
   FileSpreadsheet,
   TrendingUp,
   TrendingDown,
+  Building2,
 } from "lucide-react";
 import { usePerms } from "../context/PermissionsContext";
 import * as XLSX from "xlsx";
@@ -142,171 +143,131 @@ const EditInput = ({
   </div>
 );
 
-// ─── Compliance Tracker Panel ─────────────────────────────────────────────────
+// ─── Compliance Tracker Panel (UPDATED to use compliance_tracker_view) ──────
 const ComplianceTrackerPanel = ({ onClose }) => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [entityFilter, setEntityFilter] = useState("All");
   const [yearFilter, setYearFilter] = useState(
     new Date().getFullYear().toString()
   );
   const [exporting, setExporting] = useState(false);
 
+  // Fetch from the view directly — one row per month with all totals pre-summed
   const fetchRecords = async () => {
     setLoading(true);
     const { data } = await supabase
-      .from("statutory_payments")
-      .select("*, bank_master(bank_name)")
-      .order("month", { ascending: false });
+      .from("compliance_tracker_view")
+      .select("*")
+      .order("month_date", { ascending: false });
     setRecords(data || []);
     setLoading(false);
   };
 
   useEffect(() => {
     fetchRecords();
+
+    // Realtime subscription — re-fetch when statutory_payments changes
+    const channel = supabase
+      .channel("statutory-tracker")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "statutory_payments" },
+        () => fetchRecords()
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, []);
 
-  // Month-wise aggregation
-  const monthWise = useMemo(() => {
-    const map = {};
-    records.forEach((r) => {
-      const monthKey = r.month ? r.month.slice(0, 7) : "";
-      if (!monthKey) return;
-      if (!map[monthKey]) {
-        map[monthKey] = {
-          month: monthKey,
-          monthLabel: new Date(monthKey + "-01").toLocaleDateString("en-IN", {
-            month: "short",
-            year: "numeric",
-          }),
-          payable: 0,
-          paid: 0,
-          pending: 0,
-          count: 0,
-          types: new Set(),
-        };
-      }
-      map[monthKey].payable += Number(r.total_due || 0);
-      map[monthKey].paid += Number(r.total_paid || 0);
-      map[monthKey].pending += Number(r.pending_due || 0);
-      map[monthKey].count += 1;
-      map[monthKey].types.add(r.type);
-    });
-    return Object.values(map).sort((a, b) => b.month.localeCompare(a.month));
-  }, [records]);
-
-  // Filtered month-wise
+  // Filter by year — each record IS one month row
   const filteredMonthWise = useMemo(() => {
-    return monthWise.filter((m) => {
-      const matchYear = m.month.startsWith(yearFilter);
-      return matchYear;
-    });
-  }, [monthWise, yearFilter]);
-
-  // Detailed records for export
-  const detailedRecords = useMemo(() => {
-    return records.filter((r) => {
-      const monthKey = r.month ? r.month.slice(0, 7) : "";
-      return monthKey.startsWith(yearFilter);
-    });
+    return records.filter((r) => String(r.year) === yearFilter);
   }, [records, yearFilter]);
 
+  // KPIs from the view
+  const totalPayable = filteredMonthWise.reduce(
+    (s, r) => s + Number(r.total_payable || 0),
+    0
+  );
+  const totalPaid = filteredMonthWise.reduce(
+    (s, r) => s + Number(r.total_paid || 0),
+    0
+  );
+  const totalPending = filteredMonthWise.reduce(
+    (s, r) => s + Number(r.total_pending || 0),
+    0
+  );
+
+  // Export
   const exportTracker = () => {
     setExporting(true);
     try {
-      // Sheet 1: Month-wise summary
       const summaryHeaders = [
         "Month",
         "Total Payable",
         "Total Paid",
         "Total Pending",
         "Status",
-        "Records Count",
+        "Records",
+        "VB Payable",
+        "VB Paid",
+        "VB Pending",
+        "VGPL Payable",
+        "VGPL Paid",
+        "VGPL Pending",
+        "VUK Payable",
+        "VUK Paid",
+        "VUK Pending",
+        "GST Payable",
+        "GST Paid",
+        "TDS Payable",
+        "TDS Paid",
+        "PF Payable",
+        "PF Paid",
+        "ESI Payable",
+        "ESI Paid",
+        "LWF Payable",
+        "LWF Paid",
+        "Penalty",
       ];
       const summaryRows = filteredMonthWise.map((m) => [
-        m.monthLabel,
-        m.payable,
-        m.paid,
-        m.pending,
-        m.pending <= 0 ? "Fully Paid" : m.paid > 0 ? "Partial" : "Pending",
-        m.count,
-      ]);
-      const summaryTotals = [
-        "TOTAL",
-        filteredMonthWise.reduce((s, r) => s + r.payable, 0),
-        filteredMonthWise.reduce((s, r) => s + r.paid, 0),
-        filteredMonthWise.reduce((s, r) => s + r.pending, 0),
-        "",
-        filteredMonthWise.reduce((s, r) => s + r.count, 0),
-      ];
-
-      // Sheet 2: Detailed reconciliation
-      const detailHeaders = [
-        "Month",
-        "Entity",
-        "Type",
-        "Total Due (Payable)",
-        "Total Paid",
-        "Pending Due",
-        "Payment Status",
-        "Penalty",
-        "Bank",
-        "Remarks",
-      ];
-      const detailRows = detailedRecords.map((r) => [
-        r.month ? r.month.slice(0, 7) : "",
-        r.entity || "",
-        r.type || "",
-        Number(r.total_due || 0),
-        Number(r.total_paid || 0),
-        Number(r.pending_due || 0),
-        r.payment_status || "",
-        r.penalty ? `Yes (₹${r.penalty_amount || 0})` : "No",
-        r.bank_master?.bank_name || r.bank_name || "",
-        r.remarks || "",
+        m.month_label,
+        m.total_payable,
+        m.total_paid,
+        m.total_pending,
+        m.overall_status,
+        m.record_count,
+        m.vb_payable,
+        m.vb_paid,
+        m.vb_pending,
+        m.vgpl_payable,
+        m.vgpl_paid,
+        m.vgpl_pending,
+        m.vuk_payable,
+        m.vuk_paid,
+        m.vuk_pending,
+        m.gst_payable,
+        m.gst_paid,
+        m.tds_payable,
+        m.tds_paid,
+        m.pf_payable,
+        m.pf_paid,
+        m.esi_payable,
+        m.esi_paid,
+        m.lwf_payable,
+        m.lwf_paid,
+        m.has_penalty ? `Yes (₹${m.total_penalty})` : "No",
       ]);
 
       const wb = XLSX.utils.book_new();
-      const ws1 = XLSX.utils.aoa_to_sheet([
-        summaryHeaders,
-        ...summaryRows,
-        summaryTotals,
-      ]);
-      ws1["!cols"] = [
-        { wch: 16 },
-        { wch: 16 },
-        { wch: 16 },
-        { wch: 16 },
-        { wch: 14 },
-        { wch: 14 },
-      ];
-      XLSX.utils.book_append_sheet(wb, ws1, "Month-wise Summary");
-
-      const ws2 = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailRows]);
-      ws2["!cols"] = [
-        { wch: 12 },
-        { wch: 24 },
-        { wch: 14 },
-        { wch: 16 },
-        { wch: 16 },
-        { wch: 16 },
-        { wch: 14 },
-        { wch: 16 },
-        { wch: 20 },
-        { wch: 30 },
-      ];
-      XLSX.utils.book_append_sheet(wb, ws2, "Detailed Reconciliation");
-
+      const ws = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryRows]);
+      ws["!cols"] = summaryHeaders.map(() => ({ wch: 16 }));
+      XLSX.utils.book_append_sheet(wb, ws, "Compliance Summary");
       XLSX.writeFile(wb, `Compliance_Tracker_${yearFilter}.xlsx`);
     } finally {
       setExporting(false);
     }
   };
-
-  const totalPayable = filteredMonthWise.reduce((s, r) => s + r.payable, 0);
-  const totalPaid = filteredMonthWise.reduce((s, r) => s + r.paid, 0);
-  const totalPending = filteredMonthWise.reduce((s, r) => s + r.pending, 0);
 
   const years = Array.from({ length: 7 }, (_, i) =>
     (new Date().getFullYear() - 3 + i).toString()
@@ -334,7 +295,7 @@ const ComplianceTrackerPanel = ({ onClose }) => {
             <div>
               <p className="text-sm font-black">Compliance Tracker</p>
               <p className="text-[11px] text-violet-200 mt-0.5">
-                Month-wise payable · paid · pending
+                Month-wise payable · paid · pending — from view
               </p>
             </div>
           </div>
@@ -444,64 +405,92 @@ const ComplianceTrackerPanel = ({ onClose }) => {
                   Records
                 </th>
                 <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest">
-                  Types
+                  Company Breakdown
+                </th>
+                <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-widest">
+                  Penalty
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredMonthWise.map((m, i) => (
-                <tr
-                  key={m.month}
-                  className={`bg-white hover:bg-violet-50/40 transition-colors ${
-                    i % 2 === 1 ? "bg-gray-50/40" : ""
-                  }`}
-                >
-                  <td className="px-4 py-3 font-semibold text-gray-800">
-                    {m.monthLabel}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-blue-700">
-                    ₹ {inr(m.payable)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">
-                    ₹ {inr(m.paid)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-amber-700">
-                    ₹ {inr(m.pending)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
-                        m.pending <= 0
-                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                          : m.paid > 0
-                          ? "bg-amber-100 text-amber-700 border-amber-200"
-                          : "bg-rose-100 text-rose-700 border-rose-200"
-                      }`}
-                    >
-                      {m.pending <= 0
-                        ? "Fully Paid"
-                        : m.paid > 0
-                        ? "Partial"
-                        : "Pending"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center text-gray-500 text-xs">
-                    {m.count}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {Array.from(m.types).map((t) => (
-                        <span
-                          key={t}
-                          className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md font-medium"
-                        >
-                          {t}
+              {filteredMonthWise.map((m, i) => {
+                const isFullyPaid = Number(m.total_pending || 0) <= 0;
+                const isPartial = Number(m.total_paid || 0) > 0 && !isFullyPaid;
+                return (
+                  <tr
+                    key={m.month_date}
+                    className={`bg-white hover:bg-violet-50/40 transition-colors ${
+                      i % 2 === 1 ? "bg-gray-50/40" : ""
+                    }`}
+                  >
+                    <td className="px-4 py-3 font-semibold text-gray-800">
+                      {m.month_label}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-blue-700">
+                      ₹ {inr(m.total_payable)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">
+                      ₹ {inr(m.total_paid)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-amber-700">
+                      ₹ {inr(m.total_pending)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                          isFullyPaid
+                            ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                            : isPartial
+                            ? "bg-amber-100 text-amber-700 border-amber-200"
+                            : "bg-rose-100 text-rose-700 border-rose-200"
+                        }`}
+                      >
+                        {m.overall_status || (isFullyPaid ? "Fully Paid" : isPartial ? "Partial" : "Pending")}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-gray-500 text-xs">
+                      {m.record_count}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-[10px] space-y-0.5">
+                        <div className="flex items-center gap-1">
+                          <span className="font-bold text-blue-600">VB:</span>
+                          <span className="text-gray-600">₹{inr(m.vb_payable)}</span>
+                          <span className="text-emerald-600">/ ₹{inr(m.vb_paid)}</span>
+                          {Number(m.vb_pending) > 0 && (
+                            <span className="text-amber-600">/ ₹{inr(m.vb_pending)}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="font-bold text-purple-600">VGPL:</span>
+                          <span className="text-gray-600">₹{inr(m.vgpl_payable)}</span>
+                          <span className="text-emerald-600">/ ₹{inr(m.vgpl_paid)}</span>
+                          {Number(m.vgpl_pending) > 0 && (
+                            <span className="text-amber-600">/ ₹{inr(m.vgpl_pending)}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="font-bold text-red-600">VUK:</span>
+                          <span className="text-gray-600">₹{inr(m.vuk_payable)}</span>
+                          <span className="text-emerald-600">/ ₹{inr(m.vuk_paid)}</span>
+                          {Number(m.vuk_pending) > 0 && (
+                            <span className="text-amber-600">/ ₹{inr(m.vuk_pending)}</span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {m.has_penalty ? (
+                        <span className="text-amber-600 text-[10px] font-bold">
+                          ⚡ ₹{inr(m.total_penalty)}
                         </span>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      ) : (
+                        <span className="text-gray-300 text-[10px]">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr className="bg-slate-800 text-white font-bold">
@@ -527,7 +516,7 @@ const ComplianceTrackerPanel = ({ onClose }) => {
   );
 };
 
-// ─── Records Panel (unchanged from your latest) ─────────────────────────────
+// ─── Records Panel ────────────────────────────────────────────────────────────
 const StatutoryRecordsPanel = ({ onClose }) => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
