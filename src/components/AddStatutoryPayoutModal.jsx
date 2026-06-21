@@ -153,7 +153,252 @@ const EditInput = ({
   </div>
 );
 
-// ─── Compliance Tracker Panel (UPDATED with table layout fixes) ─────────────
+// ─── Statutory Invoice Breakdown Panel ───────────────────────────────────────
+const StatutoryInvoiceBreakdownPanel = ({ onClose }) => {
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
+  const [entityFilter, setEntityFilter] = useState("");
+
+  const fetchRecords = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("statutory_invoice_breakdown_view")
+      .select("*")
+      .order("impact_month", { ascending: false });
+    setRecords(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchRecords();
+  }, []);
+
+  const fmtMonth = (d) => {
+    if (!d) return "—";
+    return new Date(d).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+  };
+
+  const allMonths = [...new Set(records.map(r => r.impact_month?.slice(0, 7)))].filter(Boolean).sort().reverse();
+  const allEntities = [...new Set(records.map(r => r.entity_name))].filter(Boolean).sort();
+
+  const filtered = records.filter(r => {
+    const q = search.toLowerCase();
+    const matchSearch = !q ||
+      r.invoice_number?.toLowerCase().includes(q) ||
+      r.client_name?.toLowerCase().includes(q) ||
+      r.entity_name?.toLowerCase().includes(q);
+    const matchMonth = !monthFilter || r.impact_month?.slice(0, 7) === monthFilter;
+    const matchEntity = !entityFilter || r.entity_name === entityFilter;
+    return matchSearch && matchMonth && matchEntity;
+  });
+
+  const totals = filtered.reduce((acc, r) => ({
+    invoice_value: acc.invoice_value + Number(r.invoice_value || 0),
+    net_gst:  acc.net_gst  + Number(r.net_gst  || 0),
+    net_tds:  acc.net_tds  + Number(r.net_tds  || 0),
+    net_pf:   acc.net_pf   + Number(r.net_pf   || 0),
+    net_esi:  acc.net_esi  + Number(r.net_esi  || 0),
+    net_lwf:  acc.net_lwf  + Number(r.net_lwf  || 0),
+    net_pt:   acc.net_pt   + Number(r.net_pt   || 0),
+    employee_count: acc.employee_count + Number(r.employee_count || 0),
+  }), { invoice_value:0, net_gst:0, net_tds:0, net_pf:0, net_esi:0, net_lwf:0, net_pt:0, employee_count:0 });
+
+  return (
+    <motion.div
+      initial={{ x: "100%", opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: "100%", opacity: 0 }}
+      transition={{ type: "spring", damping: 28, stiffness: 260 }}
+      className="absolute inset-0 bg-white z-10 flex flex-col rounded-2xl overflow-hidden"
+    >
+      {/* Header */}
+      <div className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-600 px-5 py-4 flex-shrink-0 text-white">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-xl text-xs font-bold transition-all"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" /> Back
+            </button>
+            <div className="w-px h-5 bg-white/25" />
+            <div>
+              <p className="text-sm font-black">Statutory Invoice Breakdown</p>
+              <p className="text-[11px] text-indigo-200 mt-0.5">
+                Invoice-level GST · TDS · PF · ESI · LWF · PT
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-xl transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="px-4 py-2.5 border-b bg-white flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          placeholder="Search invoice / client / entity..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 min-w-[160px] border-2 border-gray-100 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        />
+        <select
+          value={monthFilter}
+          onChange={(e) => setMonthFilter(e.target.value)}
+          className="border-2 border-gray-100 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-400 bg-white"
+        >
+          <option value="">All Months</option>
+          {allMonths.map(m => (
+            <option key={m} value={m}>
+              {new Date(m + "-01").toLocaleDateString("en-IN", { month: "short", year: "numeric" })}
+            </option>
+          ))}
+        </select>
+        <select
+          value={entityFilter}
+          onChange={(e) => setEntityFilter(e.target.value)}
+          className="border-2 border-gray-100 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-400 bg-white"
+        >
+          <option value="">All Entities</option>
+          {allEntities.map(e => (
+            <option key={e} value={e}>{e}</option>
+          ))}
+        </select>
+        <span className="text-xs text-gray-400 ml-auto">{filtered.length} invoices</span>
+      </div>
+
+      {/* Table */}
+      <div className="flex-1 overflow-auto bg-gray-50/30">
+        {loading ? (
+          <div className="flex items-center justify-center py-20 text-gray-300">
+            <Loader2 className="w-6 h-6 animate-spin mr-2" />
+            <span className="text-sm font-medium">Loading…</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-gray-300">
+            <FileCheck className="w-10 h-10 mb-3 opacity-40" />
+            <p className="text-sm font-semibold">No records found</p>
+          </div>
+        ) : (
+          <table className="w-full text-xs border-collapse">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-slate-800 text-white">
+                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest whitespace-nowrap">Invoice</th>
+                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest whitespace-nowrap">Month</th>
+                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest whitespace-nowrap">Client</th>
+                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest whitespace-nowrap">Entity</th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest whitespace-nowrap">Inv Value</th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-blue-300">GST</th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-amber-300">TDS</th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-violet-300">PF</th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-emerald-300">ESI</th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-rose-300">LWF</th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-orange-300">PT</th>
+                <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest text-gray-300">Emp</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map((row, i) => (
+                <tr
+                  key={row.invoice_id}
+                  className={`transition-colors hover:bg-indigo-50/40 ${i % 2 === 1 ? "bg-gray-50/40" : "bg-white"}`}
+                >
+                  <td className="px-3 py-2.5 font-bold text-indigo-700 whitespace-nowrap font-mono text-[11px]">
+                    {row.invoice_number}
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+                    {fmtMonth(row.impact_month)}
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-800 font-semibold max-w-[180px] truncate" title={row.client_name}>
+                    {row.client_name || "—"}
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      row.entity_name === "Verto Bizserv"
+                        ? "bg-blue-100 text-blue-700"
+                        : row.entity_name === "VertoBizserv Global Solutions Pvt Ltd"
+                        ? "bg-purple-100 text-purple-700"
+                        : "bg-red-100 text-red-700"
+                    }`}>
+                      {row.entity_name === "Verto Bizserv" ? "VB"
+                        : row.entity_name === "VertoBizserv Global Solutions Pvt Ltd" ? "VGPL"
+                        : row.entity_name === "Verto UK Ltd" ? "VUK"
+                        : row.entity_name}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono font-semibold text-gray-700 whitespace-nowrap">
+                    ₹{inr(row.invoice_value)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-blue-700 whitespace-nowrap">
+                    {Number(row.net_gst) > 0 ? `₹${inr(row.net_gst)}` : <span className="text-gray-200">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-amber-700 whitespace-nowrap">
+                    {Number(row.net_tds) > 0 ? `₹${inr(row.net_tds)}` : <span className="text-gray-200">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-violet-700 whitespace-nowrap">
+                    {Number(row.net_pf) > 0 ? `₹${inr(row.net_pf)}` : <span className="text-gray-200">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-emerald-700 whitespace-nowrap">
+                    {Number(row.net_esi) > 0 ? `₹${inr(row.net_esi)}` : <span className="text-gray-200">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-rose-700 whitespace-nowrap">
+                    {Number(row.net_lwf) > 0 ? `₹${inr(row.net_lwf)}` : <span className="text-gray-200">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-orange-700 whitespace-nowrap">
+                    {Number(row.net_pt) > 0 ? `₹${inr(row.net_pt)}` : <span className="text-gray-200">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-center text-gray-500 font-bold">
+                    {Number(row.employee_count) > 0 ? row.employee_count : <span className="text-gray-200">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="sticky bottom-0">
+              <tr className="bg-slate-900 text-white">
+                <td colSpan={4} className="px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-300">
+                  Total ({filtered.length} invoices)
+                </td>
+                <td className="px-3 py-3 text-right font-black font-mono text-white text-sm whitespace-nowrap">
+                  ₹{inr(totals.invoice_value)}
+                </td>
+                <td className="px-3 py-3 text-right font-black font-mono text-blue-300 text-sm whitespace-nowrap">
+                  ₹{inr(totals.net_gst)}
+                </td>
+                <td className="px-3 py-3 text-right font-black font-mono text-amber-300 text-sm whitespace-nowrap">
+                  ₹{inr(totals.net_tds)}
+                </td>
+                <td className="px-3 py-3 text-right font-black font-mono text-violet-300 text-sm whitespace-nowrap">
+                  ₹{inr(totals.net_pf)}
+                </td>
+                <td className="px-3 py-3 text-right font-black font-mono text-emerald-300 text-sm whitespace-nowrap">
+                  ₹{inr(totals.net_esi)}
+                </td>
+                <td className="px-3 py-3 text-right font-black font-mono text-rose-300 text-sm whitespace-nowrap">
+                  ₹{inr(totals.net_lwf)}
+                </td>
+                <td className="px-3 py-3 text-right font-black font-mono text-orange-300 text-sm whitespace-nowrap">
+                  ₹{inr(totals.net_pt)}
+                </td>
+                <td className="px-3 py-3 text-center font-black text-gray-300 text-sm">
+                  {totals.employee_count}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
+// ─── Compliance Tracker Panel ────────────────────────────────────────────────
 const ComplianceTrackerPanel = ({ onClose }) => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1180,6 +1425,7 @@ const AddStatutoryPayoutModal = ({
   const [loading, setLoading] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [trackerOpen, setTrackerOpen] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false); // ✅ Step 1
 
   const statutoryTypes = [
     { value: "GST", label: "GST", tds_direction: null, rpc_type: "GST" },
@@ -1464,6 +1710,9 @@ const AddStatutoryPayoutModal = ({
               {trackerOpen && (
                 <ComplianceTrackerPanel onClose={() => setTrackerOpen(false)} />
               )}
+              {breakdownOpen && ( // ✅ Step 4
+                <StatutoryInvoiceBreakdownPanel onClose={() => setBreakdownOpen(false)} />
+              )}
             </AnimatePresence>
 
             {/* Header with small buttons */}
@@ -1481,6 +1730,14 @@ const AddStatutoryPayoutModal = ({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* ✅ Step 3 — Breakdown button (left of Tracker) */}
+                  <button
+                    type="button"
+                    onClick={() => setBreakdownOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/20 transition-all"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" /> Breakdown
+                  </button>
                   <button
                     type="button"
                     onClick={() => setTrackerOpen(true)}

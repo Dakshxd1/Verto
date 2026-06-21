@@ -13,6 +13,7 @@ import {
   Line,
   AreaChart,
   Area,
+  ComposedChart,
   PieChart,
   Pie,
   Cell,
@@ -49,31 +50,37 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 
-// ─── Palette (professional, muted, low-saturation) ────────────────────────────
+// ─── Palette ────────────────────────────────────────────────────────────────
+// One deliberate token per business domain, reused everywhere that domain
+// shows up so the same color always means the same thing across the whole
+// dashboard. Low-saturation, same value/chroma family so nothing fights for
+// attention. Two "ramp" anchors are included for ordinal data (histograms,
+// risk buckets) where a gradient communicates order better than flat hues.
 const P = {
-  blue: "#3b5b92",
-  indigo: "#5b6b9e",
-  violet: "#7c6f9e",
-  emerald: "#3f8f6e",
-  amber: "#b8924a",
-  rose: "#b15c5c",
-  sky: "#5a8aa6",
-  teal: "#4a8f8a",
-  orange: "#bb7f4f",
-  pink: "#a17b94",
-  slate: "#64748b",
+  steel: "#3D6A91", // Revenue / Invoicing
+  teal: "#2F8577", // Collections / inflow / positive
+  amber: "#C08A3E", // Outstanding / pending / mid-risk
+  brick: "#B14B3F", // Credit notes / bad debt / outflow / high-risk
+  clay: "#C17F4E", // OS payout (external workforce cost)
+  plum: "#6E5E94", // Salary & CTC (internal payroll cost)
+  slate: "#5B6B82", // Team / headcount (neutral structural)
+  sky: "#4A7FA6", // Bank & cash flow
+  trend: "#33415C", // secondary line series in dual-axis charts
+  steelLight: "#A7C0D6",
+  plumLight: "#C9C0E0",
 };
+// Categorical fallback for genuinely unordered multi-category data
+// (pay-head splits, etc.) — built from the same restrained family above
+// instead of a 10-color rainbow.
 const CC = [
-  P.blue,
+  P.steel,
   P.teal,
   P.amber,
-  P.violet,
-  P.emerald,
-  P.rose,
+  P.brick,
+  P.plum,
+  P.clay,
+  P.slate,
   P.sky,
-  P.indigo,
-  P.orange,
-  P.pink,
 ];
 
 const TEAM_DEPT_MAP = {
@@ -85,6 +92,37 @@ const TEAM_DEPT_MAP = {
   Common: "Common",
 };
 
+// ─── Color helpers ────────────────────────────────────────────────────────────
+// Picks a meaningful color for status-like labels (Paid/Pending/Overdue…)
+// instead of an arbitrary cycling hue, falling back to the categorical set.
+const semanticColor = (label, idx = 0) => {
+  const l = (label || "").toLowerCase();
+  if (/paid|received|cleared|active|collected|completed|resolved/.test(l))
+    return P.teal;
+  if (/pending|partial|progress|due|review/.test(l)) return P.amber;
+  if (/overdue|cancel|reject|bad|inactive|terminated|left|fail/.test(l))
+    return P.brick;
+  return CC[idx % CC.length];
+};
+const hexToRgb = (hex) => {
+  const h = hex.replace("#", "");
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const rgbToHex = (r, g, b) =>
+  "#" +
+  [r, g, b]
+    .map((x) => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, "0"))
+    .join("");
+// Smooth gradient between two tokens for ordinal data (histogram bins,
+// risk/aging buckets) where order — not category — is the signal.
+const seqColor = (i, total, fromHex, toHex) => {
+  const t = total <= 1 ? 1 : i / (total - 1);
+  const [r1, g1, b1] = hexToRgb(fromHex);
+  const [r2, g2, b2] = hexToRgb(toHex);
+  return rgbToHex(r1 + (r2 - r1) * t, g1 + (g2 - g1) * t, b1 + (b2 - b1) * t);
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n) => {
   const v = Number(n || 0);
@@ -94,6 +132,7 @@ const fmt = (n) => {
   return `₹${v.toLocaleString("en-IN")}`;
 };
 const fmtFull = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+const fmtCount = (n) => Number(n || 0).toLocaleString("en-IN");
 const toYYYYMM = (d) => (d || "").slice(0, 7);
 const fmtMonth = (ym) =>
   !ym
@@ -139,7 +178,36 @@ const safeRpc = async (fn, params) => {
   }
 };
 
-// ─── Tooltip for COUNTS (no ₹ symbol) ─────────────────────────────────────────
+// ─── Tooltips ─────────────────────────────────────────────────────────────────
+// Three flavors so the unit shown always matches the unit being charted:
+// currency (₹), plain counts (no symbol), and percentages.
+const CT = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl shadow-2xl p-3 text-xs min-w-[150px] max-w-[260px]">
+      {label && (
+        <p className="font-bold text-gray-700 mb-2 border-b pb-1 truncate">
+          {label}
+        </p>
+      )}
+      {payload.map((p, i) => (
+        <div key={i} className="flex items-center justify-between gap-3 mt-1">
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ background: p.color || p.fill }}
+            />
+            <span className="text-gray-500 truncate">{p.name}</span>
+          </span>
+          <span className="font-semibold text-gray-800 flex-shrink-0">
+            {typeof p.value === "number" ? fmtFull(p.value) : p.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const CTCount = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -159,12 +227,73 @@ const CTCount = ({ active, payload, label }) => {
             <span className="text-gray-500 truncate">{p.name}</span>
           </span>
           <span className="font-semibold text-gray-800 flex-shrink-0">
-            {typeof p.value === "number"
-              ? p.value.toLocaleString("en-IN")
-              : p.value}
+            {typeof p.value === "number" ? fmtCount(p.value) : p.value}
           </span>
         </div>
       ))}
+    </div>
+  );
+};
+
+const CTPercent = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl shadow-2xl p-3 text-xs min-w-[150px] max-w-[260px]">
+      {label && (
+        <p className="font-bold text-gray-700 mb-2 border-b pb-1 truncate">
+          {label}
+        </p>
+      )}
+      {payload.map((p, i) => (
+        <div key={i} className="flex items-center justify-between gap-3 mt-1">
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ background: p.color || p.fill }}
+            />
+            <span className="text-gray-500 truncate">{p.name}</span>
+          </span>
+          <span className="font-semibold text-gray-800 flex-shrink-0">
+            {typeof p.value === "number" ? `${p.value.toFixed(1)}%` : p.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Mixed-unit tooltip for composed charts that pair a count series with a
+// currency series (e.g. headcount vs cost) — only the named keys get ₹.
+const CTFlexible = ({ active, payload, label, moneyKeys = [] }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl shadow-2xl p-3 text-xs min-w-[150px] max-w-[260px]">
+      {label && (
+        <p className="font-bold text-gray-700 mb-2 border-b pb-1 truncate">
+          {label}
+        </p>
+      )}
+      {payload.map((p, i) => {
+        const isMoney = moneyKeys.includes(p.name) || moneyKeys.includes(p.dataKey);
+        return (
+          <div key={i} className="flex items-center justify-between gap-3 mt-1">
+            <span className="flex items-center gap-1.5 min-w-0">
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ background: p.color || p.fill }}
+              />
+              <span className="text-gray-500 truncate">{p.name}</span>
+            </span>
+            <span className="font-semibold text-gray-800 flex-shrink-0">
+              {typeof p.value === "number"
+                ? isMoney
+                  ? fmtFull(p.value)
+                  : fmtCount(p.value)
+                : p.value}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -203,34 +332,6 @@ const KpiCard = ({ label, value, sub, icon: Icon, color, trend, alert }) => (
     {sub && <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>}
   </div>
 );
-
-// ─── Tooltip for regular charts (₹ symbol) ────────────────────────────────────
-const CT = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white border border-gray-100 rounded-xl shadow-2xl p-3 text-xs min-w-[150px] max-w-[260px]">
-      {label && (
-        <p className="font-bold text-gray-700 mb-2 border-b pb-1 truncate">
-          {label}
-        </p>
-      )}
-      {payload.map((p, i) => (
-        <div key={i} className="flex items-center justify-between gap-3 mt-1">
-          <span className="flex items-center gap-1.5 min-w-0">
-            <span
-              className="w-2 h-2 rounded-full flex-shrink-0"
-              style={{ background: p.color || p.fill }}
-            />
-            <span className="text-gray-500 truncate">{p.name}</span>
-          </span>
-          <span className="font-semibold text-gray-800 flex-shrink-0">
-            {typeof p.value === "number" ? fmtFull(p.value) : p.value}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 // ─── Chart Card ────────────────────────────────────────────────────────────────
 const ChartCard = ({
@@ -294,7 +395,7 @@ const ChartCard = ({
   </div>
 );
 
-// ─── Scrollable Vertical Bar ──────────────────────────────────────────────────
+// ─── Scrollable Vertical Bar (ranking list) ───────────────────────────────────
 const VScrollBar = ({
   data,
   dataKey,
@@ -303,6 +404,7 @@ const VScrollBar = ({
   formatter = fmt,
   height = 360,
   barSize = 28,
+  tooltip,
 }) => {
   const totalH = Math.max(height, data.length * (barSize + 12));
   return (
@@ -331,7 +433,7 @@ const VScrollBar = ({
               tick={{ fontSize: 10 }}
               width={130}
             />
-            <Tooltip content={<CT />} />
+            <Tooltip content={tooltip || <CT />} />
             <Bar dataKey={dataKey} fill={color} radius={[0, 4, 4, 0]}>
               <LabelList
                 dataKey={dataKey}
@@ -347,8 +449,38 @@ const VScrollBar = ({
   );
 };
 
-// ─── Scrollable Horizontal Bar ────────────────────────────────────────────────
-const HScrollBar = ({ data, bars, xKey, height = 220, barWidth = 44 }) => {
+// ─── Vertical Grouped Bar (ranking list with 2 comparable series) ────────────
+const VGroupedBar = ({ data, bars, nameKey = "name", height = 300, barSize = 14 }) => (
+  <ResponsiveContainer width="100%" height={height}>
+    <BarChart
+      data={data}
+      layout="vertical"
+      margin={{ top: 4, right: 60, left: 8, bottom: 4 }}
+      barSize={barSize}
+      barGap={4}
+    >
+      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+      <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={fmt} />
+      <YAxis dataKey={nameKey} type="category" tick={{ fontSize: 10 }} width={130} />
+      <Tooltip content={<CT />} />
+      <Legend wrapperStyle={{ fontSize: 10 }} />
+      {bars.map((b) => (
+        <Bar key={b.key} dataKey={b.key} name={b.name || b.key} fill={b.color} radius={[0, 4, 4, 0]} />
+      ))}
+    </BarChart>
+  </ResponsiveContainer>
+);
+
+// ─── Scrollable Horizontal Bar (time series / multi-series comparison) ───────
+const HScrollBar = ({
+  data,
+  bars,
+  xKey,
+  height = 220,
+  barWidth = 44,
+  axisFormatter = fmt,
+  tooltip,
+}) => {
   const minW = Math.max(400, data.length * (bars.length * barWidth + 16));
   return (
     <div className="overflow-x-auto pb-1">
@@ -365,8 +497,8 @@ const HScrollBar = ({ data, bars, xKey, height = 220, barWidth = 44 }) => {
               angle={data.length > 8 ? -30 : 0}
               textAnchor={data.length > 8 ? "end" : "middle"}
             />
-            <YAxis tick={{ fontSize: 10 }} tickFormatter={fmt} />
-            <Tooltip content={<CT />} />
+            <YAxis tick={{ fontSize: 10 }} tickFormatter={axisFormatter} />
+            <Tooltip content={tooltip || <CT />} />
             <Legend wrapperStyle={{ fontSize: 10 }} />
             {bars.map((b) => (
               <Bar
@@ -385,8 +517,15 @@ const HScrollBar = ({ data, bars, xKey, height = 220, barWidth = 44 }) => {
   );
 };
 
-// ─── Area chart with brush ────────────────────────────────────────────────────
-const BrushArea = ({ data, lines, xKey, height = 220, tooltip = <CT /> }) => (
+// ─── Area chart with brush (true continuous trend over time) ─────────────────
+const BrushArea = ({
+  data,
+  lines,
+  xKey,
+  height = 220,
+  tooltip = <CT />,
+  axisFormatter,
+}) => (
   <div className="overflow-x-auto pb-1">
     <div style={{ minWidth: Math.max(400, data.length * 24) }}>
       <ResponsiveContainer width="100%" height={height}>
@@ -413,7 +552,9 @@ const BrushArea = ({ data, lines, xKey, height = 220, tooltip = <CT /> }) => (
           <XAxis dataKey={xKey} tick={{ fontSize: 9 }} />
           <YAxis
             tick={{ fontSize: 10 }}
-            tickFormatter={(v) => v.toLocaleString?.("en-IN") ?? v}
+            tickFormatter={
+              axisFormatter || ((v) => v.toLocaleString?.("en-IN") ?? v)
+            }
           />
           <Tooltip content={tooltip} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
@@ -438,6 +579,74 @@ const BrushArea = ({ data, lines, xKey, height = 220, tooltip = <CT /> }) => (
             />
           )}
         </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  </div>
+);
+
+// ─── Composed dual-axis chart (bars + lines on different scales) ─────────────
+// Use whenever two metrics share an x-axis but live on very different
+// magnitudes (e.g. ₹ invoice value vs ₹ fee, or a headcount vs ₹ cost) —
+// forcing them into one bar/area chart hides the smaller series entirely.
+const ComposedTrend = ({
+  data,
+  xKey,
+  bars = [],
+  lines = [],
+  height = 240,
+  leftFormatter = fmt,
+  rightFormatter = fmt,
+  tooltip = <CT />,
+}) => (
+  <div className="overflow-x-auto pb-1">
+    <div style={{ minWidth: Math.max(400, data.length * 70) }}>
+      <ResponsiveContainer width="100%" height={height}>
+        <ComposedChart
+          data={data}
+          margin={{ top: 5, right: 10, left: 0, bottom: 20 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis
+            dataKey={xKey}
+            tick={{ fontSize: 10 }}
+            angle={data.length > 8 ? -30 : 0}
+            textAnchor={data.length > 8 ? "end" : "middle"}
+          />
+          <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={leftFormatter} />
+          {lines.length > 0 && (
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              tick={{ fontSize: 10 }}
+              tickFormatter={rightFormatter}
+            />
+          )}
+          <Tooltip content={tooltip} />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          {bars.map((b) => (
+            <Bar
+              key={b.key}
+              yAxisId="left"
+              dataKey={b.key}
+              name={b.name || b.key}
+              fill={b.color}
+              radius={[4, 4, 0, 0]}
+              maxBarSize={40}
+            />
+          ))}
+          {lines.map((l) => (
+            <Line
+              key={l.key}
+              yAxisId="right"
+              type="monotone"
+              dataKey={l.key}
+              name={l.name || l.key}
+              stroke={l.color}
+              strokeWidth={2.5}
+              dot={data.length < 20}
+            />
+          ))}
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   </div>
@@ -1716,21 +1925,21 @@ export default function AnalyticsDashboard() {
           value={fmt(kpis.totalInv)}
           sub={`${fI.length} invoices`}
           icon={FileText}
-          color={P.blue}
+          color={P.steel}
         />
         <KpiCard
           label="Net Verto Fee"
           value={fmt(kpis.netV)}
           sub="After CN deductions"
           icon={TrendingUp}
-          color={P.indigo}
+          color={P.trend}
         />
         <KpiCard
           label="Total Collected"
           value={fmt(kpis.totalRcv)}
           sub={`${kpis.colPct}% collection rate`}
           icon={DollarSign}
-          color={P.emerald}
+          color={P.teal}
         />
         <KpiCard
           label="Outstanding"
@@ -1741,7 +1950,7 @@ export default function AnalyticsDashboard() {
               : "All cleared ✓"
           }
           icon={Activity}
-          color={kpis.totalOut > 0 ? P.amber : P.emerald}
+          color={kpis.totalOut > 0 ? P.amber : P.teal}
           alert={kpis.totalOut > 0}
         />
         <KpiCard
@@ -1749,28 +1958,28 @@ export default function AnalyticsDashboard() {
           value={fmt(kpis.totalCN)}
           sub={`${fC.length} CN entries`}
           icon={FileX}
-          color={P.rose}
+          color={P.brick}
         />
         <KpiCard
           label="OS Payout"
           value={fmt(kpis.totalOS)}
           sub={`${fO.length} payouts`}
           icon={Wallet}
-          color={P.orange}
+          color={P.clay}
         />
         <KpiCard
           label="Salary Paid"
           value={fmt(kpis.totalSal)}
           sub={`${fSal.length} entries`}
           icon={CreditCard}
-          color={P.violet}
+          color={P.plum}
         />
         <KpiCard
           label="Active Employees"
           value={kpis.activeEmp}
           sub="Internal team"
           icon={Users}
-          color={P.teal}
+          color={P.slate}
         />
       </div>
 
@@ -1778,47 +1987,35 @@ export default function AnalyticsDashboard() {
       <SH
         icon={TrendingUp}
         title="Revenue & Invoicing"
-        color={P.blue}
+        color={P.steel}
         count={`${fI.length} invoices`}
       />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChartCard
           title="Invoice Value by Month"
-          subtitle={`${invByMonth.length} months · scroll if needed`}
-          scrollable
-          minScrollWidth={Math.max(500, invByMonth.length * 80)}
+          subtitle="Bars = invoice value (left axis) · line = net Verto fee (right axis, different scale)"
           expandable
           onExpand={() =>
             setModal({
               title: "Invoice Value by Month",
               subtitle: "All months — full width view",
               content: (
-                <HScrollBar
+                <ComposedTrend
                   data={invByMonth}
                   xKey="month"
-                  barWidth={60}
-                  bars={[
-                    {
-                      key: "invoiceValue",
-                      name: "Invoice Value",
-                      color: P.blue,
-                    },
-                    { key: "netVerto", name: "Net Verto Fee", color: P.indigo },
-                  ]}
+                  bars={[{ key: "invoiceValue", name: "Invoice Value", color: P.steel }]}
+                  lines={[{ key: "netVerto", name: "Net Verto Fee", color: P.trend }]}
                   height={380}
                 />
               ),
             })
           }
         >
-          <HScrollBar
+          <ComposedTrend
             data={invByMonth}
             xKey="month"
-            barWidth={50}
-            bars={[
-              { key: "invoiceValue", name: "Invoice Value", color: P.blue },
-              { key: "netVerto", name: "Net Verto Fee", color: P.indigo },
-            ]}
+            bars={[{ key: "invoiceValue", name: "Invoice Value", color: P.steel }]}
+            lines={[{ key: "netVerto", name: "Net Verto Fee", color: P.trend }]}
             height={220}
           />
         </ChartCard>
@@ -1843,11 +2040,11 @@ export default function AnalyticsDashboard() {
                   }
                   labelLine={false}
                 >
-                  {invStatus.map((_, i) => (
-                    <Cell key={i} fill={CC[i % CC.length]} />
+                  {invStatus.map((d, i) => (
+                    <Cell key={i} fill={semanticColor(d.name, i)} />
                   ))}
                 </Pie>
-                <Tooltip content={<CT />} />
+                <Tooltip content={<CTCount />} />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
               </PieChart>
             </ResponsiveContainer>
@@ -1868,9 +2065,9 @@ export default function AnalyticsDashboard() {
               content: (
                 <div className="space-y-6">
                   {[
-                    { k: "Invoice Value", c: P.blue },
-                    { k: "Received", c: P.emerald },
-                    { k: "CN Deducted", c: P.rose },
+                    { k: "Invoice Value", c: P.steel },
+                    { k: "Received", c: P.teal },
+                    { k: "CN Deducted", c: P.brick },
                   ].map(({ k, c }) => (
                     <div key={k}>
                       <p className="text-xs font-bold text-gray-500 mb-2">
@@ -1894,14 +2091,14 @@ export default function AnalyticsDashboard() {
             data={revByClient}
             dataKey="Invoice Value"
             nameKey="client"
-            color={P.blue}
+            color={P.steel}
             height={Math.min(360, revByClient.length * 40 + 20)}
           />
         </ChartCard>
 
         <ChartCard
           title="Revenue by Department"
-          subtitle="Invoice value & CN deducted"
+          subtitle="Invoice value ranked by department"
         >
           {revByDept.length === 0 ? (
             <Empty />
@@ -1910,7 +2107,7 @@ export default function AnalyticsDashboard() {
               data={revByDept}
               dataKey="invoiceValue"
               nameKey="dept"
-              color={P.indigo}
+              color={P.steel}
               height={Math.min(320, revByDept.length * 44 + 20)}
             />
           )}
@@ -1959,7 +2156,7 @@ export default function AnalyticsDashboard() {
             barWidth={40}
             bars={[
               { key: "gst", name: "Net GST", color: P.amber },
-              { key: "tds", name: "Net TDS", color: P.rose },
+              { key: "tds", name: "Net TDS", color: P.brick },
             ]}
             height={220}
           />
@@ -1969,7 +2166,7 @@ export default function AnalyticsDashboard() {
       {invBreakdown.length > 0 && (
         <ChartCard
           title="Invoice Value vs Gross vs Net-in-Hand"
-          subtitle={`${invBreakdown.length} invoices · scroll horizontally`}
+          subtitle={`${invBreakdown.length} invoices · scroll horizontally · cascades from gross to net`}
           scrollable
           minScrollWidth={Math.max(500, invBreakdown.length * 120)}
         >
@@ -1978,9 +2175,9 @@ export default function AnalyticsDashboard() {
             xKey="invoice"
             barWidth={36}
             bars={[
-              { key: "Invoice Value", color: P.blue },
-              { key: "Gross Value", color: P.indigo },
-              { key: "Net in Hand", color: P.emerald },
+              { key: "Invoice Value", color: P.steel },
+              { key: "Gross Value", color: seqColor(1, 2, P.steel, P.teal) },
+              { key: "Net in Hand", color: P.teal },
             ]}
             height={240}
           />
@@ -1993,7 +2190,7 @@ export default function AnalyticsDashboard() {
           <SH
             icon={FileX}
             title="Credit Notes & Bad Debt"
-            color={P.rose}
+            color={P.brick}
             count={`${fC.length} entries`}
           />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -2009,9 +2206,9 @@ export default function AnalyticsDashboard() {
                   xKey="month"
                   barWidth={50}
                   bars={[
-                    { key: "total", name: "Total CN", color: P.rose },
-                    { key: "vertoFee", name: "Verto Fee CN", color: P.orange },
-                    { key: "gst", name: "GST CN", color: P.amber },
+                    { key: "total", name: "Total CN", color: P.brick },
+                    { key: "vertoFee", name: "Verto Fee CN", color: P.amber },
+                    { key: "gst", name: "GST CN", color: P.slate },
                   ]}
                   height={220}
                 />
@@ -2028,7 +2225,7 @@ export default function AnalyticsDashboard() {
                   data={cnByClient}
                   dataKey="total"
                   nameKey="client"
-                  color={P.rose}
+                  color={P.brick}
                   height={Math.min(280, cnByClient.length * 44 + 20)}
                 />
               )}
@@ -2038,7 +2235,7 @@ export default function AnalyticsDashboard() {
       )}
 
       {/* ══ SECTION 3: COLLECTIONS ══ */}
-      <SH icon={DollarSign} title="Collections" color={P.emerald} />
+      <SH icon={DollarSign} title="Collections" color={P.teal} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChartCard
           title="Invoice vs Collected"
@@ -2054,8 +2251,8 @@ export default function AnalyticsDashboard() {
             xKey="invoice"
             barWidth={40}
             bars={[
-              { key: "Invoice Value", color: P.blue },
-              { key: "Amount Received", color: P.emerald },
+              { key: "Invoice Value", color: P.steel },
+              { key: "Amount Received", color: P.teal },
             ]}
             height={220}
           />
@@ -2089,7 +2286,7 @@ export default function AnalyticsDashboard() {
                     tickFormatter={(v) => `${v}%`}
                     domain={[0, 100]}
                   />
-                  <Tooltip content={<CT />} />
+                  <Tooltip content={<CTPercent />} />
                   <Bar
                     dataKey="Collection %"
                     fill={P.teal}
@@ -2122,7 +2319,7 @@ export default function AnalyticsDashboard() {
             <BrushArea
               data={payTrend}
               xKey="date"
-              lines={[{ key: "received", name: "Received", color: P.emerald }]}
+              lines={[{ key: "received", name: "Received", color: P.teal }]}
               height={240}
             />
           )}
@@ -2169,7 +2366,7 @@ export default function AnalyticsDashboard() {
       <SH
         icon={Wallet}
         title="OS Payouts"
-        color={P.orange}
+        color={P.clay}
         count={`${fO.length} payouts`}
       />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -2187,7 +2384,7 @@ export default function AnalyticsDashboard() {
               xKey="month"
               barWidth={50}
               bars={[
-                { key: "amountPaid", name: "Amount Paid", color: P.orange },
+                { key: "amountPaid", name: "Amount Paid", color: P.clay },
               ]}
               height={220}
             />
@@ -2196,20 +2393,19 @@ export default function AnalyticsDashboard() {
 
         <ChartCard
           title="OS Employee Count by Month"
-          subtitle="Headcount deployed per month"
+          subtitle="Headcount deployed per month (count, not currency)"
         >
           {osByMonth.length === 0 ? (
             <Empty />
           ) : (
-            <BrushArea
+            <HScrollBar
               data={osByMonth}
               xKey="month"
-              lines={[
-                {
-                  key: "employeeCount",
-                  name: "Employee Count",
-                  color: P.amber,
-                },
+              barWidth={50}
+              axisFormatter={fmtCount}
+              tooltip={<CTCount />}
+              bars={[
+                { key: "employeeCount", name: "Employee Count", color: P.slate },
               ]}
               height={220}
             />
@@ -2227,7 +2423,7 @@ export default function AnalyticsDashboard() {
               data={osByClientAll}
               dataKey="amountPaid"
               nameKey="client"
-              color={P.orange}
+              color={P.clay}
               height={Math.min(320, osByClientAll.length * 44 + 20)}
             />
           )}
@@ -2254,7 +2450,7 @@ export default function AnalyticsDashboard() {
                   labelLine={false}
                 >
                   {osBillable.map((_, i) => (
-                    <Cell key={i} fill={i === 0 ? P.orange : P.sky} />
+                    <Cell key={i} fill={i === 0 ? P.clay : P.slate} />
                   ))}
                 </Pie>
                 <Tooltip content={<CT />} />
@@ -2268,7 +2464,7 @@ export default function AnalyticsDashboard() {
       <SH
         icon={CreditCard}
         title="Internal Salary"
-        color={P.violet}
+        color={P.plum}
         count={`${fSal.length} entries`}
       />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -2282,7 +2478,7 @@ export default function AnalyticsDashboard() {
             <BrushArea
               data={salByMonth}
               xKey="month"
-              lines={[{ key: "salary", name: "Net Salary", color: P.violet }]}
+              lines={[{ key: "salary", name: "Net Salary", color: P.plum }]}
               height={240}
             />
           )}
@@ -2302,7 +2498,7 @@ export default function AnalyticsDashboard() {
               data={salByDept}
               dataKey="salary"
               nameKey="dept"
-              color={P.violet}
+              color={P.plum}
               height={Math.min(280, salByDept.length * 44 + 20)}
             />
           )}
@@ -2398,13 +2594,13 @@ export default function AnalyticsDashboard() {
       <SH
         icon={Users}
         title="Internal Team"
-        color={P.teal}
+        color={P.slate}
         count={`${fTeam.length} employees`}
       />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChartCard
           title="Headcount by Department"
-          subtitle="Active / total per department"
+          subtitle="Solid = active · pale ghost bar = total headcount"
         >
           {teamByDept.length === 0 ? (
             <Empty />
@@ -2435,29 +2631,29 @@ export default function AnalyticsDashboard() {
                   tick={{ fontSize: 10 }}
                   width={120}
                 />
-                <Tooltip content={<CT />} />
+                <Tooltip content={<CTCount />} />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
-                <Bar
-                  dataKey="active"
-                  name="Active"
-                  fill={P.emerald}
-                  radius={[0, 4, 4, 0]}
-                  stackId="a"
-                />
                 <Bar
                   dataKey="count"
                   name="Total"
-                  fill={P.teal}
+                  fill={P.slate}
+                  fillOpacity={0.25}
                   radius={[0, 4, 4, 0]}
-                  opacity={0.35}
-                  stackId="b"
+                  stackId="ghost"
                 >
                   <LabelList
                     dataKey="count"
                     position="right"
-                    style={{ fontSize: 9, fill: P.teal }}
+                    style={{ fontSize: 9, fill: P.slate }}
                   />
                 </Bar>
+                <Bar
+                  dataKey="active"
+                  name="Active"
+                  fill={P.slate}
+                  radius={[0, 4, 4, 0]}
+                  stackId="solid"
+                />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -2500,14 +2696,14 @@ export default function AnalyticsDashboard() {
                 <Bar
                   dataKey="ctc"
                   name="Total CTC"
-                  fill={P.indigo}
+                  fill={P.plum}
                   radius={[0, 4, 4, 0]}
                 >
                   <LabelList
                     dataKey="ctc"
                     position="right"
                     formatter={fmt}
-                    style={{ fontSize: 9, fill: P.indigo }}
+                    style={{ fontSize: 9, fill: P.plum }}
                   />
                 </Bar>
               </BarChart>
@@ -2541,11 +2737,11 @@ export default function AnalyticsDashboard() {
                   {teamStatus.map((d, i) => (
                     <Cell
                       key={i}
-                      fill={d.name === "Active" ? P.emerald : P.rose}
+                      fill={d.name === "Active" ? P.teal : P.brick}
                     />
                   ))}
                 </Pie>
-                <Tooltip content={<CT />} />
+                <Tooltip content={<CTCount />} />
               </PieChart>
             </ResponsiveContainer>
           )}
@@ -2564,9 +2760,10 @@ export default function AnalyticsDashboard() {
                   data={locationDist}
                   dataKey="count"
                   nameKey="name"
-                  color={P.sky}
+                  color={P.slate}
                   height={Math.min(700, locationDist.length * 44 + 20)}
-                  formatter={(v) => Number(v || 0).toLocaleString("en-IN")}
+                  formatter={fmtCount}
+                  tooltip={<CTCount />}
                 />
               ),
             })
@@ -2576,9 +2773,10 @@ export default function AnalyticsDashboard() {
             data={locationDist.slice(0, 10)}
             dataKey="count"
             nameKey="name"
-            color={P.sky}
+            color={P.slate}
             height={Math.min(280, Math.min(10, locationDist.length) * 40 + 20)}
-            formatter={(v) => Number(v || 0).toLocaleString("en-IN")}
+            formatter={fmtCount}
+            tooltip={<CTCount />}
           />
         </ChartCard>
 
@@ -2595,9 +2793,10 @@ export default function AnalyticsDashboard() {
                   data={designations}
                   dataKey="count"
                   nameKey="name"
-                  color={P.pink}
+                  color={P.slate}
                   height={Math.min(700, designations.length * 44 + 20)}
-                  formatter={(v) => Number(v || 0).toLocaleString("en-IN")}
+                  formatter={fmtCount}
+                  tooltip={<CTCount />}
                 />
               ),
             })
@@ -2607,15 +2806,16 @@ export default function AnalyticsDashboard() {
             data={designations.slice(0, 10)}
             dataKey="count"
             nameKey="name"
-            color={P.pink}
+            color={P.slate}
             height={Math.min(280, Math.min(10, designations.length) * 40 + 20)}
-            formatter={(v) => Number(v || 0).toLocaleString("en-IN")}
+            formatter={fmtCount}
+            tooltip={<CTCount />}
           />
         </ChartCard>
 
         <ChartCard
           title="CTC Range Distribution"
-          subtitle="Salary bands across team"
+          subtitle="Salary bands across team (low → high)"
         >
           {ctcHist.every((d) => d.count === 0) ? (
             <Empty />
@@ -2628,10 +2828,10 @@ export default function AnalyticsDashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="range" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                <Tooltip content={<CT />} />
+                <Tooltip content={<CTCount />} />
                 <Bar dataKey="count" name="Employees" radius={[4, 4, 0, 0]}>
                   {ctcHist.map((_, i) => (
-                    <Cell key={i} fill={CC[i % CC.length]} />
+                    <Cell key={i} fill={seqColor(i, ctcHist.length, P.plumLight, P.plum)} />
                   ))}
                   <LabelList
                     dataKey="count"
@@ -2646,7 +2846,7 @@ export default function AnalyticsDashboard() {
 
         <ChartCard
           title="Joining Trend"
-          subtitle="Cumulative headcount growth by DOJ month"
+          subtitle="Bars = joined that month (left axis) · line = cumulative headcount (right axis)"
           className="lg:col-span-2"
         >
           {(() => {
@@ -2668,15 +2868,15 @@ export default function AnalyticsDashboard() {
             return data.length === 0 ? (
               <Empty msg="No DOJ data" />
             ) : (
-              <BrushArea
+              <ComposedTrend
                 data={data}
                 xKey="month"
-                lines={[
-                  { key: "joined", name: "Joined", color: P.teal },
-                  { key: "total", name: "Cumulative", color: P.indigo },
-                ]}
-                height={220}
+                bars={[{ key: "joined", name: "Joined", color: P.slate }]}
+                lines={[{ key: "total", name: "Cumulative", color: P.trend }]}
+                leftFormatter={fmtCount}
+                rightFormatter={fmtCount}
                 tooltip={<CTCount />}
+                height={220}
               />
             );
           })()}
@@ -2697,8 +2897,8 @@ export default function AnalyticsDashboard() {
               data={bankFlow}
               xKey="date"
               lines={[
-                { key: "Inflow", color: P.emerald },
-                { key: "Outflow", color: P.rose },
+                { key: "Inflow", color: P.teal },
+                { key: "Outflow", color: P.brick },
               ]}
               height={240}
             />
@@ -2716,8 +2916,8 @@ export default function AnalyticsDashboard() {
               data={swFlow}
               xKey="date"
               lines={[
-                { key: "Inflow", color: P.sky },
-                { key: "Outflow", color: P.amber },
+                { key: "Inflow", color: P.teal },
+                { key: "Outflow", color: P.brick },
               ]}
               height={240}
             />
@@ -2742,8 +2942,8 @@ export default function AnalyticsDashboard() {
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={fmt} />
                 <Tooltip content={<CT />} />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
-                <Bar dataKey="Inflow" fill={P.emerald} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Outflow" fill={P.rose} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Inflow" fill={P.teal} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Outflow" fill={P.brick} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -2753,7 +2953,7 @@ export default function AnalyticsDashboard() {
       {/* ══ SECTION 8: STATUTORY ══ */}
       {statByInv.length > 0 && (
         <>
-          <SH icon={FileText} title="Statutory Deductions" color={P.rose} />
+          <SH icon={FileText} title="Statutory Deductions" color={P.brick} />
           <ChartCard
             title="PF + ESI + LWF + PT per Invoice"
             subtitle="Scroll for many invoices"
@@ -2765,10 +2965,10 @@ export default function AnalyticsDashboard() {
               xKey="invoice"
               barWidth={22}
               bars={[
-                { key: "Co. PF", color: P.indigo },
+                { key: "Co. PF", color: P.plum },
                 { key: "Co. ESI", color: P.sky },
                 { key: "LWF", color: P.amber },
-                { key: "PT", color: P.rose },
+                { key: "PT", color: P.brick },
               ]}
               height={240}
             />
@@ -2782,7 +2982,7 @@ export default function AnalyticsDashboard() {
           <SH
             icon={TrendingUp}
             title="Profit Waterfall — by Department & Month"
-            color={P.emerald}
+            color={P.teal}
           />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ChartCard
@@ -2802,9 +3002,9 @@ export default function AnalyticsDashboard() {
                 barWidth={50}
                 height={240}
                 bars={[
-                  { key: "Verto Fee", color: P.indigo },
-                  { key: "Expense", color: P.rose },
-                  { key: "Profit (Pre-TDS)", color: P.emerald },
+                  { key: "Verto Fee", color: P.steel },
+                  { key: "Expense", color: P.brick },
+                  { key: "Profit (Pre-TDS)", color: P.teal },
                 ]}
               />
             </ChartCard>
@@ -2822,7 +3022,9 @@ export default function AnalyticsDashboard() {
                     "Margin %": Number(r.margin_pct || 0),
                   }))}
                   xKey="month"
-                  lines={[{ key: "Margin %", color: P.emerald }]}
+                  lines={[{ key: "Margin %", color: P.teal }]}
+                  axisFormatter={(v) => `${v}%`}
+                  tooltip={<CTPercent />}
                   height={220}
                 />
               )}
@@ -2835,15 +3037,17 @@ export default function AnalyticsDashboard() {
               {rpcDeptRev.length === 0 ? (
                 <Empty />
               ) : (
-                <VScrollBar
+                <VGroupedBar
                   data={rpcDeptRev.map((r) => ({
                     dept: r.dept_name,
                     "Verto Fee": Number(r.verto_fee_earned || 0),
                     "Profit Pre-TDS": Number(r.profit_pre_tds || 0),
                   }))}
-                  dataKey="Verto Fee"
                   nameKey="dept"
-                  color={P.indigo}
+                  bars={[
+                    { key: "Verto Fee", color: P.steel },
+                    { key: "Profit Pre-TDS", color: P.teal },
+                  ]}
                   height={Math.min(280, rpcDeptRev.length * 52 + 20)}
                 />
               )}
@@ -2856,16 +3060,18 @@ export default function AnalyticsDashboard() {
               {rpcClientPL.length === 0 ? (
                 <Empty />
               ) : (
-                <VScrollBar
+                <VGroupedBar
                   data={rpcClientPL.map((r) => ({
                     client: r.client_name,
                     "Verto Fee": Number(r.verto_fee_earned || 0),
                     Profit: Number(r.actual_profit || 0),
                   }))}
-                  dataKey="Verto Fee"
                   nameKey="client"
-                  color={P.violet}
-                  height={Math.min(400, rpcClientPL.length * 44 + 20)}
+                  bars={[
+                    { key: "Verto Fee", color: P.steel },
+                    { key: "Profit", color: P.teal },
+                  ]}
+                  height={Math.min(440, rpcClientPL.length * 48 + 20)}
                 />
               )}
             </ChartCard>
@@ -2917,7 +3123,11 @@ export default function AnalyticsDashboard() {
                       {rpcFunnel.map((_, i) => (
                         <Cell
                           key={i}
-                          fill={[P.blue, P.indigo, P.emerald, P.amber][i % 4]}
+                          fill={
+                            i === rpcFunnel.length - 1
+                              ? P.amber
+                              : seqColor(i, Math.max(1, rpcFunnel.length - 1), P.steel, P.teal)
+                          }
                         />
                       ))}
                       <LabelList
@@ -2934,7 +3144,7 @@ export default function AnalyticsDashboard() {
 
             <ChartCard
               title="Invoice Aging — Outstanding Buckets"
-              subtitle="Grouped by delay_days"
+              subtitle="Grouped by delay_days · color deepens with risk"
             >
               {rpcAging.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-emerald-500">
@@ -2961,7 +3171,7 @@ export default function AnalyticsDashboard() {
                       {rpcAging.map((_, i) => (
                         <Cell
                           key={i}
-                          fill={[P.emerald, P.amber, P.orange, P.rose][i % 4]}
+                          fill={seqColor(i, rpcAging.length, P.teal, P.brick)}
                         />
                       ))}
                       <LabelList
@@ -2995,24 +3205,24 @@ export default function AnalyticsDashboard() {
                       stroke="#f0f0f0"
                       horizontal={false}
                     />
-                    <XAxis type="number" tick={{ fontSize: 10 }} />
+                    <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
                     <YAxis
                       dataKey="metric"
                       type="category"
                       tick={{ fontSize: 10 }}
                       width={130}
                     />
-                    <Tooltip content={<CT />} />
+                    <Tooltip content={<CTCount />} />
                     <Bar
                       dataKey="count"
                       name="Count"
-                      fill={P.rose}
+                      fill={P.brick}
                       radius={[0, 4, 4, 0]}
                     >
                       <LabelList
                         dataKey="count"
                         position="right"
-                        style={{ fontSize: 9, fill: P.rose }}
+                        style={{ fontSize: 9, fill: P.brick }}
                       />
                     </Bar>
                   </BarChart>
@@ -3034,7 +3244,7 @@ export default function AnalyticsDashboard() {
                   }))}
                   xKey="week"
                   lines={[
-                    { key: "received", name: "Received", color: P.emerald },
+                    { key: "received", name: "Received", color: P.teal },
                   ]}
                   height={220}
                 />
@@ -3055,7 +3265,7 @@ export default function AnalyticsDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ChartCard
               title="Revenue per Head by Month"
-              subtitle="Invoice value ÷ employee count"
+              subtitle="Invoice value ÷ employee count (both ₹ per head)"
             >
               <BrushArea
                 data={rpcHeadEcon.map((r) => ({
@@ -3065,8 +3275,8 @@ export default function AnalyticsDashboard() {
                 }))}
                 xKey="month"
                 lines={[
-                  { key: "Revenue/Head", color: P.blue },
-                  { key: "OS Cost/Head", color: P.orange },
+                  { key: "Revenue/Head", color: P.steel },
+                  { key: "OS Cost/Head", color: P.clay },
                 ]}
                 height={220}
               />
@@ -3074,9 +3284,9 @@ export default function AnalyticsDashboard() {
 
             <ChartCard
               title="Headcount vs OS & Salary Cost"
-              subtitle="Monthly volume trend"
+              subtitle="Bars = headcount (left axis) · lines = ₹ cost (right axis, different scale)"
             >
-              <HScrollBar
+              <ComposedTrend
                 data={rpcHeadEcon.map((r) => ({
                   month: r.month,
                   Headcount: Number(r.total_employee_count || 0),
@@ -3084,13 +3294,15 @@ export default function AnalyticsDashboard() {
                   Salary: Number(r.salary_cost || 0),
                 }))}
                 xKey="month"
-                barWidth={40}
-                height={220}
-                bars={[
-                  { key: "Headcount", color: P.teal },
-                  { key: "OS Cost", color: P.orange },
-                  { key: "Salary", color: P.violet },
+                bars={[{ key: "Headcount", color: P.slate }]}
+                lines={[
+                  { key: "OS Cost", color: P.clay },
+                  { key: "Salary", color: P.plum },
                 ]}
+                leftFormatter={fmtCount}
+                rightFormatter={fmt}
+                tooltip={<CTFlexible moneyKeys={["OS Cost", "Salary"]} />}
+                height={220}
               />
             </ChartCard>
           </div>
@@ -3103,7 +3315,7 @@ export default function AnalyticsDashboard() {
           <SH
             icon={FileText}
             title="Statutory Liability Trend — Net after CN"
-            color={P.rose}
+            color={P.brick}
           />
           <ChartCard
             title="Net Statutory by Month (PF + ESI + LWF + PT)"
@@ -3123,10 +3335,10 @@ export default function AnalyticsDashboard() {
               barWidth={30}
               height={240}
               bars={[
-                { key: "Net PF", color: P.indigo },
+                { key: "Net PF", color: P.plum },
                 { key: "Net ESI", color: P.sky },
                 { key: "Net LWF", color: P.amber },
-                { key: "PT", color: P.rose },
+                { key: "PT", color: P.brick },
               ]}
             />
           </ChartCard>
@@ -3154,8 +3366,8 @@ export default function AnalyticsDashboard() {
                 }))}
                 xKey="week"
                 lines={[
-                  { key: "Inflow", color: P.emerald },
-                  { key: "Outflow", color: P.rose },
+                  { key: "Inflow", color: P.teal },
+                  { key: "Outflow", color: P.brick },
                 ]}
                 height={240}
               />
@@ -3186,13 +3398,13 @@ export default function AnalyticsDashboard() {
                     <Bar
                       dataKey="inflow"
                       name="Inflow"
-                      fill={P.emerald}
+                      fill={P.teal}
                       radius={[4, 4, 0, 0]}
                     />
                     <Bar
                       dataKey="outflow"
                       name="Outflow"
-                      fill={P.rose}
+                      fill={P.brick}
                       radius={[4, 4, 0, 0]}
                     />
                   </BarChart>
@@ -3209,7 +3421,7 @@ export default function AnalyticsDashboard() {
           <SH
             icon={CreditCard}
             title="Top Earners — Period Summary"
-            color={P.violet}
+            color={P.plum}
           />
           <ChartCard
             title={`Top ${rpcTopEarners.length} Earners`}

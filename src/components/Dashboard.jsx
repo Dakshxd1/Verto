@@ -733,7 +733,6 @@ const Dashboard = ({
           notRecvd: acc.notRecvd + row.notRecvd,
           tds: acc.tds + (row.tds || 0),
           gst: acc.gst + (row.gst || 0),
-          tds: acc.tds + (row.tds || 0),
           osDiff: acc.osDiff + (row.osDiff || 0),
         }),
         {

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import supabase from "../lib/supabaseClient";
 import { usePerms } from "../context/PermissionsContext";
-import Card from "./ui/Card";
 import { exportInvoiceLedgerXlsx, exportInvoicePDF } from "../utils/Invoiceexport";
 import {
   ArrowLeft,
@@ -21,6 +20,15 @@ import {
   FileDown,
   FileSpreadsheet,
   Lock,
+  Wallet,
+  Receipt,
+  BadgeCheck,
+  BarChart3,
+  Shield,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  FileText,
+  Clock,
 } from "lucide-react";
 
 // ─── TYPE CONFIG ───────────────────────────────────────────────────────────────
@@ -30,42 +38,54 @@ const TYPE_CONFIG = {
     color: "text-orange-600",
     bg: "bg-orange-100",
     badge: "bg-orange-100 text-orange-700",
-    sign: "-",
+    border: "#fed7aa",
+    sign: "−",
+    rowClass: "tds",
   },
   "Payment Received": {
-    icon: TrendingDown,
+    icon: ArrowDownCircle,
     color: "text-emerald-600",
     bg: "bg-emerald-100",
     badge: "bg-emerald-100 text-emerald-700",
-    sign: "-",
+    border: "#a7f3d0",
+    sign: "−",
+    rowClass: "payment-received",
   },
   "Bounce Back": {
     icon: RefreshCw,
     color: "text-rose-600",
     bg: "bg-rose-100",
     badge: "bg-rose-100 text-rose-700",
+    border: "#fecdd3",
     sign: "+",
+    rowClass: "bounce-back",
   },
   "Credit Note / Bad Debt": {
     icon: FileX,
     color: "text-amber-600",
     bg: "bg-amber-100",
     badge: "bg-amber-100 text-amber-700",
-    sign: "-",
+    border: "#fde68a",
+    sign: "−",
+    rowClass: "credit-note",
   },
   "Billable Expense": {
     icon: TrendingUp,
     color: "text-indigo-600",
     bg: "bg-indigo-100",
     badge: "bg-indigo-100 text-indigo-700",
+    border: "#c7d2fe",
     sign: "+",
+    rowClass: "billable",
   },
   "Payment Made": {
     icon: CreditCard,
     color: "text-gray-500",
     bg: "bg-gray-100",
     badge: "bg-gray-100 text-gray-600",
+    border: "#e5e7eb",
     sign: "—",
+    rowClass: "payment-made",
   },
 };
 
@@ -150,7 +170,6 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
 
   if (!osPayouts || osPayouts.length === 0) return null;
 
-  // CHANGE 1: Build running balance — now deducts bounce_back_amount correctly
   let balance = netInHand;
   const rows = osPayouts.map((p) => {
     const bbAmt = Number(p.bounce_back_amount || 0);
@@ -162,7 +181,6 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
     return { ...p, bbAmt, netPaid, runningBalance: balance };
   });
 
-  // CHANGE 1: totalPaid now uses rows with BB deduction
   const totalPaid = rows.reduce((s, r) => s + r.netPaid, 0);
   const leftAmount = netInHand - totalPaid;
   const paidPct =
@@ -170,7 +188,6 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
 
   return (
     <div className="mt-6 rounded-2xl border-2 border-violet-200 bg-violet-50/40 overflow-hidden">
-      {/* Section Header */}
       <button
         onClick={() => setExpanded((v) => !v)}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-violet-50 transition"
@@ -210,7 +227,6 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
 
       {expanded && (
         <div className="px-5 pb-5 space-y-3">
-          {/* Net-in-Hand Opening */}
           <div className="flex items-center justify-between bg-white border border-violet-100 rounded-xl px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-violet-400 inline-block" />
@@ -223,7 +239,6 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
             </span>
           </div>
 
-          {/* Progress bar */}
           <div className="bg-white border border-violet-100 rounded-xl px-4 py-3">
             <div className="flex justify-between text-xs text-gray-500 mb-2">
               <span>Paid out so far</span>
@@ -251,7 +266,6 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
             </div>
           </div>
 
-          {/* Individual Payout Rows */}
           <div className="space-y-2">
             {rows.map((row, i) => (
               <div
@@ -275,7 +289,6 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
                     )}
                   </div>
 
-                  {/* CHANGE 2: Updated payout row display — shows BB as green credit */}
                   <p className="text-base font-bold text-rose-600">
                     − {fmt(row.netPaid)}
                   </p>
@@ -311,7 +324,6 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
                   )}
                 </div>
 
-                {/* Running Balance */}
                 <div className="text-right flex-shrink-0">
                   <p className="text-xs text-gray-400 mb-0.5">Balance Left</p>
                   <p
@@ -331,7 +343,6 @@ const OSPayoutsSection = ({ osPayouts, netInHand }) => {
             ))}
           </div>
 
-          {/* Final Left Amount */}
           <div
             className={`flex items-center justify-between rounded-xl px-4 py-3 border-2 ${
               leftAmount <= 0
@@ -382,7 +393,11 @@ const LedgerPage = () => {
   const [exportLoading, setExportLoading] = useState(false);
   const [invoiceDate, setInvoiceDate] = useState(null);
 
-  // ── Get invoice from global state ──
+  const [invoiceEmpCount, setInvoiceEmpCount] = useState(0);
+  const [osEmpPaid, setOsEmpPaid] = useState(0);
+  const [osEmpBB, setOsEmpBB] = useState(0);
+  const [cnEmpCount, setCnEmpCount] = useState(0);
+
   useEffect(() => {
     setInvoice(window.ledgerInvoice || null);
   }, []);
@@ -398,7 +413,7 @@ const LedgerPage = () => {
       const { data: inv, error: invErr } = await supabase
         .from("invoices")
         .select(
-          `id, invoice_value, receivable_amount, invoice_number, is_completed, net_in_hand, tds, invoice_date`
+          `id, invoice_value, receivable_amount, invoice_number, is_completed, net_in_hand, tds, invoice_date, employee_count`
         )
         .eq("id", invoice.dbId)
         .single();
@@ -413,6 +428,7 @@ const LedgerPage = () => {
       setIsCompleted(inv.is_completed || false);
       setInvoiceTds(Number(inv.tds || 0));
       setInvoiceDate(inv.invoice_date || null);
+      setInvoiceEmpCount(Number(inv.employee_count || 0));
 
       const [
         { data: payments },
@@ -452,8 +468,27 @@ const LedgerPage = () => {
           .order("issue_date", { ascending: true }),
       ]);
 
-      // ── Store OS payouts separately for dedicated section ──
       setOsPayouts(osPayoutsData || []);
+
+      const osEmpPaidTotal = (osPayoutsData || []).reduce(
+        (s, p) => s + Number(p.employee_count || 0), 0
+      );
+
+      const osEmpBBTotal = (osPayoutsData || []).reduce((s, p) => {
+        const gross = Number(p.amount_paid || 0);
+        const bb = Number(p.bounce_back_amount || 0);
+        const emp = Number(p.employee_count || 0);
+        if (gross <= 0 || bb <= 0) return s;
+        return s + Math.round((bb / gross) * emp);
+      }, 0);
+
+      const cnEmpTotal = (cns || []).reduce(
+        (s, c) => s + Number(c.employee_count || 0), 0
+      );
+
+      setOsEmpPaid(osEmpPaidTotal);
+      setOsEmpBB(osEmpBBTotal);
+      setCnEmpCount(cnEmpTotal);
 
       let rows = [];
 
@@ -481,9 +516,6 @@ const LedgerPage = () => {
         });
       });
 
-      // NOTE: OS Payouts are shown in their own dedicated section below,
-      // but billable ones still affect the invoice outstanding balance.
-      // Now correctly deducts bounce_back_amount when calculating netAmount.
       osPayoutsData?.forEach((p) => {
         const bbAmt = Number(p.bounce_back_amount || 0);
         const netAmount =
@@ -501,11 +533,9 @@ const LedgerPage = () => {
             expenseHead: p.pay_head,
             isBillable: true,
             isOsPayout: true,
-            bbAmt, // store for display if needed
+            bbAmt,
           });
         }
-        // Non-billable OS payouts do NOT appear in invoice ledger
-        // They are tracked separately in the OS Payouts section
       });
 
       bounces?.forEach((b) =>
@@ -528,7 +558,6 @@ const LedgerPage = () => {
         })
       );
 
-      // Inject TDS deduction as a ledger row (reduces outstanding like a payment)
       if (Number(inv.tds || 0) > 0) {
         rows.push({
           type: "TDS Deducted",
@@ -559,7 +588,6 @@ const LedgerPage = () => {
     }
   };
 
-  // ── Helper: Calculate OS paid total with bounce back deduction ──
   const getOsPaidTotal = () => {
     return osPayouts.reduce(
       (s, p) =>
@@ -574,7 +602,6 @@ const LedgerPage = () => {
     );
   };
 
-  // ── COMPLETE/UNCOMPLETE INVOICE ─────────────────────────────────────────────
   const handleCompleteInvoice = async () => {
     if (!invoice?.dbId) return;
     setCompleteLoading(true);
@@ -598,7 +625,6 @@ const LedgerPage = () => {
     }
   };
 
-  // ── DELETE INVOICE ──────────────────────────────────────────────────────────
   const handleDeleteInvoice = async () => {
     if (!invoice?.dbId) return;
     setDeleteLoading(true);
@@ -642,10 +668,6 @@ const LedgerPage = () => {
           year: "numeric",
         });
   };
-
-  // ── EXPORT HANDLERS ─────────────────────────────────────────────────────────
-  // These do their own isolated fetch — completely separate from fetchLedger
-  // so they can never affect the main ledger view or cause "No transactions" bug.
 
   const handleExcelDownload = async () => {
     if (!invoice?.dbId) return;
@@ -740,13 +762,158 @@ const LedgerPage = () => {
 
   if (!invoice) return null;
 
-  // CHANGE 3: Pre-calculate OS Paid Total with BB deduction (used in summary cards)
+  const totalCN = ledger
+    .filter(r => r.type === "Credit Note / Bad Debt")
+    .reduce((s, r) => s + Math.abs(r.amount), 0);
+
+  const totalOsNet = osPayouts.reduce((s, p) =>
+    s + Math.max(
+      Number(p.amount_paid || 0)
+      - Number(p.bounce_back_amount || 0)
+      - Number(p.income_tax_deducted || 0),
+      0
+    ), 0
+  );
+
+  const totalOsBB = osPayouts.reduce((s, p) =>
+    s + Number(p.bounce_back_amount || 0), 0
+  );
+
+  const netEmployee = opening - totalCN - totalOsNet;
+  const netEmpLeft = invoiceEmpCount - osEmpPaid + osEmpBB - cnEmpCount;
   const osPaidTotal = getOsPaidTotal();
   const leftToPay = netInHand - osPaidTotal;
 
+  const enhancedStyles = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+    
+    .ledger-root { font-family: 'Inter', sans-serif; }
+    
+    .summary-card {
+      position: relative; overflow: hidden;
+      background: #ffffff; border-radius: 18px;
+      border: 1px solid #e5e7eb; padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .summary-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 3px; border-radius: 18px 18px 0 0;
+      transition: height 0.3s ease;
+    }
+    .summary-card:hover::before { height: 5px; }
+    .summary-card:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06), 0 2px 6px rgba(0,0,0,0.03);
+      transform: translateY(-3px);
+    }
+    .summary-card.blue::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+    .summary-card.emerald::before { background: linear-gradient(90deg, #059669, #34d399); }
+    .summary-card.violet::before { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+    .summary-card.rose::before { background: linear-gradient(90deg, #e11d48, #fb7185); }
+    .summary-card.amber::before { background: linear-gradient(90deg, #d97706, #fbbf24); }
+    .summary-card.orange::before { background: linear-gradient(90deg, #ea580c, #fb923c); }
+    .summary-card.sky::before { background: linear-gradient(90deg, #0ea5e9, #38bdf8); }
+    
+    .ledger-row {
+      background: #ffffff; border-radius: 16px;
+      border: 1px solid #e5e7eb; padding: 20px; margin-bottom: 12px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative; overflow: hidden;
+    }
+    .ledger-row::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+      width: 3px; border-radius: 16px 0 0 16px;
+      transition: width 0.3s ease;
+    }
+    .ledger-row:hover::before { width: 6px; }
+    .ledger-row:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06), 0 2px 6px rgba(0,0,0,0.03);
+      transform: translateX(4px); border-color: #d1d5db;
+    }
+    .ledger-row.tds::before { background: linear-gradient(180deg, #ea580c, #fb923c); }
+    .ledger-row.payment-received::before { background: linear-gradient(180deg, #059669, #34d399); }
+    .ledger-row.bounce-back::before { background: linear-gradient(180deg, #e11d48, #fb7185); }
+    .ledger-row.credit-note::before { background: linear-gradient(180deg, #d97706, #fbbf24); }
+    .ledger-row.billable::before { background: linear-gradient(180deg, #4f46e5, #818cf8); }
+    .ledger-row.payment-made::before { background: linear-gradient(180deg, #6b7280, #9ca3af); }
+    
+    .icon-hover {
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .ledger-row:hover .icon-hover {
+      transform: scale(1.15) rotate(5deg);
+    }
+    
+    .amount-hover {
+      transition: transform 0.2s ease;
+    }
+    .ledger-row:hover .amount-hover {
+      transform: scale(1.05);
+    }
+    
+    .kpi-card {
+      background: #ffffff; border-radius: 16px;
+      border: 1px solid #e5e7eb; padding: 20px; text-align: center;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative; overflow: hidden;
+    }
+    .kpi-card::after {
+      content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+      height: 2px; border-radius: 0 0 16px 16px;
+      transition: height 0.3s ease, opacity 0.3s ease;
+      opacity: 0.6;
+    }
+    .kpi-card:hover::after { height: 4px; opacity: 1; }
+    .kpi-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); transform: translateY(-2px); }
+    .kpi-card.blue::after { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+    .kpi-card.emerald::after { background: linear-gradient(90deg, #059669, #34d399); }
+    .kpi-card.violet::after { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+    .kpi-card.amber::after { background: linear-gradient(90deg, #d97706, #fbbf24); }
+    .kpi-card.rose::after { background: linear-gradient(90deg, #e11d48, #fb7185); }
+    .kpi-card.sky::after { background: linear-gradient(90deg, #0ea5e9, #38bdf8); }
+    
+    .kpi-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 24px; font-weight: 700; line-height: 1;
+      margin-bottom: 6px; transition: transform 0.3s ease;
+    }
+    .kpi-card:hover .kpi-value { transform: scale(1.05); }
+    
+    .page-header {
+      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+      border-radius: 18px; border: 1px solid #e2e8f0;
+      padding: 20px 24px; margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+    }
+    
+    .btn-enhanced {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 18px; border-radius: 12px;
+      font-size: 13px; font-weight: 600;
+      font-family: 'Inter', sans-serif; border: none;
+      cursor: pointer; transition: all 0.2s ease;
+      position: relative; overflow: hidden;
+    }
+    .btn-enhanced:active { transform: scale(0.96); }
+    .btn-enhanced:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    
+    .icon-btn-enhanced {
+      width: 40px; height: 40px; border-radius: 12px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 1.5px solid #e5e7eb; background: #f9fafb;
+      color: #6b7280; cursor: pointer; transition: all 0.2s ease;
+    }
+    .icon-btn-enhanced:hover {
+      border-color: #3b82f6; color: #3b82f6;
+      background: #eff6ff; transform: translateY(-1px);
+    }
+    .icon-btn-enhanced:active { transform: scale(0.95); }
+  `;
+
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      {/* ── Delete Confirmation Modal ── */}
+    <div className="ledger-root p-6 max-w-3xl mx-auto">
+      <style>{enhancedStyles}</style>
+
       {showDeleteModal && (
         <DeleteModal
           invoiceId={invoice.id}
@@ -756,19 +923,26 @@ const LedgerPage = () => {
         />
       )}
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-6">
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* HEADER */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="page-header flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             onClick={() => window.setActiveTab?.("dashboard")}
-            className="p-2 rounded-xl hover:bg-gray-100 transition"
+            className="icon-btn-enhanced"
+            title="Back to Dashboard"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Ledger View</h1>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Invoice: <span className="font-semibold">{invoice.id}</span>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-500" />
+              Ledger View
+            </h1>
+            <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />
+              Invoice: <span className="font-semibold font-mono text-gray-700">{invoice.id}</span>
             </p>
           </div>
         </div>
@@ -781,31 +955,11 @@ const LedgerPage = () => {
               <button
                 onClick={() => { if (!lockedByDate) handleCompleteInvoice(); }}
                 disabled={completeLoading || lockedByDate}
-                title={
-                  lockedByDate
-                    ? "Locked — entries older than 45 days can only be edited by an Admin."
-                    : undefined
-                }
-                className={`flex items-center gap-2 px-3 py-2 text-sm text-white rounded-xl transition disabled:opacity-50 ${
-                  lockedByDate
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : isCompleted
-                    ? "bg-amber-500 hover:bg-amber-600"
-                    : "bg-emerald-600 hover:bg-emerald-700"
-                }`}
+                title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : undefined}
+                className={`btn-enhanced ${lockedByDate ? "bg-gray-400 cursor-not-allowed" : isCompleted ? "bg-amber-500 hover:bg-amber-600" : "bg-emerald-600 hover:bg-emerald-700"} text-white`}
               >
-                {lockedByDate ? (
-                  <Lock className="w-4 h-4" />
-                ) : (
-                  <CheckCircle2 className="w-4 h-4" />
-                )}
-                {lockedByDate
-                  ? "Locked"
-                  : completeLoading
-                  ? "Updating..."
-                  : isCompleted
-                  ? "Move To Active"
-                  : "Mark Complete"}
+                {lockedByDate ? <Lock className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                {lockedByDate ? "Locked" : completeLoading ? "Updating..." : isCompleted ? "Move To Active" : "Mark Complete"}
               </button>
             );
           })()}
@@ -813,16 +967,16 @@ const LedgerPage = () => {
           <button
             onClick={fetchLedger}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition disabled:opacity-50"
+            className="icon-btn-enhanced"
+            title="Refresh Data"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
           </button>
 
           <button
             onClick={handlePdfDownload}
             disabled={exportLoading || loading}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn-enhanced bg-blue-600 hover:bg-blue-700 text-white"
           >
             <FileDown className="w-4 h-4" />
             {exportLoading ? "..." : "PDF"}
@@ -831,7 +985,7 @@ const LedgerPage = () => {
           <button
             onClick={handleExcelDownload}
             disabled={exportLoading || loading}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn-enhanced bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <FileSpreadsheet className="w-4 h-4" />
             {exportLoading ? "..." : "Excel"}
@@ -844,146 +998,215 @@ const LedgerPage = () => {
               <button
                 onClick={() => { if (!lockedByDate) setShowDeleteModal(true); }}
                 disabled={deleteLoading || lockedByDate}
-                title={
-                  lockedByDate
-                    ? "Locked — entries older than 45 days can only be edited by an Admin."
-                    : undefined
-                }
-                className={`flex items-center gap-2 px-3 py-2 text-sm text-white rounded-xl transition disabled:opacity-50 ${
-                  lockedByDate
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-red-600 hover:bg-red-700"
-                }`}
+                className={`btn-enhanced ${lockedByDate ? "bg-gray-400 cursor-not-allowed" : "bg-red-600 hover:bg-red-700"} text-white`}
               >
-                {lockedByDate ? (
-                  <Lock className="w-4 h-4" />
-                ) : (
-                  <Trash2 className="w-4 h-4" />
-                )}
-                {lockedByDate ? "Locked" : "Delete Invoice"}
+                {lockedByDate ? <Lock className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
+                {lockedByDate ? "Locked" : "Delete"}
               </button>
             );
           })()}
         </div>
       </div>
 
-      {/* ── Summary Cards ── */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* SUMMARY CARDS */}
+      {/* ═══════════════════════════════════════════════════════════ */}
       <div
         className={`grid gap-4 mb-6 ${
           invoiceTds > 0 ? "grid-cols-3" : "grid-cols-2"
         }`}
       >
-        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
-          <p className="text-xs text-blue-600 font-semibold uppercase tracking-wider mb-1">
+        <div className="summary-card blue">
+          <div className="p-3 rounded-xl mb-3 inline-block" style={{ background: "#dbeafe" }}>
+            <Wallet className="w-5 h-5" style={{ color: "#3b82f6" }} />
+          </div>
+          <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: "#6b7280" }}>
             Opening Balance
-          </p>
-          <p className="text-2xl font-bold text-blue-700">{fmt(opening)}</p>
-          <p className="text-xs text-blue-400 mt-1">Invoice value (original)</p>
+          </div>
+          <div className="text-3xl font-bold mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e40af" }}>
+            {fmt(opening)}
+          </div>
+          <div className="text-xs font-medium flex items-center gap-1" style={{ color: "#9ca3af" }}>
+            <BarChart3 className="w-3 h-3" />
+            Invoice value (original)
+          </div>
         </div>
 
         {invoiceTds > 0 && (
-          <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4">
-            <p className="text-xs text-orange-600 font-semibold uppercase tracking-wider mb-1">
+          <div className="summary-card orange">
+            <div className="p-3 rounded-xl mb-3 inline-block" style={{ background: "#ffedd5" }}>
+              <Receipt className="w-5 h-5" style={{ color: "#ea580c" }} />
+            </div>
+            <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: "#6b7280" }}>
               TDS Deducted
-            </p>
-            <p className="text-2xl font-bold text-orange-700">
+            </div>
+            <div className="text-3xl font-bold mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#c2410c" }}>
               − {fmt(invoiceTds)}
-            </p>
-            <p className="text-xs text-orange-400 mt-1">
+            </div>
+            <div className="text-xs font-medium flex items-center gap-1" style={{ color: "#9ca3af" }}>
+              <Shield className="w-3 h-3" />
               Deducted at source by client
-            </p>
+            </div>
           </div>
         )}
 
-        <div
-          className={`rounded-2xl p-4 border ${
-            outstanding <= 0
-              ? "bg-emerald-50 border-emerald-100"
-              : "bg-purple-50 border-purple-100"
-          }`}
-        >
-          <p
-            className={`text-xs font-semibold uppercase tracking-wider mb-1 ${
-              outstanding <= 0 ? "text-emerald-600" : "text-purple-600"
-            }`}
-          >
+        <div className={`summary-card ${outstanding <= 0 ? "emerald" : "violet"}`}>
+          <div className="p-3 rounded-xl mb-3 inline-block" style={{ background: outstanding <= 0 ? "#d1fae5" : "#ede9fe" }}>
+            <BadgeCheck className="w-5 h-5" style={{ color: outstanding <= 0 ? "#059669" : "#7c3aed" }} />
+          </div>
+          <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: "#6b7280" }}>
             Final Outstanding
-          </p>
-          <p
-            className={`text-2xl font-bold ${
-              outstanding <= 0 ? "text-emerald-700" : "text-purple-700"
-            }`}
-          >
+          </div>
+          <div className="text-3xl font-bold mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif", color: outstanding <= 0 ? "#047857" : "#6d28d9" }}>
             {fmt(Math.max(outstanding, 0))}
-          </p>
-          <p
-            className={`text-xs mt-1 ${
-              outstanding <= 0 ? "text-emerald-400" : "text-purple-400"
-            }`}
-          >
-            {outstanding <= 0 ? "✅ Fully paid" : "Amount still owed"}
-          </p>
+          </div>
+          <div className="text-xs font-medium flex items-center gap-1" style={{ color: outstanding <= 0 ? "#10b981" : "#8b5cf6" }}>
+            {outstanding <= 0 ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+            {outstanding <= 0 ? "Fully paid" : "Amount still owed"}
+          </div>
         </div>
       </div>
 
-      {/* ── Net in Hand Summary (show for any OS invoice, even before payouts) ── */}
-      {/* ✅ FIX: Changed condition from osPayouts.length > 0 to netInHand > 0 */}
+      {/* ── Employee Count KPI ── */}
+      {invoiceEmpCount > 0 && (
+        <div className="mb-6 bg-gradient-to-br from-sky-50 to-indigo-50 border-2 border-sky-200 rounded-2xl p-5">
+          <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <Users className="w-3.5 h-3.5" />
+            Employee Count Summary
+          </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="kpi-card sky">
+              <p className="text-xs text-gray-500 mb-1">Invoice Emp</p>
+              <p className="kpi-value" style={{ color: "#0284c7" }}>{invoiceEmpCount}</p>
+              <p className="text-xs text-sky-400 mt-0.5">Billed to client</p>
+            </div>
+
+            <div className="kpi-card violet">
+              <p className="text-xs text-gray-500 mb-1">OS Paid</p>
+              <p className="kpi-value" style={{ color: "#7c3aed" }}>
+                − {osEmpPaid}
+              </p>
+              {osEmpBB > 0 && (
+                <p className="text-xs text-emerald-500 mt-0.5">↩ BB: +{osEmpBB}</p>
+              )}
+              <p className="text-xs text-violet-400 mt-0.5">Salaries disbursed</p>
+            </div>
+
+            <div className="kpi-card amber">
+              <p className="text-xs text-gray-500 mb-1">CN Emp</p>
+              <p className="kpi-value" style={{ color: "#d97706" }}>
+                {cnEmpCount > 0 ? `− ${cnEmpCount}` : "—"}
+              </p>
+              <p className="text-xs text-amber-400 mt-0.5">Credit noted out</p>
+            </div>
+
+            <div className={`kpi-card ${netEmpLeft === 0 ? "emerald" : netEmpLeft > 0 ? "amber" : "rose"}`}>
+              <p className="text-xs text-gray-500 mb-1 font-semibold">Net Emp Left</p>
+              <p className="kpi-value" style={{ color: netEmpLeft === 0 ? "#059669" : netEmpLeft > 0 ? "#d97706" : "#e11d48" }}>
+                {netEmpLeft}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: netEmpLeft === 0 ? "#10b981" : netEmpLeft > 0 ? "#f59e0b" : "#fb7185" }}>
+                {netEmpLeft === 0 ? "✅ All paid"
+                : netEmpLeft > 0 ? "Pending payout"
+                : "⚠️ Over-disbursed"}
+              </p>
+            </div>
+          </div>
+
+          <p className="text-xs text-sky-400 mt-3 text-center font-mono">
+            {invoiceEmpCount} (billed)
+            {osEmpPaid > 0 ? ` − ${osEmpPaid} (OS paid)` : ""}
+            {osEmpBB > 0 ? ` + ${osEmpBB} (BB)` : ""}
+            {cnEmpCount > 0 ? ` − ${cnEmpCount} (CN)` : ""}
+            {" "}= {netEmpLeft} left
+          </p>
+        </div>
+      )}
+
+      {/* ── Net Employee KPI ── */}
+      <div className="mb-6 bg-gradient-to-br from-sky-50 to-indigo-50 border-2 border-sky-200 rounded-2xl p-5">
+        <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-sky-500 inline-block" />
+          Net Employee Summary
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="kpi-card sky">
+            <p className="text-xs text-gray-500 mb-1">Invoice Value</p>
+            <p className="kpi-value" style={{ color: "#0284c7", fontSize: "20px" }}>{fmt(opening)}</p>
+          </div>
+
+          <div className="kpi-card amber">
+            <p className="text-xs text-gray-500 mb-1">− CN / Bad Debt</p>
+            <p className="kpi-value" style={{ color: "#d97706", fontSize: "20px" }}>− {fmt(totalCN)}</p>
+          </div>
+
+          <div className="kpi-card violet">
+            <p className="text-xs text-gray-500 mb-1">− OS Paid Net</p>
+            <p className="kpi-value" style={{ color: "#7c3aed", fontSize: "20px" }}>− {fmt(totalOsNet)}</p>
+            {totalOsBB > 0 && (
+              <p className="text-xs text-emerald-500 mt-0.5">↩ BB incl. {fmt(totalOsBB)}</p>
+            )}
+          </div>
+
+          <div className={`kpi-card ${netEmployee >= 0 ? "emerald" : "rose"}`}>
+            <p className="text-xs text-gray-500 mb-1 font-semibold">Net Employee</p>
+            <p className="kpi-value" style={{ color: netEmployee >= 0 ? "#059669" : "#e11d48", fontSize: "20px" }}>
+              {fmt(netEmployee)}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">After deductions</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-sky-500 mt-3 text-center font-mono">
+          {fmt(opening)} − {fmt(totalCN)} (CN) − {fmt(totalOsNet)} (OS) = {fmt(netEmployee)}
+        </p>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* NET IN HAND SUMMARY */}
+      {/* ═══════════════════════════════════════════════════════════ */}
       {netInHand > 0 && (
         <div className="grid grid-cols-3 gap-3 mb-6">
-          <div className="bg-violet-50 border border-violet-200 rounded-2xl p-3 text-center">
-            <p className="text-xs text-violet-600 font-semibold uppercase tracking-wider mb-1">
+          <div className="summary-card violet">
+            <div className="p-3 rounded-xl mb-3 inline-block" style={{ background: "#ede9fe" }}>
+              <Wallet className="w-5 h-5" style={{ color: "#7c3aed" }} />
+            </div>
+            <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: "#6b7280" }}>
               Net in Hand
-            </p>
-            <p className="text-lg font-bold text-violet-700">
+            </div>
+            <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#6d28d9" }}>
               {fmt(netInHand)}
-            </p>
-            <p className="text-xs text-violet-400 mt-0.5">Total to disburse</p>
+            </div>
+            <div className="text-xs font-medium" style={{ color: "#8b5cf6" }}>Total to disburse</div>
           </div>
-          <div className="bg-rose-50 border border-rose-100 rounded-2xl p-3 text-center">
-            <p className="text-xs text-rose-600 font-semibold uppercase tracking-wider mb-1">
+
+          <div className="summary-card rose">
+            <div className="p-3 rounded-xl mb-3 inline-block" style={{ background: "#ffe4e6" }}>
+              <ArrowUpCircle className="w-5 h-5" style={{ color: "#e11d48" }} />
+            </div>
+            <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: "#6b7280" }}>
               OS Paid Out
-            </p>
-            <p className="text-lg font-bold text-rose-700">
+            </div>
+            <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#be123c" }}>
               {fmt(osPaidTotal)}
-            </p>
-            <p className="text-xs text-rose-400 mt-0.5">3rd party paid</p>
+            </div>
+            <div className="text-xs font-medium" style={{ color: "#fb7185" }}>3rd party paid</div>
           </div>
-          <div
-            className={`rounded-2xl p-3 text-center border ${
-              leftToPay <= 0
-                ? "bg-emerald-50 border-emerald-100"
-                : "bg-amber-50 border-amber-100"
-            }`}
-          >
-            <p
-              className={`text-xs font-semibold uppercase tracking-wider mb-1 ${
-                leftToPay <= 0 ? "text-emerald-600" : "text-amber-600"
-              }`}
-            >
+
+          <div className={`summary-card ${leftToPay <= 0 ? "emerald" : "amber"}`}>
+            <div className="p-3 rounded-xl mb-3 inline-block" style={{ background: leftToPay <= 0 ? "#d1fae5" : "#fef3c7" }}>
+              <ArrowDownCircle className="w-5 h-5" style={{ color: leftToPay <= 0 ? "#059669" : "#d97706" }} />
+            </div>
+            <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: "#6b7280" }}>
               Left to Pay
-            </p>
-            <p
-              className={`text-lg font-bold ${
-                leftToPay <= 0 ? "text-emerald-700" : "text-amber-700"
-              }`}
-            >
+            </div>
+            <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif", color: leftToPay <= 0 ? "#047857" : "#b45309" }}>
               {fmt(leftToPay)}
-            </p>
-            <p
-              className={`text-xs mt-0.5 ${
-                leftToPay < 0
-                  ? "text-red-500"
-                  : leftToPay === 0
-                  ? "text-emerald-400"
-                  : "text-amber-400"
-              }`}
-            >
-              {leftToPay < 0
-                ? "Excess Paid"
-                : leftToPay === 0
-                ? "Fully Disbursed"
-                : "Pending Disbursal"}
-            </p>
+            </div>
+            <div className="text-xs font-medium" style={{ color: leftToPay < 0 ? "#ef4444" : leftToPay === 0 ? "#10b981" : "#f59e0b" }}>
+              {leftToPay < 0 ? "Excess Paid" : leftToPay === 0 ? "Fully Disbursed" : "Pending Disbursal"}
+            </div>
           </div>
         </div>
       )}
@@ -1000,7 +1223,9 @@ const LedgerPage = () => {
         ))}
       </div>
 
-      {/* ── Invoice Ledger Rows ── */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* INVOICE LEDGER ROWS */}
+      {/* ═══════════════════════════════════════════════════════════ */}
       {loading ? (
         <div className="text-center py-16 text-gray-400">
           <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 opacity-40" />
@@ -1020,36 +1245,37 @@ const LedgerPage = () => {
             const cfg = TYPE_CONFIG[row.type] || TYPE_CONFIG["Payment Made"];
             const Icon = cfg.icon;
             const isNoEffect = row.amount === 0;
+            const rowClass = cfg.rowClass || "payment-made";
 
             return (
               <div
                 key={i}
-                className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition"
+                className={`ledger-row ${rowClass}`}
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className={`p-2.5 rounded-xl flex-shrink-0 ${cfg.bg}`}>
+                  <div className="icon-hover p-2.5 rounded-xl flex-shrink-0" style={{ background: cfg.bg.replace('bg-', '#') === cfg.bg ? '#f3f4f6' : undefined }}>
                     <Icon className={`w-4 h-4 ${cfg.color}`} />
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span
-                        className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.badge}`}
+                        className={`text-xs font-semibold px-2.5 py-1 rounded-full ${cfg.badge}`}
                       >
                         {row.type}
                       </span>
                       {row.isBillable && (
-                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-medium">
                           Billable
                         </span>
                       )}
                       {row.isOsPayout && (
-                        <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-violet-100 text-violet-700 px-2.5 py-1 rounded-full font-medium">
                           OS Payout
                         </span>
                       )}
                       {row.bbAmt > 0 && (
-                        <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-medium">
                           ↩ BB
                         </span>
                       )}
@@ -1057,7 +1283,7 @@ const LedgerPage = () => {
 
                     {isNoEffect ? (
                       <div className="space-y-1">
-                        <p className="text-xl font-bold text-rose-600">
+                        <p className="text-xl font-bold text-rose-600 amount-hover">
                           - {fmt(row.displayAmount)}
                         </p>
                         <p className="text-sm text-gray-500 italic">
@@ -1072,7 +1298,7 @@ const LedgerPage = () => {
                       </div>
                     ) : (
                       <p
-                        className={`text-base font-bold ${
+                        className={`text-base font-bold amount-hover ${
                           row.amount < 0 ? "text-emerald-600" : "text-rose-600"
                         }`}
                       >
@@ -1087,7 +1313,7 @@ const LedgerPage = () => {
                         {fmtDate(row.date)}
                       </span>
                       {row.ref && (
-                        <span className="text-xs text-gray-400 font-mono">
+                        <span className="text-xs text-gray-400 font-mono bg-gray-50 px-2 py-0.5 rounded">
                           {row.ref}
                         </span>
                       )}
@@ -1108,7 +1334,7 @@ const LedgerPage = () => {
                   <div className="text-right flex-shrink-0">
                     <p className="text-xs text-gray-400 mb-0.5">Balance</p>
                     <p
-                      className={`font-bold text-base ${
+                      className={`font-bold text-base amount-hover ${
                         row.balance <= 0 ? "text-emerald-600" : "text-gray-900"
                       }`}
                     >
