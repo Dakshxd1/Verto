@@ -605,16 +605,16 @@ const Dashboard = ({
     let filtered = sourceData.filter((row) => {
       const search = searchTerm.toLowerCase().trim();
 
-const aliases =
-  row.entity === "Verto India Pvt Ltd"
-    ? "vi india vb verto"
-    : row.entity === "Verto Global LLC"
-    ? "vg global vgpl verto"
-    : row.entity === "Verto UK Ltd"
-    ? "uk verto"
-    : "";
+      const aliases =
+        row.entity === "Verto India Pvt Ltd"
+          ? "vi india vb verto"
+          : row.entity === "Verto Global LLC"
+          ? "vg global vgpl verto"
+          : row.entity === "Verto UK Ltd"
+          ? "uk verto"
+          : "";
 
-const searchableText = `
+      const searchableText = `
   ${row.client || ""}
   ${row.dept || ""}
   ${row.id || ""}
@@ -624,7 +624,7 @@ const searchableText = `
   ${aliases}
 `.toLowerCase();
 
-const matchesSearch = searchableText.includes(search);
+      const matchesSearch = searchableText.includes(search);
 
       const from = dateFrom ? new Date(dateFrom + "T00:00:00") : null;
       const to = dateTo ? new Date(dateTo + "T23:59:59") : null;
@@ -731,7 +731,7 @@ const matchesSearch = searchableText.includes(search);
           invValue: acc.invValue + row.invValue,
           vertoFee: acc.vertoFee + row.vertoFee,
           notRecvd: acc.notRecvd + row.notRecvd,
-          cnBadDebt: acc.cnBadDebt + row.cnBadDebt,
+          tds: acc.tds + (row.tds || 0),
           gst: acc.gst + (row.gst || 0),
           tds: acc.tds + (row.tds || 0),
           osDiff: acc.osDiff + (row.osDiff || 0),
@@ -912,14 +912,13 @@ const matchesSearch = searchableText.includes(search);
           <div className="stat-icon" style={{ background: "#fef3c7" }}>
             <Clock size={18} color="#d97706" />
           </div>
-          <div className="stat-label">CN / Bad Debt</div>
+          <div className="stat-label">Total TDS</div>
           <div className="stat-value" style={{ color: "#d97706" }}>
-            ₹{formatCurrency(totals.cnBadDebt)}
+            ₹{formatCurrency(totals.tds)}
           </div>
           <div className="stat-meta" style={{ color: "#6b7280" }}>
             <span>
-              {filteredData.filter((d) => d.cnBadDebt > 0).length} invoices
-              affected
+              {filteredData.filter((d) => d.tds > 0).length} invoices with TDS
             </span>
           </div>
         </motion.div>
@@ -1673,7 +1672,9 @@ const matchesSearch = searchableText.includes(search);
                                   const lockedByDate = rowLocked && !isAdmin;
                                   return (
                                     <button
-                                      className={`action-btn edit${lockedByDate ? ' disabled' : ''}`}
+                                      className={`action-btn edit${
+                                        lockedByDate ? " disabled" : ""
+                                      }`}
                                       onClick={async (e) => {
                                         if (lockedByDate) return;
                                         e.stopPropagation();
@@ -1700,16 +1701,27 @@ const matchesSearch = searchableText.includes(search);
                                       }
                                       style={
                                         lockedByDate
-                                          ? { background: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' }
+                                          ? {
+                                              background: "#f3f4f6",
+                                              color: "#9ca3af",
+                                              cursor: "not-allowed",
+                                            }
                                           : undefined
                                       }
                                     >
                                       {lockedByDate ? (
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                                        <span
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 4,
+                                            justifyContent: "center",
+                                          }}
+                                        >
                                           <Lock size={11} /> Locked
                                         </span>
                                       ) : (
-                                        'Edit'
+                                        "Edit"
                                       )}
                                     </button>
                                   );
@@ -1735,7 +1747,9 @@ const matchesSearch = searchableText.includes(search);
                                   const lockedByDate = rowLocked && !isAdmin;
                                   return (
                                     <button
-                                      className={`action-btn edit${lockedByDate ? ' disabled' : ''}`}
+                                      className={`action-btn edit${
+                                        lockedByDate ? " disabled" : ""
+                                      }`}
                                       onClick={(e) => {
                                         if (lockedByDate) return;
                                         e.stopPropagation();
@@ -1750,16 +1764,27 @@ const matchesSearch = searchableText.includes(search);
                                       }
                                       style={
                                         lockedByDate
-                                          ? { background: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' }
+                                          ? {
+                                              background: "#f3f4f6",
+                                              color: "#9ca3af",
+                                              cursor: "not-allowed",
+                                            }
                                           : undefined
                                       }
                                     >
                                       {lockedByDate ? (
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                                        <span
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 4,
+                                            justifyContent: "center",
+                                          }}
+                                        >
                                           <Lock size={11} /> Locked
                                         </span>
                                       ) : (
-                                        'Edit'
+                                        "Edit"
                                       )}
                                     </button>
                                   );
@@ -1785,7 +1810,9 @@ const matchesSearch = searchableText.includes(search);
                                   const lockedByDate = rowLocked && !isAdmin;
                                   return (
                                     <button
-                                      className={`action-btn edit${lockedByDate ? ' disabled' : ''}`}
+                                      className={`action-btn edit${
+                                        lockedByDate ? " disabled" : ""
+                                      }`}
                                       onClick={(e) => {
                                         if (lockedByDate) return;
                                         e.stopPropagation();
@@ -1810,16 +1837,27 @@ const matchesSearch = searchableText.includes(search);
                                       }
                                       style={
                                         lockedByDate
-                                          ? { background: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' }
+                                          ? {
+                                              background: "#f3f4f6",
+                                              color: "#9ca3af",
+                                              cursor: "not-allowed",
+                                            }
                                           : undefined
                                       }
                                     >
                                       {lockedByDate ? (
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                                        <span
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 4,
+                                            justifyContent: "center",
+                                          }}
+                                        >
                                           <Lock size={11} /> Locked
                                         </span>
                                       ) : (
-                                        'Edit'
+                                        "Edit"
                                       )}
                                     </button>
                                   );
@@ -1843,7 +1881,9 @@ const matchesSearch = searchableText.includes(search);
                                   const lockedByDate = rowLocked && !isAdmin;
                                   return (
                                     <button
-                                      className={`action-btn edit${lockedByDate ? ' disabled' : ''}`}
+                                      className={`action-btn edit${
+                                        lockedByDate ? " disabled" : ""
+                                      }`}
                                       onClick={(e) => {
                                         if (lockedByDate) return;
                                         e.stopPropagation();
@@ -1857,16 +1897,27 @@ const matchesSearch = searchableText.includes(search);
                                       }
                                       style={
                                         lockedByDate
-                                          ? { background: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' }
+                                          ? {
+                                              background: "#f3f4f6",
+                                              color: "#9ca3af",
+                                              cursor: "not-allowed",
+                                            }
                                           : undefined
                                       }
                                     >
                                       {lockedByDate ? (
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                                        <span
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 4,
+                                            justifyContent: "center",
+                                          }}
+                                        >
                                           <Lock size={11} /> Locked
                                         </span>
                                       ) : (
-                                        'Edit'
+                                        "Edit"
                                       )}
                                     </button>
                                   );
@@ -1892,7 +1943,9 @@ const matchesSearch = searchableText.includes(search);
                                   const lockedByDate = rowLocked && !isAdmin;
                                   return (
                                     <button
-                                      className={`action-btn edit${lockedByDate ? ' disabled' : ''}`}
+                                      className={`action-btn edit${
+                                        lockedByDate ? " disabled" : ""
+                                      }`}
                                       onClick={(e) => {
                                         if (lockedByDate) return;
                                         e.stopPropagation();
@@ -1907,16 +1960,27 @@ const matchesSearch = searchableText.includes(search);
                                       }
                                       style={
                                         lockedByDate
-                                          ? { background: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' }
+                                          ? {
+                                              background: "#f3f4f6",
+                                              color: "#9ca3af",
+                                              cursor: "not-allowed",
+                                            }
                                           : undefined
                                       }
                                     >
                                       {lockedByDate ? (
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                                        <span
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 4,
+                                            justifyContent: "center",
+                                          }}
+                                        >
                                           <Lock size={11} /> Locked
                                         </span>
                                       ) : (
-                                        'Edit'
+                                        "Edit"
                                       )}
                                     </button>
                                   );

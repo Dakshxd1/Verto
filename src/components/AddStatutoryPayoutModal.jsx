@@ -165,10 +165,11 @@ const ComplianceTrackerPanel = ({ onClose }) => {
   // Fetch from the view directly — one row per month with all totals pre-summed
   const fetchRecords = async () => {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("compliance_tracker_view")
       .select("*")
-      .order("month_date", { ascending: false });
+      .order("month_start", { ascending: false });
+    if (error) console.error("Compliance tracker fetch error:", error);
     setRecords(data || []);
     setLoading(false);
   };
@@ -403,26 +404,44 @@ const ComplianceTrackerPanel = ({ onClose }) => {
             {/* ✅ CHANGE 2: Updated thead with fixed widths */}
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-800 text-white">
-                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest w-20">Month</th>
-                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest">Payable</th>
-                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest">Paid</th>
-                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest">Pending</th>
-                <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest w-24">Status</th>
-                <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest w-16">Rec</th>
-                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest">Company Breakdown (Due / Paid / Pending)</th>
-                <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest w-20">Penalty</th>
+                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest w-20">
+                  Month
+                </th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest">
+                  Payable
+                </th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest">
+                  Paid
+                </th>
+                <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest">
+                  Pending
+                </th>
+                <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest w-24">
+                  Status
+                </th>
+                <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest w-16">
+                  Rec
+                </th>
+                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest">
+                  Company Breakdown (Due / Paid / Pending)
+                </th>
+                <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest w-20">
+                  Penalty
+                </th>
               </tr>
             </thead>
             {/* ✅ CHANGE 3: Updated tbody rows */}
             <tbody className="divide-y divide-gray-100">
               {filteredMonthWise.map((m, i) => {
                 const isNoData = m.overall_status === "No Data";
-                const isFullyPaid = Number(m.total_pending || 0) <= 0 && !isNoData;
-                const isPartial = Number(m.total_paid || 0) > 0 && !isFullyPaid && !isNoData;
+                const isFullyPaid =
+                  Number(m.total_pending || 0) <= 0 && !isNoData;
+                const isPartial =
+                  Number(m.total_paid || 0) > 0 && !isFullyPaid && !isNoData;
 
                 return (
                   <tr
-                    key={m.month_date}
+                    key={m.month_start}
                     className={`transition-colors ${
                       isNoData
                         ? "bg-gray-50/60 opacity-50"
@@ -439,65 +458,121 @@ const ComplianceTrackerPanel = ({ onClose }) => {
                     {/* Payable */}
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       <span className="font-bold font-mono text-blue-700">
-                        {isNoData ? <span className="text-gray-300">—</span> : `₹${inr(m.total_payable)}`}
+                        {isNoData ? (
+                          <span className="text-gray-300">—</span>
+                        ) : (
+                          `₹${inr(m.total_payable)}`
+                        )}
                       </span>
                     </td>
 
                     {/* Paid */}
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       <span className="font-bold font-mono text-emerald-700">
-                        {isNoData ? <span className="text-gray-300">—</span> : `₹${inr(m.total_paid)}`}
+                        {isNoData ? (
+                          <span className="text-gray-300">—</span>
+                        ) : (
+                          `₹${inr(m.total_paid)}`
+                        )}
                       </span>
                     </td>
 
                     {/* Pending */}
                     <td className="px-3 py-3 text-right whitespace-nowrap">
-                      <span className={`font-bold font-mono ${isNoData ? "text-gray-300" : "text-rose-600"}`}>
+                      <span
+                        className={`font-bold font-mono ${
+                          isNoData ? "text-gray-300" : "text-rose-600"
+                        }`}
+                      >
                         {isNoData ? "—" : `₹${inr(m.total_pending)}`}
                       </span>
                     </td>
 
                     {/* Status */}
                     <td className="px-3 py-3 text-center">
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${
-                        isNoData
-                          ? "bg-gray-100 text-gray-400 border-gray-200"
-                          : isFullyPaid
-                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                          : isPartial
-                          ? "bg-amber-100 text-amber-700 border-amber-200"
-                          : "bg-rose-100 text-rose-700 border-rose-200"
-                      }`}>
-                        {m.overall_status || (isFullyPaid ? "Paid" : isPartial ? "Partial" : "Pending")}
+                      <span
+                        className={`text-[10px] font-bold px-2 py-1 rounded-full border ${
+                          isNoData
+                            ? "bg-gray-100 text-gray-400 border-gray-200"
+                            : isFullyPaid
+                            ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                            : isPartial
+                            ? "bg-amber-100 text-amber-700 border-amber-200"
+                            : "bg-rose-100 text-rose-700 border-rose-200"
+                        }`}
+                      >
+                        {m.overall_status ||
+                          (isFullyPaid
+                            ? "Paid"
+                            : isPartial
+                            ? "Partial"
+                            : "Pending")}
                       </span>
                     </td>
 
                     {/* Records */}
                     <td className="px-3 py-3 text-center text-gray-500">
-                      {isNoData ? <span className="text-gray-300">—</span> : m.record_count}
+                      {isNoData ? (
+                        <span className="text-gray-300">—</span>
+                      ) : (
+                        m.record_count
+                      )}
                     </td>
 
                     {/* Company Breakdown */}
                     <td className="px-3 py-3">
                       {isNoData ? (
-                        <span className="text-gray-300 text-[10px]">No invoices this month</span>
+                        <span className="text-gray-300 text-[10px]">
+                          No invoices this month
+                        </span>
                       ) : (
                         <div className="space-y-1.5">
                           {[
-                            { label: "VB", color: "text-blue-600", due: m.vb_payable, paid: m.vb_paid, pending: m.vb_pending },
-                            { label: "VGPL", color: "text-purple-600", due: m.vgpl_payable, paid: m.vgpl_paid, pending: m.vgpl_pending },
-                            { label: "VUK", color: "text-red-600", due: m.vuk_payable, paid: m.vuk_paid, pending: m.vuk_pending },
+                            {
+                              label: "VB",
+                              color: "text-blue-600",
+                              due: m.vb_payable,
+                              paid: m.vb_paid,
+                              pending: m.vb_pending,
+                            },
+                            {
+                              label: "VGPL",
+                              color: "text-purple-600",
+                              due: m.vgpl_payable,
+                              paid: m.vgpl_paid,
+                              pending: m.vgpl_pending,
+                            },
+                            {
+                              label: "VUK",
+                              color: "text-red-600",
+                              due: m.vuk_payable,
+                              paid: m.vuk_paid,
+                              pending: m.vuk_pending,
+                            },
                           ].map(({ label, color, due, paid, pending }) => (
-                            <div key={label} className="flex items-center gap-1.5 text-[10px]">
-                              <span className={`font-black w-8 shrink-0 ${color}`}>{label}</span>
+                            <div
+                              key={label}
+                              className="flex items-center gap-1.5 text-[10px]"
+                            >
+                              <span
+                                className={`font-black w-8 shrink-0 ${color}`}
+                              >
+                                {label}
+                              </span>
                               <div className="flex items-center gap-1 bg-gray-50 rounded-lg px-2 py-0.5 border border-gray-100">
-                                <span className="text-blue-700 font-mono font-semibold">₹{inr(due)}</span>
+                                <span className="text-blue-700 font-mono font-semibold">
+                                  ₹{inr(due)}
+                                </span>
                                 <span className="text-gray-300">·</span>
-                                <span className="text-emerald-600 font-mono">₹{inr(paid)}</span>
+                                <span className="text-emerald-600 font-mono">
+                                  ₹{inr(paid)}
+                                </span>
                                 {Number(pending) > 0 && (
                                   <>
                                     <span className="text-gray-300">·</span>
-                                    <span className="text-rose-500 font-mono font-bold">₹{inr(pending)}</span>
+                                    <span className="text-rose-500 font-mono font-bold">
+                                      ₹{inr(pending)}
+                                    </span>
                                   </>
                                 )}
                               </div>
@@ -512,7 +587,9 @@ const ComplianceTrackerPanel = ({ onClose }) => {
                       {m.has_penalty ? (
                         <div className="flex flex-col items-center gap-0.5">
                           <span className="text-amber-500 text-sm">⚡</span>
-                          <span className="text-amber-600 text-[10px] font-bold font-mono">₹{inr(m.total_penalty)}</span>
+                          <span className="text-amber-600 text-[10px] font-bold font-mono">
+                            ₹{inr(m.total_penalty)}
+                          </span>
                         </div>
                       ) : (
                         <span className="text-gray-200">—</span>
@@ -529,13 +606,19 @@ const ComplianceTrackerPanel = ({ onClose }) => {
                   Total ({monthsWithData.length} months)
                 </td>
                 <td className="px-3 py-3 text-right">
-                  <span className="font-black font-mono text-blue-300 text-sm">₹{inr(totalPayable)}</span>
+                  <span className="font-black font-mono text-blue-300 text-sm">
+                    ₹{inr(totalPayable)}
+                  </span>
                 </td>
                 <td className="px-3 py-3 text-right">
-                  <span className="font-black font-mono text-emerald-300 text-sm">₹{inr(totalPaid)}</span>
+                  <span className="font-black font-mono text-emerald-300 text-sm">
+                    ₹{inr(totalPaid)}
+                  </span>
                 </td>
                 <td className="px-3 py-3 text-right">
-                  <span className="font-black font-mono text-rose-300 text-sm">₹{inr(totalPending)}</span>
+                  <span className="font-black font-mono text-rose-300 text-sm">
+                    ₹{inr(totalPending)}
+                  </span>
                 </td>
                 <td colSpan={4} />
               </tr>
@@ -850,42 +933,64 @@ const StatutoryRecordsPanel = ({ onClose }) => {
                     </div>
                   ) : (
                     <>
-                      {canEdit && (() => {
-                        const rowLocked = isLocked(row.month);
-                        const lockedByDate = rowLocked && !isAdmin;
-                        return (
-                          <button
-                            onClick={() => { if (!lockedByDate) startEdit(row); }}
-                            disabled={lockedByDate}
-                            title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : "Edit"}
-                            className={`p-2 rounded-xl border-2 transition-all ${
-                              lockedByDate
-                                ? "text-gray-300 bg-gray-50 border-gray-100 cursor-not-allowed"
-                                : "text-gray-300 hover:text-cyan-500 hover:bg-cyan-50 border-transparent hover:border-cyan-100"
-                            }`}
-                          >
-                            {lockedByDate ? <Lock className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
-                          </button>
-                        );
-                      })()}
-                      {canDelete && (() => {
-                        const rowLocked = isLocked(row.month);
-                        const lockedByDate = rowLocked && !isAdmin;
-                        return (
-                          <button
-                            onClick={() => { if (!lockedByDate) setConfirmId(row.id); }}
-                            disabled={lockedByDate}
-                            title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : "Delete"}
-                            className={`p-2 rounded-xl border-2 transition-all ${
-                              lockedByDate
-                                ? "text-gray-300 bg-gray-50 border-gray-100 cursor-not-allowed"
-                                : "text-gray-300 hover:text-rose-500 hover:bg-rose-50 border-transparent hover:border-rose-100"
-                            }`}
-                          >
-                            {lockedByDate ? <Lock className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
-                          </button>
-                        );
-                      })()}
+                      {canEdit &&
+                        (() => {
+                          const rowLocked = isLocked(row.month);
+                          const lockedByDate = rowLocked && !isAdmin;
+                          return (
+                            <button
+                              onClick={() => {
+                                if (!lockedByDate) startEdit(row);
+                              }}
+                              disabled={lockedByDate}
+                              title={
+                                lockedByDate
+                                  ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                  : "Edit"
+                              }
+                              className={`p-2 rounded-xl border-2 transition-all ${
+                                lockedByDate
+                                  ? "text-gray-300 bg-gray-50 border-gray-100 cursor-not-allowed"
+                                  : "text-gray-300 hover:text-cyan-500 hover:bg-cyan-50 border-transparent hover:border-cyan-100"
+                              }`}
+                            >
+                              {lockedByDate ? (
+                                <Lock className="w-4 h-4" />
+                              ) : (
+                                <Pencil className="w-4 h-4" />
+                              )}
+                            </button>
+                          );
+                        })()}
+                      {canDelete &&
+                        (() => {
+                          const rowLocked = isLocked(row.month);
+                          const lockedByDate = rowLocked && !isAdmin;
+                          return (
+                            <button
+                              onClick={() => {
+                                if (!lockedByDate) setConfirmId(row.id);
+                              }}
+                              disabled={lockedByDate}
+                              title={
+                                lockedByDate
+                                  ? "Locked — entries older than 45 days can only be edited by an Admin."
+                                  : "Delete"
+                              }
+                              className={`p-2 rounded-xl border-2 transition-all ${
+                                lockedByDate
+                                  ? "text-gray-300 bg-gray-50 border-gray-100 cursor-not-allowed"
+                                  : "text-gray-300 hover:text-rose-500 hover:bg-rose-50 border-transparent hover:border-rose-100"
+                              }`}
+                            >
+                              {lockedByDate ? (
+                                <Lock className="w-4 h-4" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </button>
+                          );
+                        })()}
                     </>
                   )}
                 </div>
@@ -1111,11 +1216,31 @@ const AddStatutoryPayoutModal = ({
     }
     try {
       const [gst, tds, pf, esi, lwf] = await Promise.all([
-        supabase.rpc("get_statutory_due", { selected_entity: entity, selected_month: `${month}-01`, selected_type: "GST" }),
-        supabase.rpc("get_statutory_due", { selected_entity: entity, selected_month: `${month}-01`, selected_type: "TDS" }),
-        supabase.rpc("get_statutory_due", { selected_entity: entity, selected_month: `${month}-01`, selected_type: "PF" }),
-        supabase.rpc("get_statutory_due", { selected_entity: entity, selected_month: `${month}-01`, selected_type: "ESI" }),
-        supabase.rpc("get_statutory_due", { selected_entity: entity, selected_month: `${month}-01`, selected_type: "LWF" }),
+        supabase.rpc("get_statutory_due", {
+          selected_entity: entity,
+          selected_month: `${month}-01`,
+          selected_type: "GST",
+        }),
+        supabase.rpc("get_statutory_due", {
+          selected_entity: entity,
+          selected_month: `${month}-01`,
+          selected_type: "TDS",
+        }),
+        supabase.rpc("get_statutory_due", {
+          selected_entity: entity,
+          selected_month: `${month}-01`,
+          selected_type: "PF",
+        }),
+        supabase.rpc("get_statutory_due", {
+          selected_entity: entity,
+          selected_month: `${month}-01`,
+          selected_type: "ESI",
+        }),
+        supabase.rpc("get_statutory_due", {
+          selected_entity: entity,
+          selected_month: `${month}-01`,
+          selected_type: "LWF",
+        }),
       ]);
       const total =
         Number(gst.data || 0) +
