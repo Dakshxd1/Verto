@@ -531,38 +531,6 @@ function App() {
   const { isIntern } = permissions;
 
   useEffect(() => {
-    const checkMidnightLogout = async () => {
-      if (typeof window === "undefined") return;
-
-      const loginDate = localStorage.getItem("loginDate");
-      const today = new Date().toDateString();
-
-      if (loginDate && loginDate !== today) {
-        await supabase.auth.signOut();
-        localStorage.removeItem("loginDate");
-        window.location.reload();
-        return;
-      }
-
-      const now = new Date();
-      const midnight = new Date(now);
-      midnight.setDate(midnight.getDate() + 1);
-      midnight.setHours(0, 0, 0, 0);
-      const timeUntilMidnight = midnight.getTime() - now.getTime();
-
-      const timeoutId = window.setTimeout(async () => {
-        await supabase.auth.signOut();
-        localStorage.removeItem("loginDate");
-        window.location.reload();
-      }, timeUntilMidnight);
-
-      return () => window.clearTimeout(timeoutId);
-    };
-
-    checkMidnightLogout();
-  }, [user]);
-
-  useEffect(() => {
     if (user?.email) fetchLoggedInEmployee();
   }, [user]);
   const fetchLoggedInEmployee = async () => {
@@ -1131,6 +1099,7 @@ function App() {
                           }
                           localStorage.removeItem("verto_session_token");
                           localStorage.removeItem("verto_user_email");
+                          localStorage.removeItem("verto_user_role");
                           localStorage.removeItem("loginDate");
                           await supabase.auth.signOut();
                           window.location.reload();

@@ -22,16 +22,43 @@ export const AuthProvider = ({ children }) => {
       .select("role")
       .eq("email", email)
       .single();
-    setRole(data?.role || null);
+    const userRole = data?.role || null;
+    setRole(userRole);
+    // ── Save role to localStorage so validateSession can check it ──
+    if (userRole) localStorage.setItem("verto_user_role", userRole);
   };
 
   // ── NEW: validate that this browser's session token is still the latest one
   const validateSession = useCallback(async () => {
     const email = localStorage.getItem("verto_user_email");
     const token = localStorage.getItem("verto_session_token");
+    const currentRole = localStorage.getItem("verto_user_role");
 
-    // If there's no token stored, nothing to validate (fresh page, not logged in)
     if (!email || !token) return;
+
+    // ── DAY CHANGE CHECK: auto-logout employee/manager/intern at midnight ──
+    if (currentRole && currentRole !== "admin") {
+      const loginDate = localStorage.getItem("loginDate");
+      const today = new Date().toDateString();
+      if (loginDate && loginDate !== today) {
+        // Date has changed — call DB cleanup then force logout
+        await supabase.rpc("auto_logout_day_change");
+        clearInterval(sessionCheckIntervalRef.current);
+        localStorage.removeItem("verto_session_token");
+        localStorage.removeItem("verto_user_email");
+        localStorage.removeItem("verto_user_role");
+        localStorage.removeItem("loginDate");
+        setSessionKicked(false); // not kicked — just expired
+        await supabase.auth.signOut();
+        fetchedEmailRef.current = null;
+        popupManager.clearSession();
+        setUser(null);
+        setRole(null);
+        setShowLivePopup(false);
+        window.location.reload();
+        return;
+      }
+    }
 
     const { data, error } = await supabase.rpc("validate_session", {
       p_email: email,
@@ -39,12 +66,12 @@ export const AuthProvider = ({ children }) => {
     });
 
     if (error || !data?.valid) {
-      // Another device has logged in — force sign out here
       clearInterval(sessionCheckIntervalRef.current);
       localStorage.removeItem("verto_session_token");
       localStorage.removeItem("verto_user_email");
+      localStorage.removeItem("verto_user_role");
       localStorage.removeItem("loginDate");
-      setSessionKicked(true); // ── shows the "You've been signed out" screen
+      setSessionKicked(true);
       await supabase.auth.signOut();
       fetchedEmailRef.current = null;
       popupManager.clearSession();
@@ -82,7 +109,8 @@ export const AuthProvider = ({ children }) => {
     const { data: listener } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (event === "SIGNED_OUT") {
-          clearInterval(sessionCheckIntervalRef.current); // ── NEW
+          clearInterval(sessionCheckIntervalRef.current);
+          localStorage.removeItem("verto_user_role"); // ── clean up role
           fetchedEmailRef.current = null;
           popupManager.clearSession();
           setUser(null);
