@@ -26,6 +26,7 @@ import {
 import Card from "./ui/Card";
 import Button from "./ui/button";
 import Badge from "./ui/Badge";
+import EmployeeSalaryDue from "./Employeesalarydue";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 const inr = (v) => Number(v || 0).toLocaleString("en-IN");
@@ -78,15 +79,17 @@ const DEPT_NAME_TO_CODE = {
 const normDept = (name) =>
   DEPT_NAME_TO_CODE[name?.toLowerCase()?.trim()] || name || "";
 
-// ─── Generate last 12 months ──────────────────────────────────────────────────
-const getLast12Months = () => {
+// Normalize date to YYYY-MM-DD for consistent key matching
+const normDate = (d) => {
+  if (!d) return "";
+  if (typeof d === "string") return d.slice(0, 10);
+  return new Date(d).toISOString().slice(0, 10);
+};
+
+// Get current month as YYYY-MM
+const getCurrentMonthStr = () => {
   const now = new Date();
-  const months = [];
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
-  }
-  return months;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
 // ─── Variance Chip ─────────────────────────────────────────────────────────────
@@ -381,12 +384,16 @@ const InternalCost = () => {
   const [costViewData, setCostViewData] = useState([]);
   const [payoutData, setPayoutData] = useState([]);
   const [entities, setEntities] = useState([]);
+  const [salaryDueLookup, setSalaryDueLookup] = useState({});
 
-  // Filters
+  // Filters - default to current month
+  const [monthRange, setMonthRange] = useState({
+    from: getCurrentMonthStr(),
+    to: getCurrentMonthStr(),
+  });
   const [searchTerm, setSearchTerm] = useState("");
   const [deptFilter, setDeptFilter] = useState("All");
   const [entityFilter, setEntityFilter] = useState("All");
-  const [monthRange, setMonthRange] = useState({ from: "", to: "" });
   const [sortConfig, setSortConfig] = useState({
     key: "month_date",
     direction: "desc",
@@ -402,35 +409,41 @@ const InternalCost = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
 
+  // Salary Due page overlay
+  const [showSalaryDuePage, setShowSalaryDuePage] = useState(false);
+
   // ── Fetch data ────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const months = getLast12Months();
-      const minYear = months[0].year;
-      const minMonth = months[0].month;
-      const maxYear = months[months.length - 1].year;
-      const maxMonth = months[months.length - 1].month;
-
-      // Fetch internal_team_cost_view — last 12 months only
-      // View now generates from Jan 2023 to current month
-      const fromDate = `${minYear}-${String(minMonth).padStart(2, "0")}-01`;
-      const toDate = `${maxYear}-${String(maxMonth).padStart(2, "0")}-28`;
-
+      // internal_team_cost_view is bounded server-side now — it starts from
+      // the earliest invoice impact_month, not a hardcoded date. So we just
+      // fetch everything the view has; no artificial date window needed here.
       const { data: costRows, error: costErr } = await supabase
         .from("internal_team_cost_view")
         .select("*")
-        .gte("month_date", fromDate)
-        .lte("month_date", toDate)
         .order("sel_year", { ascending: false })
         .order("sel_month", { ascending: false });
 
       if (costErr) throw costErr;
       setCostViewData(costRows || []);
 
-      // Fetch employee_expense_payouts for same period
+      // Derive the real date window from what the view actually returned,
+      // so the payouts / salary-due queries line up with it exactly —
+      // instead of guessing a rolling 12-month range.
+      const monthDates = (costRows || [])
+        .map((r) => r.month_date)
+        .filter(Boolean);
+      const fromDate = monthDates.length
+        ? monthDates.reduce((a, b) => (a < b ? a : b))
+        : null;
+      const toDate = monthDates.length
+        ? monthDates.reduce((a, b) => (a > b ? a : b))
+        : null;
+
+      // Fetch employee_expense_payouts for the same period
       // Include dept_code via departments_master for correct matching
-      const { data: payouts, error: payErr } = await supabase
+      let payoutsQuery = supabase
         .from("employee_expense_payouts")
         .select(
           `
@@ -438,12 +451,29 @@ const InternalCost = () => {
           department_id,
           departments_master ( dept_name, dept_code )
         `
-        )
-        .gte("month_of_pay", fromDate)
-        .lte("month_of_pay", toDate);
+        );
+      if (fromDate) payoutsQuery = payoutsQuery.gte("month_of_pay", fromDate);
+      if (toDate) payoutsQuery = payoutsQuery.lte("month_of_pay", toDate);
+      const { data: payouts, error: payErr } = await payoutsQuery;
 
       if (payErr) throw payErr;
       setPayoutData(payouts || []);
+
+      // Fetch final salary due from employee_salary_due_view
+      let salaryDueQuery = supabase
+        .from("employee_salary_due_view")
+        .select("emp_code, due_month, final_salary_due");
+      if (fromDate) salaryDueQuery = salaryDueQuery.gte("due_month", fromDate);
+      if (toDate) salaryDueQuery = salaryDueQuery.lte("due_month", toDate);
+      const { data: salaryDueRows } = await salaryDueQuery;
+
+      // Build lookup: emp_code + month → final_salary_due (normalized date)
+      const salaryDueMap = {};
+      (salaryDueRows || []).forEach((r) => {
+        const key = `${r.emp_code}_${normDate(r.due_month)}`;
+        salaryDueMap[key] = Number(r.final_salary_due || 0);
+      });
+      setSalaryDueLookup(salaryDueMap);
 
       // Distinct entities
       const { data: entData } = await supabase
@@ -476,7 +506,8 @@ const InternalCost = () => {
         grouped[key] = {
           key,
           month: fmt(row.sel_year, row.sel_month),
-          month_date: new Date(row.sel_year, row.sel_month - 1, 1),
+          // ✅ FIX: Store as YYYY-MM string instead of Date object
+          month_date: `${row.sel_year}-${String(row.sel_month).padStart(2, "0")}`,
           sel_year: row.sel_year,
           sel_month: row.sel_month,
           dept: row.department,
@@ -512,7 +543,15 @@ const InternalCost = () => {
       g.rec_cost += Number(row.rec_cost || 0);
       g.temp_cost += Number(row.temp_cost || 0);
       g.projects_cost += Number(row.projects_cost || 0);
-      g.salaryDue += Number(row.ctc || 0) + Number(row.variable || 0);
+      
+      // Use final_salary_due from employee_salary_due_view if available
+      // fall back to ctc + variable (system calculated)
+      const empCode = row.emp_code;
+      const monthKey = `${empCode}_${normDate(row.month_date)}`;
+      const finalDue = salaryDueLookup[monthKey];
+      g.salaryDue += finalDue !== undefined
+        ? finalDue
+        : Number(row.ctc || 0) + Number(row.variable || 0);
     });
 
     // Add dept % averages
@@ -552,7 +591,7 @@ const InternalCost = () => {
     });
 
     return Object.values(grouped);
-  }, [costViewData, payoutData]);
+  }, [costViewData, payoutData, salaryDueLookup]);
 
   // ── Filter + Sort ──────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -570,21 +609,19 @@ const InternalCost = () => {
     if (deptFilter !== "All") d = d.filter((r) => r.dept === deptFilter);
     if (entityFilter !== "All") d = d.filter((r) => r.entity === entityFilter);
 
+    // ✅ FIX: Month range filter - pure string comparison (no Date objects)
     if (monthRange.from) {
-      const from = new Date(monthRange.from);
-      d = d.filter((r) => r.month_date >= from);
+      d = d.filter((r) => r.month_date >= monthRange.from);
     }
     if (monthRange.to) {
-      const to = new Date(monthRange.to);
-      d = d.filter((r) => r.month_date <= to);
+      d = d.filter((r) => r.month_date <= monthRange.to);
     }
 
+    // ✅ FIX: Sort with string comparison (no Date branch)
     if (sortConfig.key) {
       d.sort((a, b) => {
         const av = a[sortConfig.key],
           bv = b[sortConfig.key];
-        if (av instanceof Date && bv instanceof Date)
-          return sortConfig.direction === "asc" ? av - bv : bv - av;
         if (typeof av === "number" && typeof bv === "number")
           return sortConfig.direction === "asc" ? av - bv : bv - av;
         if (typeof av === "string" && typeof bv === "string")
@@ -609,9 +646,19 @@ const InternalCost = () => {
   );
 
   // ── Totals row ─────────────────────────────────────────────────────────────────
-  const totals = useMemo(
-    () => ({
-      ftEmpNo: filtered.reduce((s, r) => s + r.ftEmpNo, 0),
+  const totals = useMemo(() => {
+    // Distinct headcount across the selected period — count each employee
+    // once even if they appear in multiple months/rows of `filtered`.
+    const distinctEmployeeIds = new Set();
+    filtered.forEach((r) => {
+      r.empRows.forEach((e) => {
+        const id = e.employee_id ?? e.emp_code;
+        if (id != null) distinctEmployeeIds.add(id);
+      });
+    });
+
+    return {
+      ftEmpNo: distinctEmployeeIds.size,
       fixedCTC: filtered.reduce((s, r) => s + r.fixedCTC, 0),
       variableComp: filtered.reduce((s, r) => s + r.variableComp, 0),
       salaryDue: filtered.reduce((s, r) => s + r.salaryDue, 0),
@@ -623,9 +670,8 @@ const InternalCost = () => {
         (s, r) => s + r.total_employee_cost,
         0
       ),
-    }),
-    [filtered]
-  );
+    };
+  }, [filtered]);
 
   // ── Sort handler ───────────────────────────────────────────────────────────────
   const handleSort = (key) =>
@@ -948,16 +994,13 @@ const InternalCost = () => {
             ))}
           </select>
 
-          {/* Month range */}
+          {/* Month range - now using YYYY-MM format directly */}
           <div className="flex items-center gap-2">
             <input
               type="month"
               value={monthRange.from}
               onChange={(e) =>
-                setMonthRange((p) => ({
-                  ...p,
-                  from: e.target.value ? e.target.value + "-01" : "",
-                }))
+                setMonthRange((p) => ({ ...p, from: e.target.value || "" }))
               }
               className="bg-white border border-gray-200 text-gray-800 px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-blue-500"
             />
@@ -966,13 +1009,32 @@ const InternalCost = () => {
               type="month"
               value={monthRange.to}
               onChange={(e) =>
-                setMonthRange((p) => ({
-                  ...p,
-                  to: e.target.value ? e.target.value + "-01" : "",
-                }))
+                setMonthRange((p) => ({ ...p, to: e.target.value || "" }))
               }
               className="bg-white border border-gray-200 text-gray-800 px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-blue-500"
             />
+            <button
+              onClick={() =>
+                setMonthRange({ 
+                  from: getCurrentMonthStr(), 
+                  to: getCurrentMonthStr() 
+                })
+              }
+              className="px-2.5 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-xs font-semibold transition whitespace-nowrap"
+              title="Reset to current month"
+            >
+              This Month
+            </button>
+            {(monthRange.from !== getCurrentMonthStr() || 
+              monthRange.to !== getCurrentMonthStr()) && (
+              <button
+                onClick={() => setMonthRange({ from: "", to: "" })}
+                className="px-2.5 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 text-xs font-semibold transition whitespace-nowrap"
+                title="Show all 12 months"
+              >
+                All
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
@@ -984,6 +1046,16 @@ const InternalCost = () => {
               <RefreshCw
                 className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
               />
+            </button>
+
+            {/* Employee Salary Due Button */}
+            <button
+              onClick={() => setShowSalaryDuePage(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 transition"
+              title="Employee Salary Due — manual overrides"
+            >
+              <Users className="w-4 h-4" />
+              <span>Salary Due</span>
             </button>
 
             {/* Part B1 Template Download */}
@@ -1375,6 +1447,30 @@ const InternalCost = () => {
             row={costDrawer}
             onClose={() => setCostDrawer(null)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Employee Salary Due Page Overlay */}
+      <AnimatePresence>
+        {showSalaryDuePage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-white overflow-y-auto"
+          >
+            <div className="p-6 max-w-7xl mx-auto">
+              <div className="flex items-center gap-3 mb-6">
+                <button
+                  onClick={() => setShowSalaryDuePage(false)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 text-sm font-semibold transition"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Back to Internal Cost
+                </button>
+              </div>
+              <EmployeeSalaryDue onBack={() => setShowSalaryDuePage(false)} />
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
