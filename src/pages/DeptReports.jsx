@@ -222,20 +222,16 @@ const DeptReports = () => {
   const [allDepts, setAllDepts] = useState([]);
   const [deptId, setDeptId] = useState(null);
 
-  const [rows, setRows] = useState([]);
-
-  const [invoices, setInvoices] = useState([]);
-  const [creditNotes, setCreditNotes] = useState([]);
-  const [internalTeam, setInternalTeam] = useState([]);
-  const [osPayouts, setOsPayouts] = useState([]);
-  const [employeeExpenses, setEmployeeExpenses] = useState([]);
-
-  const [rpcProfit, setRpcProfit] = useState([]);
-  const [rpcDeptRev, setRpcDeptRev] = useState([]);
-  const [rpcClientPL, setRpcClientPL] = useState([]);
-  const [rpcCollectionDelay, setRpcCollectionDelay] = useState([]);
-  const [rpcCashflowProj, setRpcCashflowProj] = useState([]);
-  const [rpcPaymentsMade, setRpcPaymentsMade] = useState([]);
+  // NEW RPC STATES - replace all old table states
+  const [rpcRevenue, setRpcRevenue] = useState([]);
+  const [rpcSalary, setRpcSalary] = useState([]);
+  const [rpcNonSalary, setRpcNonSalary] = useState([]);
+  const [rpcManpower, setRpcManpower] = useState([]);
+  const [rpcAttrition, setRpcAttrition] = useState([]);
+  const [rpcRatios, setRpcRatios] = useState([]);
+  const [rpcBirthdays, setRpcBirthdays] = useState([]);
+  const [rpcAnniversaries, setRpcAnniversaries] = useState([]);
+  const [rpcClientAdv, setRpcClientAdv] = useState([]);
 
   const [search, setSearch] = useState("");
 
@@ -244,197 +240,67 @@ const DeptReports = () => {
     setError(null);
     try {
       // 1) Auth
-      const {
-        data: { user },
-        error: authErr,
-      } = await supabase.auth.getUser();
+      const { data: { user }, error: authErr } = await supabase.auth.getUser();
       if (authErr) throw authErr;
       if (!user) throw new Error("Not logged in");
 
-      // 2) Permission logic — use internal_team directly, NO profiles table
-      let resolvedIsAdmin = false;
-      let deptNameFromInternalTeam = null;
-      let resolvedDeptId = null;
-      let resolvedDeptName = null;
+      // 2) Role + dept via RPC (single call)
+      const { data: roleData, error: roleErr } = await supabase
+        .rpc("get_user_dept_and_role", { p_email: user.email });
+      if (roleErr) throw roleErr;
 
-      // Check internal_team by email
-      const { data: tmByEmail } = await supabase
-        .from("internal_team")
-        .select("department, designation, emp_code")
-        .eq("email", user.email)
-        .maybeSingle();
-
-      if (tmByEmail) {
-        deptNameFromInternalTeam = tmByEmail.department || null;
-        // Consider admin if designation includes admin/management titles
-        const adminTitles = ["admin", "management", "director", "ceo", "founder", "head"];
-        resolvedIsAdmin = adminTitles.some(t => 
-          (tmByEmail.designation || "").toLowerCase().includes(t)
-        );
-      }
-
-      // Fallback: try emp_code from user_metadata
-      if (!tmByEmail) {
-        const empCode = user?.user_metadata?.emp_code;
-        if (empCode) {
-          const { data: tmByCode } = await supabase
-            .from("internal_team")
-            .select("department, designation")
-            .eq("emp_code", empCode)
-            .maybeSingle();
-          if (tmByCode) {
-            deptNameFromInternalTeam = tmByCode.department || null;
-            const adminTitles = ["admin", "management", "director", "ceo", "founder", "head"];
-            resolvedIsAdmin = adminTitles.some(t => 
-              (tmByCode.designation || "").toLowerCase().includes(t)
-            );
-          }
-        }
-      }
-
-      // Also check user role from auth metadata if available
-      const userRole = user?.user_metadata?.role || user?.app_metadata?.role;
-      if (userRole && ["admin", "management"].includes(userRole.toLowerCase())) {
-        resolvedIsAdmin = true;
-      }
+      const userInfo = roleData?.[0];
+      const resolvedIsAdmin = userInfo?.is_admin ?? false;
+      const resolvedDeptId  = userInfo?.dept_id  ?? null;
+      const resolvedDeptName = userInfo?.dept_name ?? null;
 
       setIsAdmin(resolvedIsAdmin);
-
-      // Map department name to department ID
-      if (deptNameFromInternalTeam) {
-        const { data: deptRow } = await supabase
-          .from("departments_master")
-          .select("id, dept_name")
-          .ilike("dept_name", `%${deptNameFromInternalTeam}%`)
-          .maybeSingle();
-        if (deptRow) {
-          resolvedDeptId = deptRow.id;
-          resolvedDeptName = deptRow.dept_name;
-        }
-      }
+      setUserDeptName(resolvedDeptName || "(unknown)");
+      setUserDeptId(resolvedDeptId);
 
       if (resolvedIsAdmin) {
-        // admin: load all depts list
         const { data: depts } = await supabase
           .from("departments_master")
           .select("id, dept_name")
           .order("dept_name");
         const d = depts || [];
         setAllDepts(d);
-        // Default to first dept if none selected
-        const effectiveDeptId = deptId || d[0]?.id || resolvedDeptId;
-        if (!deptId && effectiveDeptId) setDeptId(effectiveDeptId);
-        setUserDeptName(resolvedDeptName || d[0]?.dept_name || "All Departments");
+        if (!deptId && d.length > 0) setDeptId(d[0].id);
       } else {
-        // employee: lock to their dept
-        setUserDeptId(resolvedDeptId);
-        setUserDeptName(resolvedDeptName || deptNameFromInternalTeam || "(unknown)");
         setDeptId(resolvedDeptId);
       }
 
-      // 3) Load section data
-      const p_start = fy.start;  // "2026-04-01"
-      const p_end = fy.end;      // "2027-03-31"
+      // 3) Effective dept for all RPC calls
+      const effectiveDeptId = resolvedIsAdmin ? (deptId ?? null) : resolvedDeptId;
+      const p_start = fy.start;
+      const p_end   = fy.end;
 
-      // client_wise_pl_view — USE FULL DATES
-      const effectiveDeptId = resolvedIsAdmin ? (deptId || resolvedDeptId) : resolvedDeptId;
-
-      let viewQuery = supabase
-        .from("client_wise_pl_view")
-        .select("*")
-        .gte("pl_month", p_start)
-        .lte("pl_month", p_end);
-
-      // Filter by department_id if available in view
-      if (effectiveDeptId) {
-        viewQuery = viewQuery.eq("department_id", effectiveDeptId);
-      }
-
-      const { data: viewRows, error: vErr } = await viewQuery;
-
-      if (vErr) {
-        console.error("client_wise_pl_view error:", vErr);
-        throw vErr;
-      }
-
-      setRows(viewRows || []);
-
-      // Build queries for raw tables
-      const invQuery = supabase
-        .from("invoices")
-        .select("id, invoice_date, invoice_value, verto_fee, tds, receivable_amount, department_id, client_id, status, invoice_number")
-        .gte("invoice_date", p_start)
-        .lte("invoice_date", p_end);
-
-      const osQuery = supabase
-        .from("os_payouts")
-        .select("id, payout_month, payment_date, amount_paid, employee_count, is_billable, pay_head, client_id, department_id, entity_id")
-        .gte("payout_month", toYYYYMM(p_start))
-        .lte("payout_month", toYYYYMM(p_end));
-
-      const salQuery = supabase
-        .from("employee_expense_payouts")
-        .select("id, month_of_pay, date_of_pay, net_payment, pay_head, employee_name, emp_code, department_id")
-        .gte("month_of_pay", toYYYYMM(p_start))
-        .lte("month_of_pay", toYYYYMM(p_end));
-
-      // Apply dept filter to raw tables
-      if (effectiveDeptId) {
-        invQuery.eq("department_id", effectiveDeptId);
-        osQuery.eq("department_id", effectiveDeptId);
-        salQuery.eq("department_id", effectiveDeptId);
-      }
-
-      const [{ data: inv }, { data: cn }, { data: tm }, { data: os }, { data: sal }] =
-        await Promise.all([
-          invQuery,
-          supabase
-            .from("credit_note_bad_debt")
-            .select("id, issue_date, amount, verto_fee_cn, tds_cn, gst_cn")
-            .gte("issue_date", p_start)
-            .lte("issue_date", p_end),
-          supabase
-            .from("internal_team")
-            .select("id, name, emp_code, department, designation, location, ctc, status, doj, entity, email")
-            .eq("status", "Active"),
-          osQuery,
-          salQuery,
-        ]);
-
-      setInvoices(inv || []);
-      setCreditNotes(cn || []);
-      setInternalTeam(tm || []);
-      setOsPayouts(os || []);
-      setEmployeeExpenses(sal || []);
-
-      // RPCs for profitability + collection/workcap + expense breakdown
-      const rpcDeptParam = resolvedIsAdmin ? (deptId || null) : resolvedDeptId;
-
-      const [dProfit, dDeptRev, dClientPL, dDelay, dCashflow, dPayMade] = await Promise.all([
-        supabase.rpc("get_analytics_profit_waterfall", { p_start, p_end }),
-        supabase.rpc("get_analytics_dept_revenue", {
-          p_start,
-          p_end,
-          p_dept_id: rpcDeptParam,
-          p_limit: 20,
-        }),
-        supabase.rpc("get_analytics_client_pl", {
-          p_start,
-          p_end,
-          p_dept_id: rpcDeptParam,
-          p_limit: 15,
-        }),
-        supabase.rpc("get_analytics_collection_delay", { p_start, p_end }),
-        supabase.rpc("get_analytics_cashflow_projection_vs_actual", { p_start, p_end }),
-        supabase.rpc("get_analytics_payments_made_breakdown", { p_start, p_end }),
+      // 4) Fetch all 9 dept RPCs in parallel
+      const [
+        dRevenue, dSalary, dNonSalary, dManpower,
+        dAttrition, dRatios, dBirthdays, dAnniv, dClientAdv
+      ] = await Promise.all([
+        supabase.rpc("get_dept_report_revenue",       { p_start, p_end, p_dept_id: effectiveDeptId }),
+        supabase.rpc("get_dept_report_salary",         { p_start, p_end, p_dept_id: effectiveDeptId }),
+        supabase.rpc("get_dept_report_non_salary",     { p_start, p_end, p_dept_id: effectiveDeptId }),
+        supabase.rpc("get_dept_report_manpower",       { p_start, p_end, p_dept_id: effectiveDeptId }),
+        supabase.rpc("get_dept_report_attrition",      { p_start, p_end, p_dept_id: effectiveDeptId }),
+        supabase.rpc("get_dept_report_ratios",         { p_start, p_end, p_dept_id: effectiveDeptId }),
+        supabase.rpc("get_dept_report_birthdays",      { p_dept_id: effectiveDeptId, p_days_ahead: 30 }),
+        supabase.rpc("get_dept_report_anniversaries",  { p_dept_id: effectiveDeptId, p_days_ahead: 30 }),
+        supabase.rpc("get_dept_report_client_advance", { p_start, p_end }),
       ]);
 
-      setRpcProfit(extractData(dProfit));
-      setRpcDeptRev(extractData(dDeptRev));
-      setRpcClientPL(extractData(dClientPL));
-      setRpcCollectionDelay(extractData(dDelay));
-      setRpcCashflowProj(extractData(dCashflow));
-      setRpcPaymentsMade(extractData(dPayMade));
+      setRpcRevenue(extractData(dRevenue));
+      setRpcSalary(extractData(dSalary));
+      setRpcNonSalary(extractData(dNonSalary));
+      setRpcManpower(extractData(dManpower));
+      setRpcAttrition(extractData(dAttrition));
+      setRpcRatios(extractData(dRatios));
+      setRpcBirthdays(extractData(dBirthdays));
+      setRpcAnniversaries(extractData(dAnniv));
+      setRpcClientAdv(extractData(dClientAdv));
+
     } catch (e) {
       console.error("FETCH ERROR:", e);
       setError(e?.message || String(e));
@@ -448,89 +314,97 @@ const DeptReports = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fyStartYear, deptId]);
 
-  // KPIs from Section 1 data
+  // Section 1: Revenue KPIs from rpcRevenue + rpcRatios
   const kpi = useMemo(() => {
-    const sum = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
-    const total_invoice_value = sum("total_invoice_value");
-    const verto_fee_earned = sum("verto_fee_earned");
-    const profit_pre_tds = sum("profit_pre_tds");
-    const profit_post_tds = sum("profit_post_tds");
-    const actual_profit = sum("actual_profit");
-    const money_not_received = sum("money_not_received");
-    const total_expense = sum("total_expense");
-    const cn_bad_debt = sum("cn_bad_debt");
+    const rev = rpcRevenue.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
+    const fee = rpcRevenue.reduce((s, r) => s + Number(r.total_fee || 0), 0);
+    const tds = rpcRevenue.reduce((s, r) => s + Number(r.total_tds || 0), 0);
 
-    const feeRevenuePct = total_invoice_value
-      ? safeDivPct(verto_fee_earned, total_invoice_value)
-      : 0;
-
+    const rat = rpcRatios[0] || {};
     return {
-      total_invoice_value,
-      verto_fee_earned,
-      profit_pre_tds,
-      profit_post_tds,
-      actual_profit,
-      money_not_received,
-      total_expense,
-      cn_bad_debt,
-      feeRevenuePct,
+      total_revenue:         rev,
+      total_fee:             fee,
+      total_tds:             tds,
+      fee_to_revenue_pct:    Number(rat.fee_to_revenue || 0),
+      internal_salary:       Number(rat.total_internal_salary || 0),
+      external_cost:         Number(rat.total_external_cost || 0),
+      non_salary_exp:        Number(rat.total_non_salary || 0),
+      internal_headcount:    Number(rat.internal_headcount || 0),
+      external_headcount:    Number(rat.external_headcount || 0),
+      revenue_per_ext_head:  Number(rat.revenue_per_ext_head || 0),
+      dept_salary_to_fee:    Number(rat.dept_salary_to_dept_fee || 0),
     };
-  }, [rows]);
+  }, [rpcRevenue, rpcRatios]);
 
-  // Revenue & Fee Growth computed from client_wise_pl_view grouped by month
+  // Section 2: Monthly revenue growth - FIX: Aggregate by month to handle multiple depts
   const growth = useMemo(() => {
-    const groupByMonth = new Map();
-    for (const r of rows) {
-      const ym = r.pl_month;
+    // Aggregate across depts — multiple rows per month from RPC
+    const byMonth = new Map();
+    for (const r of rpcRevenue) {
+      const ym = r.month;
       if (!ym) continue;
-      if (!groupByMonth.has(ym)) {
-        groupByMonth.set(ym, { rev: 0, fee: 0, cn: 0 });
-      }
-      const g = groupByMonth.get(ym);
-      g.rev += Number(r.total_invoice_value || 0);
-      g.fee += Number(r.verto_fee_earned || 0);
-      g.cn += Number(r.cn_bad_debt || 0);
+      if (!byMonth.has(ym)) byMonth.set(ym, { ym, rev: 0, fee: 0 });
+      byMonth.get(ym).rev += Number(r.total_revenue || 0);
+      byMonth.get(ym).fee += Number(r.total_fee || 0);
     }
-    const months = Array.from(groupByMonth.entries())
-      .map(([ym, v]) => ({ ym, ...v, x: fmtMonth(ym) }))
+    const months = Array.from(byMonth.values())
       .sort((a, b) => String(a.ym).localeCompare(String(b.ym)));
     const last = months[months.length - 1];
     const prev = months[months.length - 2];
-
-    const revMoM = prev ? safeDivPct(last.rev - prev.rev, prev.rev) : 0;
-    const feeMoM = prev ? safeDivPct(last.fee - prev.fee, prev.fee) : 0;
-
+    const revMoM = prev?.rev ? safeDivPct(last.rev - prev.rev, prev.rev) : 0;
+    const feeMoM = prev?.fee ? safeDivPct(last.fee - prev.fee, prev.fee) : 0;
     return { months, last, prev, revMoM, feeMoM };
-  }, [rows]);
+  }, [rpcRevenue]);
+
+  // Section 3: Salary breakdown table
+  const salaryTable = useMemo(() =>
+    [...rpcSalary].sort((a, b) => String(a.month).localeCompare(String(b.month))),
+  [rpcSalary]);
+
+  // Section 4: HR KPIs from attrition RPC
+  const hrKPIs = useMemo(() => {
+    const active    = rpcAttrition.reduce((s, r) => s + Number(r.total_active    || 0), 0);
+    const inactive  = rpcAttrition.reduce((s, r) => s + Number(r.total_inactive  || 0), 0);
+    const avgTenure = rpcAttrition.length
+      ? rpcAttrition.reduce((s, r) => s + Number(r.avg_tenure_months || 0), 0) / rpcAttrition.length
+      : 0;
+    return { active, inactive, totalEmployees: active + inactive, avgTenureMonths: avgTenure };
+  }, [rpcAttrition]);
+
+  // Section 5: Birthday / anniversary alerts
+  const upcomingDates = useMemo(() => {
+    const thisWeek = 7;
+    const birthdaysThisWeek    = rpcBirthdays.filter(b    => Number(b.days_until)    <= thisWeek).length;
+    const anniversariesThisWeek = rpcAnniversaries.filter(a => Number(a.days_until) <= thisWeek).length;
+    return {
+      birthdays:    rpcBirthdays,
+      anniversaries: rpcAnniversaries,
+      hasDob: rpcBirthdays.length > 0,
+      alertCount: birthdaysThisWeek + anniversariesThisWeek,
+    };
+  }, [rpcBirthdays, rpcAnniversaries]);
 
   const section1Table = useMemo(() => {
-    const d = rows.filter((r) => {
+    const d = rpcRevenue.filter((r) => {
       if (!search.trim()) return true;
       const t = search.toLowerCase();
       return (
-        String(r.client_name || "").toLowerCase().includes(t) ||
         String(r.dept_name || "").toLowerCase().includes(t) ||
-        String(r.month_label || "").toLowerCase().includes(t)
+        String(r.month || "").toLowerCase().includes(t)
       );
     });
     return d
       .map((r) => ({
-        month: r.month_label || r.pl_month,
-        client: r.client_name,
-        Revenue: r.total_invoice_value,
-        "Verto Fee": r.verto_fee_earned,
-        TDS: r.tds,
-        "Fee Post TDS": r.verto_fee_post_tds,
-        "Not Received": r.money_not_received,
-        Expense: r.total_expense,
-        "CN/Bad Debt": r.cn_bad_debt,
-        "Profit Pre TDS": r.profit_pre_tds,
-        "Profit Post TDS": r.profit_post_tds,
-        "Actual Profit": r.actual_profit,
+        month: fmtMonth(r.month),
+        dept: r.dept_name,
+        Revenue: r.total_revenue,
+        "Verto Fee": r.total_fee,
+        TDS: r.total_tds,
+        Invoices: r.invoice_count,
         _raw: r,
       }))
-      .sort((a, b) => String(a._raw?.pl_month || "").localeCompare(String(b._raw?.pl_month || "")));
-  }, [rows, search]);
+      .sort((a, b) => String(a._raw?.month || "").localeCompare(String(b._raw?.month || "")));
+  }, [rpcRevenue, search]);
 
   const [page, setPage] = useState(1);
   const ITEMS = 10;
@@ -543,15 +417,11 @@ const DeptReports = () => {
 
   const exportExcel = () => {
     const headers = [
-      "Month", "Client", "Revenue", "Verto Fee", "TDS", "Fee Post TDS",
-      "Not Received", "Expense", "CN/Bad Debt", "Profit Pre TDS",
-      "Profit Post TDS", "Actual Profit",
+      "Month", "Department", "Revenue", "Verto Fee", "TDS", "Invoice Count"
     ];
 
     const rowsX = section1Table.map((r) => [
-      r.month, r.client, r.Revenue, r["Verto Fee"], r.TDS,
-      r["Fee Post TDS"], r["Not Received"], r.Expense, r["CN/Bad Debt"],
-      r["Profit Pre TDS"], r["Profit Post TDS"], r["Actual Profit"],
+      r.month, r.dept, r.Revenue, r["Verto Fee"], r.TDS, r.Invoices
     ]);
 
     const wb = XLSX.utils.book_new();
@@ -564,92 +434,6 @@ const DeptReports = () => {
       `DeptReports_${fy.label.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.xlsx`
     );
   };
-
-  // Collections + working capital summary KPIs
-  const collectionKPIs = useMemo(() => {
-    const totalOutstanding = rpcCollectionDelay.reduce(
-      (s, r) => s + Number(r.receivable_amount || 0), 0
-    );
-    const overdue = rpcCollectionDelay.filter((r) => String(r.delay_bucket || "").includes("Overdue"));
-    const overdueAmt = overdue.reduce((s, r) => s + Number(r.receivable_amount || 0), 0);
-    const overduePct = totalOutstanding ? (overdueAmt / totalOutstanding) * 100 : 0;
-    const critical = rpcCollectionDelay.filter((r) => r.delay_bucket === "Overdue 60d+");
-    const criticalAmt = critical.reduce((s, r) => s + Number(r.receivable_amount || 0), 0);
-
-    const cashNet = (rpcCashflowProj || []).map((r) => ({
-      x: r.month,
-      net: Number(r.actual_inflow || 0) - Number(r.actual_outflow || 0),
-    }));
-    const netCash = cashNet.length ? cashNet[cashNet.length - 1].net : 0;
-
-    return { totalOutstanding, overdueAmt, overduePct, criticalAmt, netCash };
-  }, [rpcCollectionDelay, rpcCashflowProj]);
-
-  // HR KPIs
-  const hrKPIs = useMemo(() => {
-    const totalEmployees = internalTeam.length;
-    const active = internalTeam.filter((t) => t.status === "Active").length;
-
-    const now = new Date();
-    const dojDates = internalTeam.map((t) => t.doj).filter(isValidDateStr);
-    const avgTenureMonths = dojDates.length
-      ? dojDates.reduce((s, d) => {
-          const dt = new Date(d);
-          const months = (now - dt) / (1000 * 60 * 60 * 24 * 30.4375);
-          return s + months;
-        }, 0) / dojDates.length
-      : 0;
-
-    return { totalEmployees, active, avgTenureMonths };
-  }, [internalTeam]);
-
-  const upcomingDates = useMemo(() => {
-    const now = new Date();
-    const in30 = new Date(now);
-    in30.setDate(in30.getDate() + 30);
-    const thisWeek = new Date(now);
-    thisWeek.setDate(thisWeek.getDate() + 7);
-
-    const hasDob = internalTeam.some((t) => t.dob);
-    const birthdays = [];
-
-    if (hasDob) {
-      for (const t of internalTeam) {
-        if (!t.dob) continue;
-        const d = new Date(t.dob);
-        const year = now.getFullYear();
-        const candidate = new Date(year, d.getMonth(), d.getDate());
-        const candidateNextYear = new Date(year + 1, d.getMonth(), d.getDate());
-        const picked = candidate >= now ? candidate : candidateNextYear;
-        if (picked >= now && picked <= in30) {
-          birthdays.push({ name: t.name, date: picked });
-        }
-      }
-    }
-
-    const anniversaries = [];
-    for (const t of internalTeam) {
-      if (!t.doj) continue;
-      const d = new Date(t.doj);
-      const year = now.getFullYear();
-      const candidate = new Date(year, d.getMonth(), d.getDate());
-      const candidateNextYear = new Date(year + 1, d.getMonth(), d.getDate());
-      const picked = candidate >= now ? candidate : candidateNextYear;
-      if (picked >= now && picked <= in30) {
-        anniversaries.push({ name: t.name, date: picked });
-      }
-    }
-
-    const birthdaysThisWeek = birthdays.filter((b) => b.date <= thisWeek).length;
-    const anniversariesThisWeek = anniversaries.filter((b) => b.date <= thisWeek).length;
-
-    return {
-      birthdays,
-      anniversaries,
-      hasDob,
-      alertCount: birthdaysThisWeek + anniversariesThisWeek,
-    };
-  }, [internalTeam]);
 
   if (loading) {
     return (
@@ -725,7 +509,7 @@ const DeptReports = () => {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Client / dept / month…"
+                placeholder="Department / month…"
                 className="w-full border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-200"
               />
               {search && (
@@ -768,24 +552,20 @@ const DeptReports = () => {
         </div>
       </div>
 
-      <SH icon={TrendingUp} title="Department P&L Overview" color={P.steel} count={`${rows.length} rows`} />
+      <SH icon={TrendingUp} title="Department P&L Overview" color={P.steel} count={`${rpcRevenue.length} rows`} />
 
       {/* Section 1 KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <KpiCard label="Total Revenue" value={fmt(kpi.total_invoice_value)} sub={`FY ${fy.label}`} icon={FileText} color={P.steel} />
-        <KpiCard label="Verto Fee" value={fmt(kpi.verto_fee_earned)} sub="Fee earned" icon={TrendingUp} color={P.trend} />
-        <KpiCard label="Fee / Revenue %" value={`${kpi.feeRevenuePct.toFixed(1)}%`} sub="verto_fee_earned / total_invoice_value" icon={Wallet} color={P.sky} />
-        <KpiCard label="Profit Pre TDS" value={fmt(kpi.profit_pre_tds)} sub="profit_pre_tds" icon={TrendingUp} color={P.teal} />
-        <KpiCard label="Profit Post TDS" value={fmt(kpi.profit_post_tds)} sub="profit_post_tds" icon={TrendingUp} color={P.amber} />
-        <KpiCard label="Actual Profit" value={fmt(kpi.actual_profit)} sub="actual_profit" icon={TrendingUp} color={kpi.actual_profit >= 0 ? P.teal : P.brick} />
-        <KpiCard label="Amount Not Received" value={fmt(kpi.money_not_received)} sub="money_not_received" icon={AlertTriangle} color={P.amber} />
-        <KpiCard label="Total Expense" value={fmt(kpi.total_expense)} sub="total_expense" icon={CreditCard} color={P.plum} />
+        <KpiCard label="Total Revenue" value={fmt(kpi.total_revenue)} sub={`FY ${fy.label}`} icon={FileText} color={P.steel} />
+        <KpiCard label="Verto Fee" value={fmt(kpi.total_fee)} sub="Fee earned" icon={TrendingUp} color={P.trend} />
+        <KpiCard label="Fee / Revenue %" value={`${kpi.fee_to_revenue_pct.toFixed(1)}%`} sub="verto_fee / total_revenue" icon={Wallet} color={P.sky} />
+        <KpiCard label="Total TDS" value={fmt(kpi.total_tds)} sub="tax deducted at source" icon={CreditCard} color={P.amber} />
       </div>
 
       <div className="grid grid-cols-1 gap-4">
         <ChartCard
-          title="Department P&L Detail (client-wise)"
-          subtitle="Month + Client rows"
+          title="Revenue Detail by Month"
+          subtitle="Monthly breakdown"
         >
           {section1Table.length === 0 ? (
             <Empty />
@@ -794,18 +574,12 @@ const DeptReports = () => {
               <DataTable
                 maxHeight={380}
                 columns={[
-                  { header: "Month", key: "month", className: "text-slate-500" },
-                  { header: "Client", key: "client", className: "font-medium text-slate-800" },
-                  { header: "Revenue", key: "Revenue", align: "right", formatter: (v) => <span className="font-semibold text-slate-700">{fmt(v)}</span> },
-                  { header: "Verto Fee", key: "Verto Fee", align: "right", formatter: (v) => <span className="font-semibold text-slate-700">{fmt(v)}</span> },
-                  { header: "TDS", key: "TDS", align: "right", formatter: (v) => <span className={Number(v) > 0 ? "text-rose-600 font-semibold" : "text-slate-300"}>{Number(v) > 0 ? `-${fmt(v)}` : "—"}</span> },
-                  { header: "Fee Post TDS", key: "Fee Post TDS", align: "right", formatter: (v) => <span className="font-semibold text-slate-700">{fmt(v)}</span> },
-                  { header: "Not Received", key: "Not Received", align: "right", formatter: (v) => <span className="text-amber-700 font-semibold">{Number(v) ? fmt(v) : "—"}</span> },
-                  { header: "Expense", key: "Expense", align: "right", formatter: (v) => <span className="text-slate-600 font-semibold">{Number(v) ? `-${fmt(v)}` : "—"}</span> },
-                  { header: "CN/Bad Debt", key: "CN/Bad Debt", align: "right", formatter: (v) => <span className="text-rose-600 font-semibold">{Number(v) ? `-${fmt(v)}` : "—"}</span> },
-                  { header: "Profit Pre TDS", key: "Profit Pre TDS", align: "right", formatter: (v) => <span className={Number(v) >= 0 ? "text-emerald-600 font-semibold" : "text-rose-600 font-semibold"}>{fmt(v)}</span> },
-                  { header: "Profit Post TDS", key: "Profit Post TDS", align: "right", formatter: (v) => <span className={Number(v) >= 0 ? "text-emerald-600 font-semibold" : "text-rose-600 font-semibold"}>{fmt(v)}</span> },
-                  { header: "Actual Profit", key: "Actual Profit", align: "right", formatter: (v) => <span className={Number(v) >= 0 ? "text-emerald-600 font-semibold" : "text-rose-600 font-semibold"}>{fmt(v)}</span> },
+                  { header: "Month",       key: "month",         className: "text-slate-500" },
+                  { header: "Department",  key: "dept",      className: "font-medium text-slate-800" },
+                  { header: "Revenue",     key: "Revenue",  align: "right", formatter: (v) => <span className="font-semibold text-slate-700">{fmt(v)}</span> },
+                  { header: "Verto Fee",   key: "Verto Fee", align: "right", formatter: (v) => <span className="font-semibold text-slate-700">{fmt(v)}</span> },
+                  { header: "TDS",         key: "TDS",      align: "right", formatter: (v) => <span className="text-rose-600 font-semibold">{Number(v) > 0 ? fmt(v) : "—"}</span> },
+                  { header: "Invoices",    key: "Invoices", align: "right", formatter: (v) => <span className="text-slate-500">{v}</span> },
                 ]}
                 data={paged}
               />
@@ -871,111 +645,23 @@ const DeptReports = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Monthly Revenue vs Net Fee" subtitle="Computed from client_wise_pl_view">
+        <ChartCard title="Monthly Revenue vs Fee" subtitle="Computed from department revenue RPC">
           <div className="text-xs text-slate-500">Monthly breakdown:</div>
-          {growth.months.slice(-6).map((m) => (
-            <div key={m.ym} className="flex items-center justify-between py-1 border-b border-slate-100">
-              <span className="font-semibold text-slate-700">{m.x}</span>
+          {growth.months.slice(-6).map((m, i) => (
+            <div key={`${m.ym}-${i}`} className="flex items-center justify-between py-1 border-b border-slate-100">
+              <span className="font-semibold text-slate-700">{fmtMonth(m.ym)}</span>
               <span className="text-slate-600 tabular-nums">Rev: {fmt(m.rev)} · Fee: {fmt(m.fee)}</span>
             </div>
           ))}
         </ChartCard>
-        <ChartCard title="Client-wise Top 10 Revenue" subtitle="Rank (top 10 clients)">
-          {(() => {
-            const map = new Map();
-            for (const r of rows) {
-              const key = r.client_name;
-              const prev = map.get(key) || 0;
-              map.set(key, prev + Number(r.total_invoice_value || 0));
-            }
-            const arr = Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-            arr.sort((a, b) => b.value - a.value);
-            const top = arr.slice(0, 10);
-            return top.length === 0 ? <Empty /> : (
-              <div className="space-y-2">
-                {top.map((t, i) => (
-                  <div key={t.name} className="flex items-center gap-2">
-                    <span className="w-6 text-xs font-bold text-slate-400">{i + 1}</span>
-                    <div className="flex-1">
-                      <div className="text-xs font-semibold text-slate-700 truncate">{t.name}</div>
-                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          style={{ width: `${safeDivPct(t.value, top[0]?.value || 1)}%` }}
-                          className="h-2 rounded-full bg-blue-600/70"
-                        />
-                      </div>
-                    </div>
-                    <div className="w-28 text-right text-xs font-bold text-slate-700 tabular-nums">{fmt(t.value)}</div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </ChartCard>
-      </div>
-
-      {/* SECTION 3 Profitability */}
-      <SH icon={TrendingUp} title="Profitability" color={P.amber} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <KpiCard
-          label="Profit Margin % (Pre TDS)"
-          value={`${safeDivPct(kpi.profit_pre_tds, kpi.verto_fee_earned).toFixed(1)}%`}
-          sub="profit_pre_tds / verto_fee_earned"
-          icon={TrendingUp}
-          color={P.teal}
-        />
-        <KpiCard
-          label="Profit Margin % (Post TDS)"
-          value={`${safeDivPct(kpi.profit_post_tds, kpi.verto_fee_post_tds).toFixed(1)}%`}
-          sub="profit_post_tds / verto_fee_post_tds"
-          icon={TrendingUp}
-          color={P.trend}
-        />
-        <KpiCard
-          label="Actual Profit Margin"
-          value={`${(() => {
-            const denom = kpi.verto_fee_earned - kpi.cn_bad_debt;
-            return safeDivPct(kpi.actual_profit, denom).toFixed(1);
-          })()}%`}
-          sub="actual_profit / (verto_fee_earned - cn_bad_debt)"
-          icon={FileText}
-          color={kpi.actual_profit >= 0 ? P.teal : P.brick}
-        />
-        <KpiCard
-          label="Actual Profit"
-          value={fmt(kpi.actual_profit)}
-          sub="actual_profit"
-          icon={TrendingUp}
-          color={kpi.actual_profit >= 0 ? P.teal : P.brick}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Monthly Profit (Pre vs Post vs Actual)" subtitle="Computed/available via profit waterfall RPC">
-          {rpcProfit.length === 0 ? <Empty msg="No profit waterfall data" /> : (
-            <div className="text-xs text-slate-500">
-              {rpcProfit.slice(-6).map((r) => (
-                <div key={r.month} className="flex items-center justify-between py-1 border-b border-slate-100">
-                  <span className="font-semibold text-slate-700">{r.month}</span>
-                  <span className="text-slate-600 tabular-nums">
-                    Pre: {fmt(r.profit_pre_tds)} · Post: {fmt(r.profit_post_tds)} · Actual: {fmt(r.actual_profit)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </ChartCard>
-        <ChartCard title="Client-wise Actual Profit (Top)" subtitle="Top clients by actual profit">
-          {rpcClientPL.length === 0 ? <Empty msg="No client profit data" /> : (
+        <ChartCard title="Salary Breakdown" subtitle="Internal vs External salary costs">
+          {rpcSalary.length === 0 ? <Empty msg="No salary data" /> : (
             <div className="space-y-2">
-              {rpcClientPL.slice(0, 10).map((r, i) => (
-                <div key={r.client_name} className="flex items-center justify-between py-1 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 text-xs font-bold text-slate-400">{i + 1}</span>
-                    <span className="text-xs font-semibold text-slate-700 truncate max-w-[220px]">{r.client_name}</span>
-                  </div>
-                  <span className={`text-xs font-bold tabular-nums ${Number(r.actual_profit) >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {fmt(r.actual_profit)}
+              {rpcSalary.slice(-6).map((r, i) => (
+                <div key={`${r.month}-${i}`} className="flex items-center justify-between py-1 border-b border-slate-100">
+                  <span className="text-xs font-semibold text-slate-700">{fmtMonth(r.month)}</span>
+                  <span className="text-xs font-bold tabular-nums text-slate-700">
+                    Internal: {fmt(r.total_internal_salary)} · External: {fmt(r.total_external_salary)}
                   </span>
                 </div>
               ))}
@@ -984,67 +670,39 @@ const DeptReports = () => {
         </ChartCard>
       </div>
 
-      {/* SECTION 4 Manpower & Salary */}
-      <SH icon={Users} title="Manpower & Salary" color={P.plum} />
+      {/* SECTION 4 Manpower */}
+      <SH icon={Users} title="Manpower" color={P.plum} />
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <KpiCard label="Internal Team Count" value={fmtCount(internalTeam.filter((t) => t.status === "Active").length)} sub="Active employees" icon={Users} color={P.slate} />
-        <KpiCard label="External Manpower Count" value={fmtCount(osPayouts.reduce((s, r) => s + Number(r.employee_count || 0), 0))} sub="sum employee_count" icon={Users} color={P.clay} />
-        <KpiCard label="Internal / External" value={(() => {
-          const i = internalTeam.filter((t) => t.status === "Active").length;
-          const e = osPayouts.reduce((s, r) => s + Number(r.employee_count || 0), 0);
-          return e ? (i / e).toFixed(2) : "—";
-        })()} sub="ratio" icon={TrendingUp} color={P.teal} />
-        <KpiCard label="Revenue per Employee" value={(() => {
-          const totalEmp = internalTeam.filter((t) => t.status === "Active").length + osPayouts.reduce((s, r) => s + Number(r.employee_count || 0), 0);
-          const denom = totalEmp || 0;
-          return denom ? fmt(kpi.total_invoice_value / denom) : "—";
-        })()} sub="total_invoice_value / employees" icon={FileText} color={P.steel} />
-      </div>
-
-      <div className="text-xs text-slate-500">(Charts for manpower/ salary breakdown require additional recharts integration; kept minimal here.)</div>
-
-      {/* SECTION 6 Collections & Working Capital */}
-      <SH icon={Wallet} title="Collections & Working Capital" color={P.sky} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <KpiCard label="Total Outstanding" value={fmt(collectionKPIs.totalOutstanding)} sub="sum receivable_amount" icon={Wallet} color={P.amber} />
-        <KpiCard label="Overdue Amount" value={fmt(collectionKPIs.overdueAmt)} sub="Overdue buckets" icon={AlertTriangle} color={P.brick} />
-        <KpiCard label="Overdue % of Total" value={`${collectionKPIs.overduePct.toFixed(1)}%`} sub="overdue / total" icon={TrendingUp} color={P.amber} />
-        <KpiCard label="Critical (60d+)" value={fmt(collectionKPIs.criticalAmt)} sub="Overdue 60d+" icon={AlertTriangle} color={P.brick} />
+        <KpiCard label="Internal Headcount"  value={fmtCount(kpi.internal_headcount)}  sub="Active employees"      icon={Users}     color={P.slate} />
+        <KpiCard label="External Headcount"  value={fmtCount(kpi.external_headcount)}  sub="OS payout employees"   icon={Users}     color={P.clay} />
+        <KpiCard label="Internal / External" value={kpi.external_headcount ? (kpi.internal_headcount / kpi.external_headcount).toFixed(2) : "—"} sub="ratio" icon={TrendingUp} color={P.teal} />
+        <KpiCard label="Revenue per Ext Head" value={fmt(kpi.revenue_per_ext_head)} sub="revenue / external_headcount" icon={FileText} color={P.steel} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Collection Delay Buckets" subtitle="Risk segments">
-          {rpcCollectionDelay.length === 0 ? <Empty /> : (
+        <ChartCard title="Manpower Trend" subtitle="Internal vs External headcount">
+          {rpcManpower.length === 0 ? <Empty msg="No manpower data" /> : (
             <div className="space-y-2">
-              {(() => {
-                const order = [
-                  "Paid", "Not Yet Due", "No Due Date", "Overdue 1–15d",
-                  "Overdue 16–30d", "Overdue 31–60d", "Overdue 60d+",
-                ];
-                const m = new Map();
-                for (const r of rpcCollectionDelay) {
-                  const b = r.delay_bucket || "Unknown";
-                  if (!m.has(b)) m.set(b, { bucket: b, outstanding: 0 });
-                  m.get(b).outstanding += Number(r.receivable_amount || 0);
-                }
-                const arr = order.map((b) => m.get(b)).filter(Boolean);
-                return arr.length === 0 ? <Empty /> : arr.map((x) => (
-                  <div key={x.bucket} className="flex items-center justify-between py-1 border-b border-slate-100">
-                    <span className="text-xs font-semibold text-slate-700">{x.bucket}</span>
-                    <span className="text-xs font-bold text-slate-700 tabular-nums">{fmt(x.outstanding)}</span>
-                  </div>
-                ));
-              })()}
+              {rpcManpower.slice(-6).map((r, i) => (
+                <div key={`${r.month}-${i}`} className="flex items-center justify-between py-1 border-b border-slate-100">
+                  <span className="text-xs font-semibold text-slate-700">{fmtMonth(r.month)}</span>
+                  <span className="text-xs font-bold tabular-nums text-slate-700">
+                    Internal: {r.internal_headcount} · External: {r.external_headcount}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </ChartCard>
-        <ChartCard title="Projected vs Actual Net Cash" subtitle="from RPC">
-          {rpcCashflowProj.length === 0 ? <Empty /> : (
+        <ChartCard title="Attrition Summary" subtitle="Active vs Inactive employees">
+          {rpcAttrition.length === 0 ? <Empty msg="No attrition data" /> : (
             <div className="space-y-2">
-              {rpcCashflowProj.slice(-6).map((r) => (
-                <div key={r.month} className="flex items-center justify-between py-1 border-b border-slate-100">
-                  <span className="text-xs font-semibold text-slate-700">{r.month}</span>
-                  <span className="text-xs font-bold tabular-nums text-slate-700">Net: {fmt(Number(r.actual_inflow || 0) - Number(r.actual_outflow || 0))}</span>
+              {rpcAttrition.slice(-6).map((r, i) => (
+                <div key={`${r.department || r.month}-${i}`} className="flex items-center justify-between py-1 border-b border-slate-100">
+                  <span className="text-xs font-semibold text-slate-700">{fmtMonth(r.month)}</span>
+                  <span className="text-xs font-bold tabular-nums text-slate-700">
+                    Active: {r.total_active} · Inactive: {r.total_inactive} · Tenure: {r.avg_tenure_months?.toFixed(1)}m
+                  </span>
                 </div>
               ))}
             </div>
@@ -1052,7 +710,16 @@ const DeptReports = () => {
         </ChartCard>
       </div>
 
-      {/* SECTION 7 HR Intelligence */}
+      {/* SECTION 5 Cost Ratios */}
+      <SH icon={Wallet} title="Cost Ratios" color={P.sky} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <KpiCard label="Salary to Internal Exp"  value={`${Number(rpcRatios[0]?.salary_to_internal_exp || 0).toFixed(1)}%`}  sub="salary / all internal expense" icon={Wallet}       color={P.plum} />
+        <KpiCard label="Dept Salary to Fee"       value={`${Number(rpcRatios[0]?.dept_salary_to_dept_fee || 0).toFixed(1)}%`} sub="salary / dept verto fee"        icon={TrendingUp}  color={P.amber} />
+        <KpiCard label="Variable to Fixed"        value={`${Number(rpcRatios[0]?.variable_to_fixed || 0).toFixed(1)}%`}       sub="variable / fixed salary"       icon={CreditCard}  color={P.clay} />
+        <KpiCard label="Reimbursement to Fixed"   value={`${Number(rpcRatios[0]?.reimbursement_to_fixed || 0).toFixed(1)}%`}  sub="reimb / fixed salary"          icon={FileText}    color={P.sky} />
+      </div>
+
+      {/* SECTION 6 HR Intelligence */}
       <SH icon={Users} title="HR Intelligence" color={P.slate} />
 
       {upcomingDates.alertCount > 0 && (
@@ -1066,44 +733,75 @@ const DeptReports = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <KpiCard label="Active Headcount" value={fmtCount(hrKPIs.active)} sub="status=Active" icon={Users} color={P.teal} />
-        <KpiCard label="Avg Tenure" value={`${(hrKPIs.avgTenureMonths / 12).toFixed(1)} yrs`} sub="based on doj" icon={Calendar} color={P.sky} />
+        <KpiCard label="Inactive Headcount" value={fmtCount(hrKPIs.inactive)} sub="status=Inactive" icon={Users} color={P.brick} />
         <KpiCard label="Total Employees" value={fmtCount(hrKPIs.totalEmployees)} sub="all records" icon={Users} color={P.slate} />
-        <KpiCard label="New Joiners" value={"—"} sub="needs joiner logic" icon={Users} color={P.amber} />
+        <KpiCard label="Avg Tenure" value={`${(hrKPIs.avgTenureMonths / 12).toFixed(1)} yrs`} sub="based on doj" icon={Calendar} color={P.sky} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Upcoming Birthdays & Alerts" subtitle={upcomingDates.hasDob ? "next 30 days" : "dob field not available"}>
+        <ChartCard title="Upcoming Birthdays" subtitle="next 30 days">
           {!upcomingDates.hasDob ? (
-            <Empty msg="Birthdays unavailable (dob not present in internal_team)" />
+            <Empty msg="Birthdays unavailable" />
           ) : upcomingDates.birthdays.length === 0 ? (
             <Empty msg="No birthdays in next 30 days" />
           ) : (
             <div className="space-y-2">
-              {upcomingDates.birthdays.slice(0, 10).map((b) => (
-                <div key={b.name + b.date.toISOString()} className="flex items-center justify-between py-1 border-b border-slate-100">
-                  <span className="text-xs font-semibold text-slate-700 truncate max-w-[240px]">{b.name}</span>
-                  <span className="text-xs font-bold text-slate-700 tabular-nums">{fmtDate(b.date)}</span>
+              {upcomingDates.birthdays.slice(0, 10).map((b, i) => (
+                <div key={`${b.name}-${b.birthday_this_year}-${i}`} className="flex items-center justify-between py-1 border-b border-slate-100">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-700">{b.name}</span>
+                    <span className="ml-2 text-[10px] text-slate-400">{b.designation}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-bold text-slate-700">{fmtDate(b.birthday_this_year)}</span>
+                    <span className="ml-2 text-[10px] text-amber-600 font-semibold">{b.days_until}d away</span>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </ChartCard>
 
-        <ChartCard title="Work Anniversaries" subtitle="next 30 days from doj">
+        <ChartCard title="Work Anniversaries" subtitle="next 30 days">
           {upcomingDates.anniversaries.length === 0 ? (
             <Empty msg="No anniversaries in next 30 days" />
           ) : (
             <div className="space-y-2">
-              {upcomingDates.anniversaries.slice(0, 10).map((a) => (
-                <div key={a.name + a.date.toISOString()} className="flex items-center justify-between py-1 border-b border-slate-100">
-                  <span className="text-xs font-semibold text-slate-700 truncate max-w-[240px]">{a.name}</span>
-                  <span className="text-xs font-bold text-slate-700 tabular-nums">{fmtDate(a.date)}</span>
+              {upcomingDates.anniversaries.slice(0, 10).map((a, i) => (
+                <div key={`${a.name}-${a.anniversary_date}-${i}`} className="flex items-center justify-between py-1 border-b border-slate-100">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-700">{a.name}</span>
+                    <span className="ml-2 text-[10px] text-slate-400">{a.years_completed} yr{a.years_completed !== 1 ? "s" : ""}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-bold text-slate-700">{fmtDate(a.anniversary_date)}</span>
+                    <span className="ml-2 text-[10px] text-blue-600 font-semibold">{a.days_until}d away</span>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </ChartCard>
       </div>
+
+      {/* SECTION 7 Client Advances */}
+      {rpcClientAdv.length > 0 && (
+        <>
+          <SH icon={Wallet} title="Client Advances" color={P.amber} count={`${rpcClientAdv.length} clients`} />
+          <DataTable
+            maxHeight={280}
+            columns={[
+              { header: "Client",        key: "client_name",    className: "font-medium text-slate-800" },
+              { header: "Total Advanced", key: "total_advanced", align: "right", formatter: (v) => <span className="font-semibold text-orange-700">{fmt(v)}</span> },
+              { header: "Paid Back",     key: "total_paid_back", align: "right", formatter: (v) => <span className="text-emerald-600 font-semibold">{fmt(v)}</span> },
+              { header: "Pending",       key: "pending_due",     align: "right", formatter: (v) => <span className={Number(v) > 0 ? "text-rose-600 font-bold" : "text-slate-300"}>{Number(v) > 0 ? fmt(v) : "—"}</span> },
+              { header: "Status",        key: "status",          formatter: (v) => <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${v === "Closed" ? "bg-emerald-100 text-emerald-700" : v === "Partially Paid" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-600"}`}>{v}</span> },
+              { header: "Count",         key: "advance_count",  align: "right", formatter: (v) => <span className="text-slate-500">{v}</span> },
+            ]}
+            data={rpcClientAdv}
+          />
+        </>
+      )}
     </div>
   );
 };
