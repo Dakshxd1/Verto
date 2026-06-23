@@ -5,7 +5,9 @@ import { useAuth } from "./context/AuthContext";
 import { PermissionsContext } from "./context/PermissionsContext";
 import { usePermissions } from "./hooks/usePermissions";
 import Login from "./pages/Login";
+const DeptReports = React.lazy(() => import("./pages/DeptReports.jsx"));
 import UserManagement from "./pages/UserManagement";
+// NOTE: lucide-react icon for DeptReports is Building2 (must be imported as icon below)
 import SessionMonitor from "./components/SessionMonitor";
 import LivePopup from "./components/LivePopup";
 import MyAccountPage from "./components/Myaccountpage";
@@ -33,6 +35,7 @@ import {
   Wallet,
   Monitor,
   BarChart2,
+  Building2,  // ← ADD THIS LINE
 } from "lucide-react";
 
 // Import Components
@@ -652,6 +655,7 @@ function App() {
   if (!user) return <Login />;
 
   const navItems = [
+
     {
       id: "dashboard",
       label: "Dashboard",
@@ -671,6 +675,12 @@ function App() {
       desc: "Client profitability",
     },
     {
+      id: "dept-reports",
+      label: "Department Reports",
+      icon: Building2,
+      desc: "Cost centre & department analytics",
+    },
+    { 
       id: "internal-cost",
       label: "Internal Team Cost",
       icon: CreditCard,
@@ -815,7 +825,8 @@ function App() {
             <div className="space-y-1">
               {navItems.map((item) => {
                 if (role === "manager" && item.id === "bank-reco") return null;
-                if (role === "employee") return null;
+                  if (role === "employee" && item.id !== "dept-reports") return null;
+
                 if (item.id === "settings") return null; // accessed via footer button
                 const isActive = activeTab === item.id;
                 return (
@@ -1149,7 +1160,9 @@ function App() {
                       {activeTab === "pl-center" && <ProfitCenterPL />}
                       {activeTab === "ledger" && <LedgerPage />}
                       {activeTab === "pl-client" && <ClientPL />}
+                      {activeTab === "dept-reports" && <DeptReports />}
                       {activeTab === "internal-cost" && <InternalCost />}
+
                       {activeTab === "internal-team" && <InternalTeamDetails />}
                       {!(role === "manager" && activeTab === "bank-reco") &&
                         activeTab === "bank-reco" && <BankReco />}
