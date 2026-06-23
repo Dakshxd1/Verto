@@ -66,6 +66,12 @@ const DEPT_COLORS = {
 };
 const getDeptColor = (d) => DEPT_COLORS[d] || { bg: 'bg-gray-50', text: 'text-gray-600', dot: 'bg-gray-400' };
 
+// ─── GROUP KEY HELPER ──────────────────────────────────────────────────────────
+const getGroupKey = (clientName) => {
+  if (!clientName) return 'Unknown';
+  return clientName.trim().split(/\s+/)[0];
+};
+
 const ITEMS = 10;
 
 // ─── SORT ICON ─────────────────────────────────────────────────────────────────
@@ -128,6 +134,7 @@ const ClientPL = () => {
   const [statSort, setStatSort] = useState({ key: 'month', dir: 'desc' });
   const [page, setPage]     = useState(1);
   const [statPage, setStatPage] = useState(1);
+  const [expandedNodes, setExpandedNodes] = useState(new Set());
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
@@ -184,6 +191,54 @@ const ClientPL = () => {
     return d;
   }, [pnlData, search, deptFilter, clientFilter, selectedFY, minProfit, maxProfit, sort]);
 
+  // ── Grouped PnL: Month + Dept + First Name (all three must match) ─────────
+  const groupedPnl = useMemo(() => {
+    const addTotals = (target, source) => {
+      target.total_invoice_value += Number(source.total_invoice_value) || 0;
+      target.verto_fee_earned    += Number(source.verto_fee_earned) || 0;
+      target.tds                 += Number(source.tds) || 0;
+      target.verto_fee_post_tds  += Number(source.verto_fee_post_tds) || 0;
+      target.money_not_received  += Number(source.money_not_received) || 0;
+      target.total_expense       += Number(source.total_expense) || 0;
+      target.cn_bad_debt         += Number(source.cn_bad_debt) || 0;
+      target.profit_pre_tds      += Number(source.profit_pre_tds) || 0;
+      target.profit_post_tds     += Number(source.profit_post_tds) || 0;
+      target.actual_profit       += Number(source.actual_profit) || 0;
+    };
+    const emptyTotals = () => ({
+      total_invoice_value: 0, verto_fee_earned: 0, tds: 0,
+      verto_fee_post_tds: 0, money_not_received: 0, total_expense: 0,
+      cn_bad_debt: 0, profit_pre_tds: 0, profit_post_tds: 0, actual_profit: 0,
+    });
+
+    const map = new Map();
+    filteredPnl.forEach(row => {
+      const monthKey = row.pl_month || 'Unknown';
+      const monthLabel = row.month_label || monthKey;
+      const deptKey = row.dept_name || 'Unknown';
+      const firstName = getGroupKey(row.client_name);
+      const groupKey = `${monthKey}|${deptKey}|${firstName}`;
+
+      if (!map.has(groupKey)) {
+        map.set(groupKey, {
+          key: groupKey,
+          monthLabel,
+          deptName: deptKey,
+          firstName,
+          rows: [],
+          totals: emptyTotals(),
+          rowCount: 0,
+        });
+      }
+      const g = map.get(groupKey);
+      g.rows.push(row);
+      g.rowCount += 1;
+      addTotals(g.totals, row);
+    });
+
+    return Array.from(map.values());
+  }, [filteredPnl]);
+
   // ── Statutory filter + sort ────────────────────────────────────────────────
   const filteredStat = useMemo(() => {
     let d = statData.filter(r => {
@@ -223,24 +278,39 @@ const ClientPL = () => {
   }, [filteredStat]);
 
   // ── Pagination ─────────────────────────────────────────────────────────────
-  const pnlPages  = Math.ceil(filteredPnl.length / ITEMS);
+  const pnlPages = Math.ceil(groupedPnl.length / ITEMS);
   const statPages = Math.ceil(filteredStat.length / ITEMS);
-  const pnlPage   = filteredPnl.slice((page - 1) * ITEMS, page * ITEMS);
+  const visibleGroups = groupedPnl.slice((page - 1) * ITEMS, page * ITEMS);
   const statPage2 = filteredStat.slice((statPage - 1) * ITEMS, statPage * ITEMS);
 
   // ── Sort handlers ──────────────────────────────────────────────────────────
   const handleSort = (k) => setSort(p => ({ key: k, dir: p.key === k && p.dir === 'asc' ? 'desc' : 'asc' }));
   const handleStatSort = (k) => setStatSort(p => ({ key: k, dir: p.key === k && p.dir === 'asc' ? 'desc' : 'asc' }));
 
+  // ── Toggle nested node ─────────────────────────────────────────────────────
+  const toggleNode = (path) => {
+    setExpandedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
   // ── Excel export ───────────────────────────────────────────────────────────
   const exportPnl = () => {
     const headers = ['Month','Department','Client','Invoice Value','Verto Fee','TDS','Fee Post TDS','Not Received','Expense','CN/Bad Debt','Profit Pre TDS','Profit Post TDS','Actual Profit'];
-    const rows = filteredPnl.map(r => [
-      r.month_label, r.dept_name, r.client_name,
-      r.total_invoice_value, r.verto_fee_earned, r.tds, r.verto_fee_post_tds,
-      r.money_not_received, r.total_expense, r.cn_bad_debt,
-      r.profit_pre_tds, r.profit_post_tds, r.actual_profit
-    ]);
+    const rows = [];
+    groupedPnl.forEach(g => {
+      g.rows.forEach(r => {
+        rows.push([
+          r.month_label, r.dept_name, r.client_name,
+          r.total_invoice_value, r.verto_fee_earned, r.tds, r.verto_fee_post_tds,
+          r.money_not_received, r.total_expense, r.cn_bad_debt,
+          r.profit_pre_tds, r.profit_post_tds, r.actual_profit
+        ]);
+      });
+    });
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     ws['!cols'] = headers.map(() => ({ wch: 18 }));
@@ -452,9 +522,9 @@ const ClientPL = () => {
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
             <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
               <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
-                <Users className="w-4 h-4 text-blue-600" /> Client × Department × Month
+                <Users className="w-4 h-4 text-blue-600" /> Grouped by Month + Department + Client
               </h3>
-              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{filteredPnl.length} rows</span>
+              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{filteredPnl.length} rows · {groupedPnl.length} groups</span>
             </div>
 
             {loading ? (
@@ -489,47 +559,98 @@ const ClientPL = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     <AnimatePresence mode="sync">
-                      {pnlPage.map((row, i) => {
-                        const dc = getDeptColor(row.dept_name);
+                      {visibleGroups.map((group) => {
+                        const isExpanded = expandedNodes.has(group.key);
                         return (
-                          <motion.tr key={`${row.pl_month}-${row.client_id}-${row.department_id}`}
-                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-                            className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap">{row.month_label}</td>
-                            <td className="px-3 py-2.5">
-                              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${dc.bg} ${dc.text}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${dc.dot}`} />{row.dept_name}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2.5 font-medium text-blue-700 max-w-[160px] truncate">{row.client_name}</td>
-                            <td className="px-3 py-2.5 text-right font-mono text-gray-700">{fmt(row.total_invoice_value)}</td>
-                            <td className="px-3 py-2.5 text-right font-mono text-gray-800 font-medium">{fmt(row.verto_fee_earned)}</td>
-                            <td className="px-3 py-2.5 text-right font-mono text-rose-600">
-                              {Number(row.tds) > 0 ? `-${fmt(row.tds)}` : '—'}
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-mono text-gray-800">{fmt(row.verto_fee_post_tds)}</td>
-                            <td className="px-3 py-2.5 text-right font-mono">
-                              {Number(row.money_not_received) > 0
-                                ? <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-xs font-semibold">{fmt(row.money_not_received)}</span>
-                                : <span className="text-gray-300">—</span>}
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-mono text-gray-600">
-                              {Number(row.total_expense) > 0 ? `-${fmt(row.total_expense)}` : '—'}
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-mono">
-                              {Number(row.cn_bad_debt) > 0
-                                ? <span className="text-rose-600 text-xs font-semibold">-{fmt(row.cn_bad_debt)}</span>
-                                : <span className="text-gray-300">—</span>}
-                            </td>
-                            <td className={`px-3 py-2.5 text-right font-mono ${profitCls(row.profit_pre_tds)}`}>{fmt(row.profit_pre_tds)}</td>
-                            <td className={`px-3 py-2.5 text-right font-mono ${profitCls(row.profit_post_tds)}`}>{fmt(row.profit_post_tds)}</td>
-                            <td className="px-3 py-2.5 text-right">
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold ${profitBadgeCls(row.actual_profit)}`}>
-                                {Number(row.actual_profit) > 0 ? <ArrowUpRight className="w-3 h-3" /> : Number(row.actual_profit) < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
-                                {fmt(row.actual_profit)}
-                              </span>
-                            </td>
-                          </motion.tr>
+                          <React.Fragment key={group.key}>
+                            {/* ── GROUP HEADER (Month + Dept + First Name) ── */}
+                            <motion.tr
+                              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                              className="bg-slate-100 hover:bg-slate-200 cursor-pointer transition-colors border-y border-slate-300"
+                              onClick={() => toggleNode(group.key)}
+                            >
+                              <td className="px-3 py-2.5 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-800">
+                                  {isExpanded ? <ChevronDown className="w-4 h-4 text-slate-600" /> : <ChevronRight className="w-4 h-4 text-slate-600" />}
+                                  {group.monthLabel}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-200 text-slate-700">
+                                  {group.deptName}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 whitespace-nowrap">
+                                <span className="text-sm font-semibold text-slate-700">
+                                  {group.firstName}
+                                  <span className="text-[11px] font-normal text-slate-500 ml-0.5">({group.rowCount})</span>
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-700">{fmt(group.totals.total_invoice_value)}</td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-700">{fmt(group.totals.verto_fee_earned)}</td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-600">-{fmt(group.totals.tds)}</td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-700">{fmt(group.totals.verto_fee_post_tds)}</td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-amber-700">{fmt(group.totals.money_not_received)}</td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-600">-{fmt(group.totals.total_expense)}</td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-600">-{fmt(group.totals.cn_bad_debt)}</td>
+                              <td className={`px-3 py-2.5 text-right font-mono font-bold ${profitCls(group.totals.profit_pre_tds)}`}>{fmt(group.totals.profit_pre_tds)}</td>
+                              <td className={`px-3 py-2.5 text-right font-mono font-bold ${profitCls(group.totals.profit_post_tds)}`}>{fmt(group.totals.profit_post_tds)}</td>
+                              <td className="px-3 py-2.5 text-right">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold ${profitBadgeCls(group.totals.actual_profit)}`}>
+                                  {Number(group.totals.actual_profit) > 0 ? <ArrowUpRight className="w-3 h-3" /> : Number(group.totals.actual_profit) < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
+                                  {fmt(group.totals.actual_profit)}
+                                </span>
+                              </td>
+                            </motion.tr>
+
+                            {/* ── CHILD ROWS (only when expanded) ── */}
+                            {isExpanded && group.rows.map((row, i) => {
+                              const dc = getDeptColor(row.dept_name);
+                              return (
+                                <motion.tr
+                                  key={`${row.pl_month}-${row.client_id}-${row.department_id}`}
+                                  initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                                  transition={{ delay: i * 0.015 }}
+                                  className="hover:bg-blue-50/30 transition-colors bg-white"
+                                >
+                                  <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap pl-8">{row.month_label}</td>
+                                  <td className="px-3 py-2.5">
+                                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${dc.bg} ${dc.text}`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full ${dc.dot}`} />{row.dept_name}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5 font-medium text-blue-700 max-w-[160px] truncate">{row.client_name}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono text-gray-700">{fmt(row.total_invoice_value)}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono text-gray-800 font-medium">{fmt(row.verto_fee_earned)}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono text-rose-600">
+                                    {Number(row.tds) > 0 ? `-${fmt(row.tds)}` : '—'}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono text-gray-800">{fmt(row.verto_fee_post_tds)}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono">
+                                    {Number(row.money_not_received) > 0
+                                      ? <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-xs font-semibold">{fmt(row.money_not_received)}</span>
+                                      : <span className="text-gray-300">—</span>}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono text-gray-600">
+                                    {Number(row.total_expense) > 0 ? `-${fmt(row.total_expense)}` : '—'}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono">
+                                    {Number(row.cn_bad_debt) > 0
+                                      ? <span className="text-rose-600 text-xs font-semibold">-{fmt(row.cn_bad_debt)}</span>
+                                      : <span className="text-gray-300">—</span>}
+                                  </td>
+                                  <td className={`px-3 py-2.5 text-right font-mono ${profitCls(row.profit_pre_tds)}`}>{fmt(row.profit_pre_tds)}</td>
+                                  <td className={`px-3 py-2.5 text-right font-mono ${profitCls(row.profit_post_tds)}`}>{fmt(row.profit_post_tds)}</td>
+                                  <td className="px-3 py-2.5 text-right">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold ${profitBadgeCls(row.actual_profit)}`}>
+                                      {Number(row.actual_profit) > 0 ? <ArrowUpRight className="w-3 h-3" /> : Number(row.actual_profit) < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
+                                      {fmt(row.actual_profit)}
+                                    </span>
+                                  </td>
+                                </motion.tr>
+                              );
+                            })}
+                          </React.Fragment>
                         );
                       })}
                     </AnimatePresence>
@@ -560,7 +681,7 @@ const ClientPL = () => {
             {!loading && filteredPnl.length > 0 && (
               <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
                 <p className="text-xs text-gray-500">
-                  Showing <span className="font-semibold text-gray-700">{(page - 1) * ITEMS + 1}</span>–<span className="font-semibold text-gray-700">{Math.min(page * ITEMS, filteredPnl.length)}</span> of <span className="font-semibold text-gray-700">{filteredPnl.length}</span>
+                  Showing <span className="font-semibold text-gray-700">{(page - 1) * ITEMS + 1}</span>–<span className="font-semibold text-gray-700">{Math.min(page * ITEMS, groupedPnl.length)}</span> groups of <span className="font-semibold text-gray-700">{groupedPnl.length}</span> · <span className="font-semibold text-gray-700">{filteredPnl.length}</span> total rows
                 </p>
                 <Pagination cur={page} total={pnlPages} onChange={setPage} />
               </div>

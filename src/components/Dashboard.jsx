@@ -393,7 +393,6 @@ const Dashboard = ({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  // ✅ FIX 5: Removed mock data fallback — dbData starts empty
   const [dbData, setDbData] = useState([]);
   const [banks, setBanks] = useState([]);
   const [showPaymentHistory, setShowPaymentHistory] = useState(false);
@@ -434,31 +433,40 @@ const Dashboard = ({
   const fyLabel = (fy) =>
     `FY ${String(fy).slice(2)}-${String(fy + 1).slice(2)}`;
 
+  // ─── fetchInvoices ─────────────────────────────────────────────────────────
+  const lastFetchRef = React.useRef(0);
   const fetchInvoices = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastFetchRef.current < 300) {
+      console.log("⏱️ SKIPPING DUPLICATE FETCH (within 300ms)");
+      return;
+    }
+    lastFetchRef.current = now;
+    
     console.log("🔥 FETCH RUNNING...");
-    const now = new Date();
-    const fy = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    const nowDate = new Date();
+    const fy = nowDate.getMonth() >= 3 ? nowDate.getFullYear() : nowDate.getFullYear() - 1;
     const fyFromDate = `${fy}-04-01`;
     const fyToDate = `${fy + 1}-03-31`;
-
+  
     const { data: rows, error } = await supabase.rpc("get_dashboard_invoices", {
       p_date_from: fyFromDate,
       p_date_to: fyToDate,
       p_limit: 1000,
       p_offset: 0,
     });
-
+  
     if (error) {
       console.error("Fetch error:", error);
       return;
     }
-
+  
     const formatted = rows.map((row) => {
       const outstanding = Number(row.outstanding ?? 0);
       const receivableAmount = Number(
         row.receivable_amount ?? row.invoice_value ?? 0
       );
-
+  
       return {
         dbId: row.id,
         id: row.invoice_number,
@@ -509,6 +517,7 @@ const Dashboard = ({
         other_ded: row.other_ded ?? 0,
         ctc: row.ctc ?? 0,
         is_completed: row.is_completed || false,
+        advance_ref_nos: row.advance_ref_nos || [],
         status:
           outstanding <= 0
             ? "paid"
@@ -519,82 +528,95 @@ const Dashboard = ({
             : "fresh",
       };
     });
-
+  
     setDbData(formatted);
   }, []);
 
-  // ✅ FIX 6: fetchBanks null-safe with || []
+  // ─── fetchBanks ────────────────────────────────────────────────────────────
   const fetchBanks = useCallback(async () => {
     const { data, error } = await supabase.from("bank_master").select("*");
     if (!error) setBanks(data || []);
   }, []);
 
+  // ─── DEBOUNCE ──────────────────────────────────────────────────────────────
+  const fetchDebounceRef = React.useRef(null);
+  const debouncedFetch = useCallback(() => {
+    if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
+    // 1200ms: long enough to absorb all cascading table changes from one save
+    fetchDebounceRef.current = setTimeout(() => fetchInvoices(), 1200);
+  }, [fetchInvoices]);
+
+  // ─── Effects ──────────────────────────────────────────────────────────────
+  const hasMountedRef = React.useRef(false);
   React.useEffect(() => {
+    if (hasMountedRef.current) return;
+    hasMountedRef.current = true;
     fetchInvoices();
     fetchBanks();
   }, []);
 
   React.useEffect(() => {
-    window.refreshDashboard = fetchInvoices;
+    window.refreshDashboard = fetchInvoices; // manual refresh = instant
     window.refreshBanks = fetchBanks;
   }, [fetchInvoices, fetchBanks]);
 
+  // ─── Realtime subscriptions with debounce ────────────────────────────────
   React.useEffect(() => {
     const channel = supabase
-      .channel("realtime-all")
+    .channel(`realtime-dashboard-${Date.now()}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "payments_received" },
-        () => fetchInvoices()
+        debouncedFetch
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "payments_made" },
-        () => fetchInvoices()
+        debouncedFetch
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "advance_payments" },
-        () => fetchInvoices()
+        debouncedFetch
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bounce_back" },
-        () => fetchInvoices()
+        debouncedFetch
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bank_entries" },
-        () => fetchInvoices()
+        debouncedFetch
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "software_entries" },
-        () => fetchInvoices()
+        debouncedFetch
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "invoices" },
-        () => fetchInvoices()
+        debouncedFetch
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "credit_note_bad_debt" },
-        () => fetchInvoices()
+        debouncedFetch
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
+      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
     };
-  }, [fetchInvoices]);
+  }, [debouncedFetch]);
 
-  // ✅ FIX 5: Removed mock data fallback — source = dbData only
+  // ─── Data processing ──────────────────────────────────────────────────────
   const departments = [...new Set(dbData.map((d) => d.dept).filter(Boolean))];
   const clients = [...new Set(dbData.map((d) => d.client).filter(Boolean))];
   const entities = [...new Set(dbData.map((d) => d.entity).filter(Boolean))];
 
-  // ✅ FIX 5: Removed mock data fallback — sourceData = dbData only
   const filteredData = useMemo(() => {
     let sourceData = dbData;
 
@@ -734,6 +756,7 @@ const Dashboard = ({
           tds: acc.tds + (row.tds || 0),
           gst: acc.gst + (row.gst || 0),
           osDiff: acc.osDiff + (row.osDiff || 0),
+          cnBadDebt: acc.cnBadDebt + (row.cnBadDebt || 0),
         }),
         {
           invValue: 0,
@@ -1995,7 +2018,6 @@ const Dashboard = ({
               ))}
             </tbody>
 
-            {/* ✅ FIX 1: Wrap totals row in <tfoot> */}
             <tfoot>
               <tr className="align-bottom">
                 <td

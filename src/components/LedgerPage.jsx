@@ -1067,100 +1067,108 @@ const LedgerPage = () => {
         </div>
       </div>
 
-      {/* ── Employee Count KPI ── */}
-      {invoiceEmpCount > 0 && (
-        <div className="mb-6 bg-gradient-to-br from-sky-50 to-indigo-50 border-2 border-sky-200 rounded-2xl p-5">
-          <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <Users className="w-3.5 h-3.5" />
-            Employee Count Summary
-          </p>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="kpi-card sky">
-              <p className="text-xs text-gray-500 mb-1">Invoice Emp</p>
-              <p className="kpi-value" style={{ color: "#0284c7" }}>{invoiceEmpCount}</p>
-              <p className="text-xs text-sky-400 mt-0.5">Billed to client</p>
-            </div>
-
-            <div className="kpi-card violet">
-              <p className="text-xs text-gray-500 mb-1">OS Paid</p>
-              <p className="kpi-value" style={{ color: "#7c3aed" }}>
-                − {osEmpPaid}
-              </p>
-              {osEmpBB > 0 && (
-                <p className="text-xs text-emerald-500 mt-0.5">↩ BB: +{osEmpBB}</p>
-              )}
-              <p className="text-xs text-violet-400 mt-0.5">Salaries disbursed</p>
-            </div>
-
-            <div className="kpi-card amber">
-              <p className="text-xs text-gray-500 mb-1">CN Emp</p>
-              <p className="kpi-value" style={{ color: "#d97706" }}>
-                {cnEmpCount > 0 ? `− ${cnEmpCount}` : "—"}
-              </p>
-              <p className="text-xs text-amber-400 mt-0.5">Credit noted out</p>
-            </div>
-
-            <div className={`kpi-card ${netEmpLeft === 0 ? "emerald" : netEmpLeft > 0 ? "amber" : "rose"}`}>
-              <p className="text-xs text-gray-500 mb-1 font-semibold">Net Emp Left</p>
-              <p className="kpi-value" style={{ color: netEmpLeft === 0 ? "#059669" : netEmpLeft > 0 ? "#d97706" : "#e11d48" }}>
-                {netEmpLeft}
-              </p>
-              <p className="text-xs mt-0.5" style={{ color: netEmpLeft === 0 ? "#10b981" : netEmpLeft > 0 ? "#f59e0b" : "#fb7185" }}>
-                {netEmpLeft === 0 ? "✅ All paid"
-                : netEmpLeft > 0 ? "Pending payout"
-                : "⚠️ Over-disbursed"}
-              </p>
-            </div>
-          </div>
-
-          <p className="text-xs text-sky-400 mt-3 text-center font-mono">
-            {invoiceEmpCount} (billed)
-            {osEmpPaid > 0 ? ` − ${osEmpPaid} (OS paid)` : ""}
-            {osEmpBB > 0 ? ` + ${osEmpBB} (BB)` : ""}
-            {cnEmpCount > 0 ? ` − ${cnEmpCount} (CN)` : ""}
-            {" "}= {netEmpLeft} left
-          </p>
-        </div>
-      )}
-
-      {/* ── Net Employee KPI ── */}
+      {/* ── Unified Employee & Financial Summary ── */}
       <div className="mb-6 bg-gradient-to-br from-sky-50 to-indigo-50 border-2 border-sky-200 rounded-2xl p-5">
         <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-sky-500 inline-block" />
-          Net Employee Summary
+          <Users className="w-3.5 h-3.5" />
+          Employee & Financial Summary
         </p>
+
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Card 1: Invoice */}
           <div className="kpi-card sky">
-            <p className="text-xs text-gray-500 mb-1">Invoice Value</p>
-            <p className="kpi-value" style={{ color: "#0284c7", fontSize: "20px" }}>{fmt(opening)}</p>
+            <p className="text-xs text-gray-500 mb-1">Invoice</p>
+            <p className="kpi-value" style={{ color: "#0284c7", fontSize: "22px" }}>
+              {invoiceEmpCount || 0}
+            </p>
+            <p className="text-xs text-sky-400 mt-0.5">emp billed</p>
+            <p className="text-xs font-bold text-sky-700 mt-1.5">{fmt(opening)}</p>
           </div>
 
-          <div className="kpi-card amber">
-            <p className="text-xs text-gray-500 mb-1">− CN / Bad Debt</p>
-            <p className="kpi-value" style={{ color: "#d97706", fontSize: "20px" }}>− {fmt(totalCN)}</p>
-          </div>
-
+          {/* Card 2: Paid Out */}
           <div className="kpi-card violet">
-            <p className="text-xs text-gray-500 mb-1">− OS Paid Net</p>
-            <p className="kpi-value" style={{ color: "#7c3aed", fontSize: "20px" }}>− {fmt(totalOsNet)}</p>
-            {totalOsBB > 0 && (
-              <p className="text-xs text-emerald-500 mt-0.5">↩ BB incl. {fmt(totalOsBB)}</p>
+            <p className="text-xs text-gray-500 mb-1">Paid Out</p>
+            <p className="kpi-value" style={{ color: "#7c3aed", fontSize: "22px" }}>
+              {osEmpPaid || 0}
+            </p>
+            {osEmpBB > 0 && (
+              <p className="text-xs text-emerald-500 mt-0.5">↩ BB: {osEmpBB}</p>
             )}
+            <p className="text-xs text-violet-400 mt-0.5">emp disbursed</p>
+            <p className="text-xs font-bold text-violet-700 mt-1.5">− {fmt(totalOsNet)}</p>
           </div>
 
-          <div className={`kpi-card ${netEmployee >= 0 ? "emerald" : "rose"}`}>
-            <p className="text-xs text-gray-500 mb-1 font-semibold">Net Employee</p>
-            <p className="kpi-value" style={{ color: netEmployee >= 0 ? "#059669" : "#e11d48", fontSize: "20px" }}>
+          {/* Card 3: Credit Note */}
+          <div className="kpi-card amber">
+            <p className="text-xs text-gray-500 mb-1">Credit Note</p>
+            <p className="kpi-value" style={{ color: "#d97706", fontSize: "22px" }}>
+              {cnEmpCount > 0 ? cnEmpCount : "—"}
+            </p>
+            <p className="text-xs text-amber-400 mt-0.5">emp removed</p>
+            <p className="text-xs font-bold text-amber-700 mt-1.5">− {fmt(totalCN)}</p>
+          </div>
+
+          {/* Card 4: Pending */}
+          <div className={`kpi-card ${netEmpLeft === 0 ? "emerald" : netEmpLeft > 0 ? "rose" : "amber"}`}>
+            <p className="text-xs text-gray-500 mb-1 font-semibold">Pending</p>
+            <p className="kpi-value" style={{ color: netEmpLeft === 0 ? "#059669" : netEmpLeft > 0 ? "#e11d48" : "#d97706", fontSize: "22px" }}>
+              {netEmpLeft}
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: netEmpLeft === 0 ? "#10b981" : netEmpLeft > 0 ? "#fb7185" : "#f59e0b" }}>
+              {netEmpLeft === 0 ? "✅ All paid"
+              : netEmpLeft > 0 ? "emp pending"
+              : "⚠️ Over-disbursed"}
+            </p>
+            <p className="text-xs font-bold mt-1.5" style={{ color: netEmpLeft === 0 ? "#059669" : "#e11d48" }}>
               {fmt(netEmployee)}
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">After deductions</p>
           </div>
         </div>
 
-        <p className="text-xs text-sky-500 mt-3 text-center font-mono">
-          {fmt(opening)} − {fmt(totalCN)} (CN) − {fmt(totalOsNet)} (OS) = {fmt(netEmployee)}
-        </p>
+        {/* Pending Amount & Per Employee Balance - UPDATED with leftToPay */}
+        {netEmpLeft > 0 && leftToPay > 0 && (
+          <div className="mt-4 bg-white/70 border border-sky-200 rounded-xl p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              
+              {/* Left: Net in Hand Pending */}
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Pending Amount</p>
+                <p className="text-2xl font-bold text-rose-600">{fmt(leftToPay)}</p>
+                <p className="text-xs text-gray-400">net in hand remaining</p>
+              </div>
+
+              {/* Center: Pending Employees */}
+              <div className="text-left sm:text-center">
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Pending Employees</p>
+                <p className="text-xl font-bold text-violet-700">{netEmpLeft}</p>
+                <p className="text-xs text-gray-400">emp still to pay</p>
+              </div>
+
+              {/* Right: Per Employee Balance (Net in Hand based) */}
+              <div className="text-left sm:text-right">
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Per Employee Balance</p>
+                <p className="text-xl font-bold text-sky-700">
+                  {netEmpLeft > 0 ? fmt(leftToPay / netEmpLeft) : "—"}
+                </p>
+                <p className="text-xs text-gray-400">net in hand / pending emp</p>
+              </div>
+            </div>
+
+            <div className="mt-3 w-full h-2 bg-sky-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-sky-500 rounded-full transition-all duration-500" 
+                style={{ width: `${invoiceEmpCount > 0 ? Math.min((osEmpPaid / invoiceEmpCount) * 100, 100) : 0}%` }} 
+              />
+            </div>
+            <p className="text-xs text-sky-500 mt-1.5 text-center font-mono">
+              {invoiceEmpCount || 0} (billed)
+              {osEmpPaid > 0 ? ` − ${osEmpPaid} (paid)` : ""}
+              {osEmpBB > 0 ? ` + ${osEmpBB} (BB)` : ""}
+              {cnEmpCount > 0 ? ` − ${cnEmpCount} (CN)` : ""}
+              {" "} = {netEmpLeft} pending
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}

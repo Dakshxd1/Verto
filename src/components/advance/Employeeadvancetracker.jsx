@@ -310,7 +310,7 @@ export default function EmployeeAdvanceTracker() {
           </div>
           <div className="flex gap-2">
             {/* Excel Upload */}
-            {!isIntern && (
+            {false && (
               <>
                 <input
                   ref={fileInputRef}
@@ -332,7 +332,7 @@ export default function EmployeeAdvanceTracker() {
                 </button>
               </>
             )}
-            {!isIntern && (
+            {false && (
               <button
                 onClick={openAdd}
                 className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-700 to-blue-500 text-white rounded-xl text-sm font-semibold shadow hover:shadow-md hover:from-blue-800 transition-all"

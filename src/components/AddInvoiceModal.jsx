@@ -131,6 +131,13 @@ const AddInvoiceModal = ({
   const { role } = useAuth();
   const [entitiesList, setEntitiesList] = useState([]);
   const { canSave, isIntern } = usePerms();
+  
+  // State for ref dropdown
+  const [availableRefs, setAvailableRefs] = useState([]);
+  const [refSearchQuery, setRefSearchQuery] = useState("");
+  const [showRefDropdown, setShowRefDropdown] = useState(false);
+  const refDropdownRef = useRef(null);
+
   const [formData, setFormData] = useState({
     invoiceEntity: "",
     department: "",
@@ -206,9 +213,73 @@ const AddInvoiceModal = ({
     if (!entitiesRes.error) setEntitiesList(entitiesRes.data || []);
   };
 
+  // Fetch available refs
+  const fetchAvailableRefs = async () => {
+    const [catRes, apRes] = await Promise.all([
+      // CA- refs: client advance — money given TO client (red — outflow)
+      // Show only Pending or Partially Paid (not Closed = fully recovered)
+      supabase
+        .from("client_advance_tracker")
+        .select("ref_no, client_name, amount, date, status, paid_back, pending_due")
+        .not("status", "eq", "Closed")
+        .order("date", { ascending: false }),
+      // PR- refs from advance_payments: client paid advance before invoice (green — inflow)
+      // Show only not yet adjusted
+      supabase
+        .from("advance_payments")
+        .select("payment_ref, client_name, amount, payment_date, is_adjusted")
+        .eq("is_adjusted", false)
+        .order("payment_date", { ascending: false }),
+    ]);
+
+    // CA- refs — red (outflow: advance GIVEN to client, needs to be recovered)
+    const caRefs = (catRes.data || []).map((r) => ({
+      ref: r.ref_no,
+      client_name: r.client_name,
+      amount: r.amount,
+      date: r.date,
+      flow: "out",                  // red — money went out
+      type: "Client Advance",
+      label: "CA",
+      status: r.status,
+      pending_due: r.pending_due,
+      paid_back: r.paid_back,
+    }));
+
+    // PR- refs from advance_payments — green (inflow: client paid advance)
+    const prRefs = (apRes.data || []).map((r) => ({
+      ref: r.payment_ref,
+      client_name: r.client_name,
+      amount: r.amount,
+      date: r.payment_date,
+      flow: "in",                   // green — money came in
+      type: "Payment Advance",
+      label: "PR",
+      status: "Available",
+      pending_due: r.amount,
+      paid_back: 0,
+    }));
+
+    setAvailableRefs([...caRefs, ...prRefs]);
+  };
+
   useEffect(() => {
-    if (isOpen) fetchMasters();
+    if (isOpen) {
+      fetchMasters();
+      fetchAvailableRefs();
+    }
   }, [isOpen]);
+
+  // Close ref dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (refDropdownRef.current && !refDropdownRef.current.contains(e.target)) {
+        setShowRefDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const mergedClients = React.useMemo(() => {
     const map = new Map();
@@ -276,9 +347,10 @@ const AddInvoiceModal = ({
       ptTax: selectedInvoice?.pt_tax ?? "",
       otherDed: selectedInvoice?.other_ded ?? "",
       ctc: selectedInvoice?.ctc ?? "",
-      refNoPaymentMade: selectedInvoice?.advance_ref_nos?.length > 0
-        ? selectedInvoice.advance_ref_nos
-        : [""],
+      refNoPaymentMade:
+        selectedInvoice?.advance_ref_nos?.length > 0
+          ? selectedInvoice.advance_ref_nos
+          : [""],
     }));
   }, [selectedInvoice, banks]);
 
@@ -520,7 +592,6 @@ const AddInvoiceModal = ({
       }
 
       // Parse refs from the refNoPaymentMade field
-      // Parse refs from the refNoPaymentMade field
       const refs = Array.isArray(formData.refNoPaymentMade)
         ? formData.refNoPaymentMade.filter((r) => r.trim())
         : formData.refNoPaymentMade
@@ -644,20 +715,103 @@ const AddInvoiceModal = ({
         pt_tax: Number(formData.ptTax) || 0,
         other_ded: Number(formData.otherDed) || 0,
         ctc: Number(formData.ctc) || 0,
-        advance_ref_nos: refs.length > 0 ? refs : [], // ← ADDED THIS LINE
+        advance_ref_nos: refs.length > 0 ? refs : [],
       };
 
       let error;
       let insertedInvoice = null;
 
       if (selectedInvoice) {
-        // Strip DB-owned calculated fields on UPDATE
         const { receivable_amount, ...editableFields } = payload;
         const res = await supabase
           .from("invoices")
           .update(editableFields)
           .eq("id", selectedInvoice.dbId);
         error = res.error;
+
+        // Link NEW advance_payments (PI- refs) on edit
+        // CA- refs are handled by DB trigger automatically
+        if (!error && refs.length > 0) {
+          const oldRefs = Array.isArray(selectedInvoice?.advance_ref_nos)
+            ? selectedInvoice.advance_ref_nos
+            : [];
+          const newRefs = refs.filter((r) => r.trim() && !oldRefs.includes(r));
+
+          for (const ref of newRefs) {
+            // Fetch advance payment — including already-adjusted ones
+            const { data: advancePayment } = await supabase
+              .from("advance_payments")
+              .select("*")
+              .eq("payment_ref", ref)
+              .maybeSingle();
+
+              if (!advancePayment) {
+                if (ref.startsWith("CA-")) {
+                  // CA- refs are handled by DB trigger via client_advance_tracker
+                  // No JS action needed here
+                  continue;
+                }
+                alert(`⚠️ Ref "${ref}" not found in advance payments`);
+                continue;
+              }
+
+            // Block only if linked to a DIFFERENT invoice
+            if (
+              advancePayment.linked_invoice_id &&
+              advancePayment.linked_invoice_id !== selectedInvoice.dbId
+            ) {
+              alert(`⚠️ Ref "${ref}" is already linked to a different invoice`);
+              continue;
+            }
+
+            // Check if payments_received row already exists for this invoice + ref
+            const { data: existingPR } = await supabase
+              .from("payments_received")
+              .select("id")
+              .eq("invoice_id", selectedInvoice.dbId)
+              .eq("payment_ref", ref)
+              .maybeSingle();
+
+            if (existingPR) {
+              // Already linked — just make sure advance_payments is marked correctly
+              await supabase
+                .from("advance_payments")
+                .update({
+                  linked_invoice_id: selectedInvoice.dbId,
+                  is_adjusted: true,
+                })
+                .eq("id", advancePayment.id);
+              alert(`ℹ️ Ref "${ref}" was already linked — confirmed.`);
+              continue;
+            }
+
+            // Insert into payments_received
+            const { error: prErr } = await supabase
+              .from("payments_received")
+              .insert([
+                {
+                  invoice_id: selectedInvoice.dbId,
+                  amount_received: advancePayment.amount,
+                  payment_date: advancePayment.payment_date,
+                  payment_ref: advancePayment.payment_ref,
+                },
+              ]);
+
+            if (prErr) {
+              alert(`❌ Failed to link ref "${ref}": ${prErr.message}`);
+            } else {
+              await supabase
+                .from("advance_payments")
+                .update({
+                  linked_invoice_id: selectedInvoice.dbId,
+                  is_adjusted: true,
+                })
+                .eq("id", advancePayment.id);
+              alert(`✅ Advance payment "${ref}" linked successfully`);
+            }
+            // CA- refs: handled automatically by DB trigger — no action needed here
+          }
+        }
       } else {
         const res = await supabase
           .from("invoices")
@@ -1346,59 +1500,298 @@ const AddInvoiceModal = ({
                     </div>
                     <div>
                       <label className={lbl}>
-                        Ref No of payment made against Invoice (If Any)
+                        Advance Payment Ref — Link to Invoice
                       </label>
                       <div className="space-y-2">
                         {formData.refNoPaymentMade.map((ref, idx) => (
-                          <div key={idx} className="flex items-center gap-2 w-full">
-                            <input
-                              type="text"
-                              value={ref}
-                              onChange={(e) => {
-                                const updated = [...formData.refNoPaymentMade];
-                                updated[idx] = e.target.value;
-                                handleChange("refNoPaymentMade", updated);
-                              }}
-                              className="flex-1 min-w-0 bg-white border border-gray-200 text-gray-800 px-3.5 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors placeholder-gray-400"
-                              placeholder="e.g. PI-DD-120526-01"
-                            />
+                          <div
+                            key={idx}
+                            className="relative"
+                            ref={
+                              idx === formData.refNoPaymentMade.length - 1
+                                ? refDropdownRef
+                                : null
+                            }
+                          >
+                            {/* Input row */}
+                            <div className="flex items-center gap-2 w-full">
+                              <div className="relative flex-1 min-w-0">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                                <input
+                                  type="text"
+                                  value={ref}
+                                  onChange={(e) => {
+                                    const updated = [
+                                      ...formData.refNoPaymentMade,
+                                    ];
+                                    updated[idx] = e.target.value;
+                                    handleChange("refNoPaymentMade", updated);
+                                    setRefSearchQuery(e.target.value);
+                                    setShowRefDropdown(true);
+                                  }}
+                                  onFocus={() => {
+                                    setRefSearchQuery(ref);
+                                    setShowRefDropdown(true);
+                                  }}
+                                  className="w-full pl-9 pr-3 bg-white border border-gray-200 text-gray-800 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors placeholder-gray-400"
+                                  placeholder="Search by client name, ref no or amount…"
+                                />
+                              </div>
+                              {formData.refNoPaymentMade.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated =
+                                      formData.refNoPaymentMade.filter(
+                                        (_, i) => i !== idx
+                                      );
+                                    handleChange("refNoPaymentMade", updated);
+                                  }}
+                                  className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition flex-shrink-0"
+                                  title="Remove this ref"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                              {idx === formData.refNoPaymentMade.length - 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleChange("refNoPaymentMade", [
+                                      ...formData.refNoPaymentMade,
+                                      "",
+                                    ])
+                                  }
+                                  className="p-1.5 rounded-lg text-blue-500 hover:text-blue-700 hover:bg-blue-50 transition flex-shrink-0"
+                                  title="Add another ref"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
 
-                            {formData.refNoPaymentMade.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const updated = formData.refNoPaymentMade.filter(
-                                    (_, i) => i !== idx
-                                  );
-                                  handleChange("refNoPaymentMade", updated);
-                                }}
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition flex-shrink-0"
-                                title="Remove this ref"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            )}
+                            {/* Dropdown — only show for the currently focused input */}
+                            {showRefDropdown &&
+                              idx === formData.refNoPaymentMade.length - 1 && (
+                                <div className="absolute z-30 left-0 right-8 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-64 overflow-y-auto">
+                                  {(() => {
+                                    const q = refSearchQuery
+                                      .toLowerCase()
+                                      .trim();
+                                    const alreadySelected =
+                                      formData.refNoPaymentMade.filter((r) =>
+                                        r.trim()
+                                      );
 
-                            {idx === formData.refNoPaymentMade.length - 1 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleChange("refNoPaymentMade", [
-                                    ...formData.refNoPaymentMade,
-                                    "",
-                                  ])
-                                }
-                                className="p-1.5 rounded-lg text-blue-500 hover:text-blue-700 hover:bg-blue-50 transition flex-shrink-0"
-                                title="Add another ref"
-                              >
-                                <Plus className="w-4 h-4" />
-                              </button>
-                            )}
+                                    const filtered = availableRefs.filter(
+                                      (r) => {
+                                        // Hide already selected refs
+                                        if (alreadySelected.includes(r.ref))
+                                          return false;
+                                        // Filter by query
+                                        if (!q) return true;
+                                        return (
+                                          r.ref
+                                            ?.toLowerCase()
+                                            .includes(q) ||
+                                          r.client_name
+                                            ?.toLowerCase()
+                                            .includes(q) ||
+                                          String(r.amount || "").includes(q)
+                                        );
+                                      }
+                                    );
+
+                                    if (filtered.length === 0) {
+                                      return (
+                                        <div className="px-4 py-3 text-xs text-gray-400 text-center">
+                                          {q
+                                            ? `No available refs matching "${refSearchQuery}"`
+                                            : "No available advance refs — all are closed or already linked"}
+                                        </div>
+                                      );
+                                    }
+
+                                    return filtered.map((r) => (
+                                      <button
+                                        key={r.ref}
+                                        type="button"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          const updated = [
+                                            ...formData.refNoPaymentMade,
+                                          ];
+                                          updated[idx] = r.ref;
+                                          handleChange(
+                                            "refNoPaymentMade",
+                                            updated
+                                          );
+                                          setShowRefDropdown(false);
+                                          setRefSearchQuery("");
+                                        }}
+                                        className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0 transition-colors"
+                                      >
+                                        <div className="flex items-center justify-between gap-3">
+                                          {/* Left — type badge + ref + client + date */}
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                              {/* CA = red (outflow), PR = green (inflow) */}
+                                              <span
+                                                className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                                                  r.flow === "out"
+                                                    ? "bg-red-50 text-red-600 border-red-200" // CA — red — money went OUT
+                                                    : "bg-emerald-50 text-emerald-700 border-emerald-200" // PR — green — money came IN
+                                                }`}
+                                              >
+                                                {r.flow === "out"
+                                                  ? "⬆ CA"
+                                                  : "⬇ PR"}
+                                              </span>
+                                              <span className="font-mono text-xs font-semibold text-gray-700">
+                                                {r.ref}
+                                              </span>
+                                              <span
+                                                className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                                                  r.status === "Pending"
+                                                    ? "bg-amber-50 text-amber-600 border border-amber-200"
+                                                    : r.status ===
+                                                      "Partially Paid"
+                                                    ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                                                    : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                                                }`}
+                                              >
+                                                {r.status}
+                                              </span>
+                                            </div>
+                                            {/* Client name — bold */}
+                                            <p className="text-sm font-semibold text-gray-800 truncate">
+                                              {r.client_name}
+                                            </p>
+                                            {/* Date */}
+                                            <p className="text-[11px] text-gray-400 mt-0.5">
+                                              {r.date
+                                                ? new Date(
+                                                    r.date
+                                                  ).toLocaleDateString(
+                                                    "en-IN",
+                                                    {
+                                                      day: "2-digit",
+                                                      month: "short",
+                                                      year: "numeric",
+                                                    }
+                                                  )
+                                                : "—"}
+                                            </p>
+                                          </div>
+                                          {/* Right — amount */}
+                                          <div className="text-right flex-shrink-0">
+                                            <p
+                                              className={`text-sm font-black ${
+                                                r.flow === "out"
+                                                  ? "text-red-600"
+                                                  : "text-emerald-600"
+                                              }`}
+                                            >
+                                              {r.flow === "out" ? "−" : "+"}₹
+                                              {Number(
+                                                r.amount || 0
+                                              ).toLocaleString("en-IN")}
+                                            </p>
+                                            {r.flow === "out" &&
+                                              Number(r.pending_due) > 0 && (
+                                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                                  Pending: ₹
+                                                  {Number(
+                                                    r.pending_due || 0
+                                                  ).toLocaleString("en-IN")}
+                                                </p>
+                                              )}
+                                          </div>
+                                        </div>
+                                      </button>
+                                    ));
+                                  })()}
+                                </div>
+                              )}
+
+                            {/* Show linked ref info if already filled */}
+                            {ref.trim() && (() => {
+                              const linked = availableRefs.find(
+                                (r) => r.ref === ref.trim()
+                              );
+                              if (!linked)
+                                return (
+                                  <p className="text-[11px] text-gray-400 mt-1 ml-1">
+                                    Ref typed manually:{" "}
+                                    <span className="font-mono font-semibold text-gray-600">
+                                      {ref}
+                                    </span>
+                                  </p>
+                                );
+                              return (
+                                <div
+                                  className={`mt-1 px-3 py-2 rounded-lg border flex items-center justify-between ${
+                                    linked.flow === "out"
+                                      ? "bg-red-50 border-red-200"
+                                      : "bg-emerald-50 border-emerald-200"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span
+                                      className={`text-[10px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                                        linked.flow === "out"
+                                          ? "bg-red-100 text-red-600"
+                                          : "bg-emerald-100 text-emerald-700"
+                                      }`}
+                                    >
+                                      {linked.flow === "out" ? "⬆ CA" : "⬇ PR"}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <p
+                                        className="text-xs font-bold truncate"
+                                        style={{
+                                          color:
+                                            linked.flow === "out"
+                                              ? "#dc2626"
+                                              : "#059669",
+                                        }}
+                                      >
+                                        {linked.client_name}
+                                      </p>
+                                      <p className="text-[10px] text-gray-400">
+                                        {linked.date
+                                          ? new Date(
+                                              linked.date
+                                            ).toLocaleDateString("en-IN", {
+                                              day: "2-digit",
+                                              month: "short",
+                                              year: "numeric",
+                                            })
+                                          : ""}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={`text-sm font-black flex-shrink-0 ml-2 ${
+                                      linked.flow === "out"
+                                        ? "text-red-600"
+                                        : "text-emerald-600"
+                                    }`}
+                                  >
+                                    {linked.flow === "out" ? "−" : "+"}₹
+                                    {Number(linked.amount || 0).toLocaleString(
+                                      "en-IN"
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         ))}
                       </div>
                       <p className="text-xs text-amber-500 mt-1.5">
-                        Enter advance payment ref to auto-link
+                        💡 Search by client name, ref no or amount — only
+                        open/unlinked advances shown
                       </p>
                     </div>
                   </div>

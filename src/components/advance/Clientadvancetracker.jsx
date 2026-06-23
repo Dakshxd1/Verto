@@ -18,7 +18,7 @@ const STATUS_OPTIONS = ["Pending", "Partially Paid", "Closed"];
 const emptyForm = {
   client_name: "", ledger_name: "", date: "", amount: "",
   interest: "", paid_back: "", status: "Pending", remarks: "",
-  ref_no: "", // ← ADDED
+  ref_no: "", bank_id: "",
 };
 
 // ─── Excel column map ─────────────────────────────────────────────────────────
@@ -183,7 +183,6 @@ const InlineEditRow = ({ row, onSave, onCancel }) => {
 
   const handleSave = async () => {
     if (isIntern) return;
-    // Updated validation with required fields check
     if (!f.client_name || !f.amount || !f.ledger_name || !f.date || f.interest === "" || f.paid_back === "") {
       alert("Please fill all required fields (Client Name, Ledger Name, Date, Amount, Interest, Paid Back)");
       return;
@@ -366,6 +365,10 @@ const BulkDetailModal = ({ upload, onClose, onDataChanged }) => {
   const handleRowDeleted = async (rowId) => {
     setDeleting(true);
     const rec = rows.find((r) => r.id === rowId);
+    
+    // DB trigger handles bank_entry and software_entry deletion automatically
+    // No manual deletion needed here
+    
     await supabase.from("client_advance_tracker").delete().eq("id", rowId);
     logExport({
       action:      "DELETE",
@@ -562,6 +565,7 @@ export default function ClientAdvanceTracker() {
   const { isIntern, role } = usePerms?.() || {};
   const [records, setRecords]         = useState([]);
   const [bulkUploads, setBulkUploads] = useState([]);
+  const [banks, setBanks]             = useState([]);
   const [loading, setLoading]         = useState(true);
   const [search, setSearch]           = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
@@ -584,12 +588,14 @@ export default function ClientAdvanceTracker() {
 
   async function fetchAll() {
     setLoading(true);
-    const [recRes, bulkRes] = await Promise.all([
+    const [recRes, bulkRes, bankRes] = await Promise.all([
       supabase.from("client_advance_tracker").select("*").order("created_at", { ascending: false }),
       supabase.from("client_advance_bulk_uploads").select("*").order("uploaded_at", { ascending: false }),
+      supabase.from("bank_master").select("id, bank_name"),
     ]);
-    if (!recRes.error) setRecords(recRes.data || []);
+    if (!recRes.error)  setRecords(recRes.data || []);
     if (!bulkRes.error) setBulkUploads(bulkRes.data || []);
+    if (!bankRes.error) setBanks(bankRes.data || []);
     setLoading(false);
   }
 
@@ -606,62 +612,70 @@ export default function ClientAdvanceTracker() {
       paid_back: rec.paid_back || "",
       status: rec.status || "Pending",
       remarks: rec.remarks || "",
-      ref_no: rec.ref_no || "", // ← ADDED
+      ref_no: rec.ref_no || "",
+      bank_id: rec.bank_id || "",
     });
     setShowModal(true);
   }
 
-  // Updated handleSave with validation
   async function handleSave() {
     if (isIntern) return;
-    
-    // Required fields validation
+
     if (!form.client_name || !form.amount || !form.ledger_name || !form.date || form.interest === "" || form.paid_back === "") {
-      alert("Please fill all required fields (Client Name, Ledger Name, Date, Amount, Interest, Paid Back)");
-      return;
+      alert("Please fill all required fields"); return;
     }
     if (!form.client_name.trim()) { alert("Client Name is required"); return; }
     if (!form.ledger_name.trim()) { alert("Ledger Name is required"); return; }
     if (!form.date) { alert("Date of Loan / Advance is required"); return; }
     if (!form.amount || parseFloat(form.amount) <= 0) { alert("Amount must be greater than 0"); return; }
-    if (form.interest === "" || form.interest === null || form.interest === undefined) { alert("Interest is required (enter 0 if none)"); return; }
-    if (form.paid_back === "" || form.paid_back === null || form.paid_back === undefined) { alert("Paid Back is required (enter 0 if none)"); return; }
-    
+    if (form.interest === "" || form.interest === null) { alert("Interest is required (enter 0 if none)"); return; }
+    if (form.paid_back === "" || form.paid_back === null) { alert("Paid Back is required (enter 0 if none)"); return; }
+
     setSaving(true);
     const pending_due = calcPendingDue(form.amount, form.interest, form.paid_back);
+    const amountNum = parseFloat(form.amount) || 0;
+
     const payload = {
-      client_name: form.client_name,
-      ledger_name: form.ledger_name,
-      date: form.date || null,
-      amount: parseFloat(form.amount) || 0,
-      interest: parseFloat(form.interest) || 0,
-      paid_back: parseFloat(form.paid_back) || 0,
+      client_name:  form.client_name,
+      ledger_name:  form.ledger_name,
+      date:         form.date || null,
+      amount:       amountNum,
+      interest:     parseFloat(form.interest) || 0,
+      paid_back:    parseFloat(form.paid_back) || 0,
       pending_due,
-      status: form.status,
-      remarks: form.remarks,
-      ...(editRecord ? { ref_no: editRecord.ref_no } : {}),  // ← CHANGED
+      status:       form.status,
+      remarks:      form.remarks,
+      bank_id:      form.bank_id || null,
+      ...(editRecord ? { ref_no: editRecord.ref_no } : {}),
     };
+
     if (editRecord) {
-      await supabase.from("client_advance_tracker").update(payload).eq("id", editRecord.id);
-      logExport({
-        action:      "UPDATE",
-        category:    "Advance",
+      // DB trigger handles bank_entries and software_entries sync automatically
+      const { error } = await supabase
+        .from("client_advance_tracker")
+        .update(payload)
+        .eq("id", editRecord.id);
+
+      logExport({ action: "UPDATE", category: "Advance",
         description: `Updated Client Advance — ${form.client_name}`,
-        client_name: form.client_name,
-        amount:      parseFloat(form.amount) || 0,
-        meta:        { id: editRecord.id, status: form.status, pending_due },
+        client_name: form.client_name, amount: amountNum,
+        meta: { id: editRecord.id, status: form.status, pending_due },
       });
+
     } else {
-      await supabase.from("client_advance_tracker").insert([payload]);
-      logExport({
-        action:      "INSERT",
-        category:    "Advance",
+      // DB trigger handles bank_entries and software_entries creation automatically
+      const { data: inserted, error } = await supabase
+        .from("client_advance_tracker")
+        .insert([payload])
+        .select().single();
+
+      logExport({ action: "INSERT", category: "Advance",
         description: `Added Client Advance — ${form.client_name}`,
-        client_name: form.client_name,
-        amount:      parseFloat(form.amount) || 0,
-        meta:        { status: form.status, pending_due },
+        client_name: form.client_name, amount: amountNum,
+        meta: { status: form.status, pending_due },
       });
     }
+
     setSaving(false);
     setShowModal(false);
     fetchAll();
@@ -669,6 +683,10 @@ export default function ClientAdvanceTracker() {
 
   async function handleDelete(id) {
     const rec = records.find((r) => r.id === id);
+    
+    // DB trigger handles bank_entry and software_entry deletion automatically
+    // No manual deletion needed here
+
     await supabase.from("client_advance_tracker").delete().eq("id", id);
     logExport({
       action:      "DELETE",
@@ -685,6 +703,10 @@ export default function ClientAdvanceTracker() {
   async function handleDeleteBulkUpload(bulkId) {
     setBulkDeleting(true);
     const bulkRec = bulkUploads.find((u) => u.id === bulkId);
+    
+    // DB trigger handles bank_entries and software_entries deletion automatically
+    // No manual deletion needed here
+
     await supabase.from("client_advance_tracker").delete().eq("bulk_upload_id", bulkId);
     await supabase.from("client_advance_bulk_uploads").delete().eq("id", bulkId);
     logExport({
@@ -747,6 +769,7 @@ export default function ClientAdvanceTracker() {
           const dateStr    = excelDateToString(row.date);
           const status     = STATUS_OPTIONS.includes(row.status) ? row.status : "Pending";
 
+          // DB trigger will handle bank_entries and software_entries creation
           const { error: insertErr } = await supabase.from("client_advance_tracker").insert([{
             client_name:   String(row.client_name).trim(),
             ledger_name:   row.ledger_name ? String(row.ledger_name).trim() : null,
@@ -754,6 +777,7 @@ export default function ClientAdvanceTracker() {
             amount, interest, paid_back, pending_due, status,
             remarks:       row.remarks ? String(row.remarks).trim() : null,
             bulk_upload_id: uploadSession.id,
+            // bank_id is not set in bulk upload — trigger will skip bank entry creation
           }]);
           if (insertErr) throw insertErr;
 
@@ -1070,6 +1094,27 @@ export default function ClientAdvanceTracker() {
                     className="w-full px-3 py-2.5 border border-orange-200 rounded-xl text-sm bg-orange-50 text-orange-800 font-mono cursor-not-allowed"
                     value={editRecord ? editRecord.ref_no || "—" : "Will auto-generate on save"} />
                 </div>
+                {/* Bank Selection */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-orange-800 mb-1.5 uppercase tracking-wide">
+                    Debit From Bank *
+                  </label>
+                  <select
+                    className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 ${
+                      !form.bank_id ? "border-red-300 bg-red-50" : "border-orange-200"
+                    }`}
+                    value={form.bank_id}
+                    onChange={(e) => setForm((f) => ({ ...f, bank_id: e.target.value }))}
+                  >
+                    <option value="">Select Bank to Debit</option>
+                    {banks.map((b) => (
+                      <option key={b.id} value={b.id}>{b.bank_name}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-orange-500 mt-1">
+                    The advance amount will be debited from this bank on the entry date
+                  </p>
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-orange-800 mb-1.5 uppercase tracking-wide">Client Name *</label>
                   <input type="text" 
@@ -1128,7 +1173,7 @@ export default function ClientAdvanceTracker() {
                 <button onClick={() => setShowModal(false)} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50">Cancel</button>
                 <button 
                   onClick={handleSave} 
-                  disabled={saving || isIntern || !form.client_name.trim() || !form.ledger_name.trim() || !form.date || !form.amount || parseFloat(form.amount) <= 0 || form.interest === "" || form.paid_back === ""} 
+                  disabled={saving || isIntern || !form.client_name.trim() || !form.ledger_name.trim() || !form.date || !form.amount || parseFloat(form.amount) <= 0 || form.interest === "" || form.paid_back === "" || !form.bank_id} 
                   className={`px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow disabled:opacity-60 ${
                     isIntern ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-gradient-to-r from-[#7c2d12] to-[#ea580c] text-white"
                   }`}

@@ -691,6 +691,66 @@ const StatutoryInvoiceBreakdownPanel = ({ onClose }) => {
     }
   );
 
+  // ── Excel Export ───────────────────────────────────────────────────────────
+  const downloadExcel = () => {
+    if (filtered.length === 0) return;
+
+    const exportData = filtered.map((row, idx) => ({
+      "#": idx + 1,
+      "Invoice No": row.invoice_number || "—",
+      "Invoice Date": fmtMonth(row.invoice_date),
+      Client: row.client_name || "—",
+      Entity: row.entity_name || "—",
+      "Invoice Value (₹)": Number(row.invoice_value || 0),
+      "GST (₹)": Number(row.net_gst || 0),
+      "TDS (₹)": Number(row.net_tds || 0),
+      "PF (₹)": Number(row.net_pf || 0),
+      "ESI (₹)": Number(row.net_esi || 0),
+      "LWF (₹)": Number(row.net_lwf || 0),
+      "PT (₹)": Number(row.net_pt || 0),
+      "Emp Count": Number(row.employee_count || 0),
+    }));
+
+    // Totals row
+    exportData.push({
+      "#": "TOTAL",
+      "Invoice No": "",
+      "Invoice Date": "",
+      Client: "",
+      Entity: `${filtered.length} invoices`,
+      "Invoice Value (₹)": totals.invoice_value,
+      "GST (₹)": totals.net_gst,
+      "TDS (₹)": totals.net_tds,
+      "PF (₹)": totals.net_pf,
+      "ESI (₹)": totals.net_esi,
+      "LWF (₹)": totals.net_lwf,
+      "PT (₹)": totals.net_pt,
+      "Emp Count": totals.employee_count,
+    });
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    ws["!cols"] = Object.keys(exportData[0]).map((k) => ({
+      wch: Math.max(k.length, 14),
+    }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Invoice Breakdown");
+
+    const month = monthFilter
+      ? new Date(monthFilter + "-01").toLocaleDateString("en-IN", {
+          month: "short",
+          year: "numeric",
+        })
+      : "All";
+    const entity = entityFilter || "All";
+    XLSX.writeFile(
+      wb,
+      `Statutory_Invoice_Breakdown_${month}_${entity}_${new Date()
+        .toISOString()
+        .slice(0, 10)}.xlsx`
+    );
+  };
+
   return (
     <motion.div
       initial={{ x: "100%", opacity: 0 }}
@@ -762,9 +822,17 @@ const StatutoryInvoiceBreakdownPanel = ({ onClose }) => {
             </option>
           ))}
         </select>
-        <span className="text-xs text-gray-400 ml-auto">
-          {filtered.length} invoices
-        </span>
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-xs text-gray-400">{filtered.length} invoices</span>
+          <button
+            onClick={downloadExcel}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            Download Excel
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -1093,6 +1161,66 @@ const ComplianceTrackerPanel = ({ onClose }) => {
   const years = Array.from({ length: 7 }, (_, i) =>
     (new Date().getFullYear() - 3 + i).toString()
   );
+
+  // ── Excel Export ───────────────────────────────────────────────────────────
+  const downloadExcel = () => {
+    if (filtered.length === 0) return;
+
+    const exportData = filtered.map((row, idx) => ({
+      "#": idx + 1,
+      "Invoice No": row.invoice_number || "—",
+      "Invoice Date": fmtMonth(row.invoice_date),
+      Client: row.client_name || "—",
+      Entity: row.entity_name || "—",
+      "Invoice Value (₹)": Number(row.invoice_value || 0),
+      "GST (₹)": Number(row.net_gst || 0),
+      "TDS (₹)": Number(row.net_tds || 0),
+      "PF (₹)": Number(row.net_pf || 0),
+      "ESI (₹)": Number(row.net_esi || 0),
+      "LWF (₹)": Number(row.net_lwf || 0),
+      "PT (₹)": Number(row.net_pt || 0),
+      "Emp Count": Number(row.employee_count || 0),
+    }));
+
+    // Totals row
+    exportData.push({
+      "#": "TOTAL",
+      "Invoice No": "",
+      "Invoice Date": "",
+      Client: "",
+      Entity: `${filtered.length} invoices`,
+      "Invoice Value (₹)": totals.invoice_value,
+      "GST (₹)": totals.net_gst,
+      "TDS (₹)": totals.net_tds,
+      "PF (₹)": totals.net_pf,
+      "ESI (₹)": totals.net_esi,
+      "LWF (₹)": totals.net_lwf,
+      "PT (₹)": totals.net_pt,
+      "Emp Count": totals.employee_count,
+    });
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    ws["!cols"] = Object.keys(exportData[0]).map((k) => ({
+      wch: Math.max(k.length, 14),
+    }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Invoice Breakdown");
+
+    const month = monthFilter
+      ? new Date(monthFilter + "-01").toLocaleDateString("en-IN", {
+          month: "short",
+          year: "numeric",
+        })
+      : "All";
+    const entity = entityFilter || "All";
+    XLSX.writeFile(
+      wb,
+      `Statutory_Invoice_Breakdown_${month}_${entity}_${new Date()
+        .toISOString()
+        .slice(0, 10)}.xlsx`
+    );
+  };
 
   return (
     <motion.div
