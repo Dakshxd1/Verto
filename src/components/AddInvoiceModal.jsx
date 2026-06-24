@@ -351,6 +351,15 @@ const AddInvoiceModal = ({
         selectedInvoice?.advance_ref_nos?.length > 0
           ? selectedInvoice.advance_ref_nos
           : [""],
+      // Populate OS outflow fields on edit
+      monthOfPayout: selectedInvoice?.month_of_payout ?? "",
+      statutoryPayoutDate: selectedInvoice?.statutory_payout_date ?? "",
+      vertoFeePayoutDate: selectedInvoice?.verto_fee_payout_date ?? "",
+      expectedOutflowInHand: selectedInvoice?.expected_outflow_in_hand ?? "",
+      expectedOutflowPF: selectedInvoice?.expected_outflow_pf ?? "",
+      expectedOutflowESI: selectedInvoice?.expected_outflow_esi ?? "",
+      expectedOutflowGST: selectedInvoice?.expected_outflow_gst ?? "",
+      expectedOutflowTax: selectedInvoice?.expected_outflow_tax ?? "",
     }));
   }, [selectedInvoice, banks]);
 
@@ -688,7 +697,9 @@ const AddInvoiceModal = ({
         return;
       }
 
-      // Base payload — all editable fields
+      // ═══════════════════════════════════════════════════════════════
+      // ✅ FIXED PAYLOAD — includes all OS outflow fields
+      // ═══════════════════════════════════════════════════════════════
       const payload = {
         invoice_number: formData.invoiceNo,
         employee_name: formData.employeeName || null,
@@ -716,12 +727,23 @@ const AddInvoiceModal = ({
         other_ded: Number(formData.otherDed) || 0,
         ctc: Number(formData.ctc) || 0,
         advance_ref_nos: refs.length > 0 ? refs : [],
+
+        // ─── MISSING FIELDS NOW INCLUDED ───
+        month_of_payout: formData.monthOfPayout || null,
+        statutory_payout_date: formData.statutoryPayoutDate || null,
+        verto_fee_payout_date: formData.vertoFeePayoutDate || null,
+        expected_outflow_in_hand: formData.expectedOutflowInHand || null,
+        expected_outflow_pf: formData.expectedOutflowPF || null,
+        expected_outflow_esi: formData.expectedOutflowESI || null,
+        expected_outflow_gst: formData.expectedOutflowGST || null,
+        expected_outflow_tax: formData.expectedOutflowTax || null,
       };
 
       let error;
       let insertedInvoice = null;
 
       if (selectedInvoice) {
+        // For edit: remove receivable_amount if you want to keep that restriction
         const { receivable_amount, ...editableFields } = payload;
         const res = await supabase
           .from("invoices")

@@ -630,6 +630,7 @@ const AddInternalTeamModal = ({
     "IT",
     "Projects",
     "Others",
+    "Mgmt",
   ];
 
   // Change 1: Add DEPT_ALIAS_MAP + normalizeDept()
@@ -677,6 +678,9 @@ const AddInternalTeamModal = ({
     other: "Others",
     misc: "Others",
     miscellaneous: "Others",
+    mgmt: "Mgmt",
+    management: "Mgmt",
+    "mgmt.": "Mgmt",
   };
 
   const normalizeDept = (raw) => {
@@ -725,7 +729,6 @@ const AddInternalTeamModal = ({
       const deptNorm = normalizeDept(str("department"));
       const entityNorm = str("entity");
 
-
       const num = (k) => {
         const v = parseFloat(str(k));
         return isNaN(v) ? 0 : v;
@@ -746,9 +749,7 @@ const AddInternalTeamModal = ({
         str("entity") &&
         entityOptions.length > 0 &&
         !entityOptions.some(
-          (e) =>
-            e.trim().toLowerCase() ===
-            entityNorm.trim().toLowerCase()
+          (e) => e.trim().toLowerCase() === entityNorm.trim().toLowerCase()
         )
       ) {
         rowErrors.push(
@@ -779,9 +780,7 @@ const AddInternalTeamModal = ({
         // Change 5: Use normalized values in the row object
         entity:
           entityOptions.find(
-            (e) =>
-              e.trim().toLowerCase() ===
-              entityNorm.trim().toLowerCase()
+            (e) => e.trim().toLowerCase() === entityNorm.trim().toLowerCase()
           ) || entityNorm,
         department: deptNorm,
         designation: str("designation"),
@@ -1019,6 +1018,7 @@ const AddInternalTeamModal = ({
                       { code: "IT", label: "Information Technology" },
                       { code: "Projects", label: "Projects" },
                       { code: "Others", label: "Others" },
+                      { code: "Mgmt", label: "Management" },
                     ].map((d) => (
                       <option key={d.code} value={d.code}>
                         {d.label}

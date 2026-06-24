@@ -265,6 +265,7 @@ const DeptReports = () => {
           .order("dept_name");
         const d = depts || [];
         setAllDepts(d);
+        // Only set default if not already set
         if (!deptId && d.length > 0) setDeptId(d[0].id);
       } else {
         setDeptId(resolvedDeptId);
@@ -314,25 +315,38 @@ const DeptReports = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fyStartYear, deptId]);
 
-  // Section 1: Revenue KPIs from rpcRevenue + rpcRatios
+  // FIX 1: Fix rpcRatios aggregation — filter by dept, extract mgmt fields
   const kpi = useMemo(() => {
     const rev = rpcRevenue.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
     const fee = rpcRevenue.reduce((s, r) => s + Number(r.total_fee || 0), 0);
     const tds = rpcRevenue.reduce((s, r) => s + Number(r.total_tds || 0), 0);
 
-    const rat = rpcRatios[0] || {};
+    // Filter ratios to only revenue-generating depts (not Management/Accts/BD)
+    const revDepts = ['Operations', 'Recruitment', 'Temporary', 'Projects'];
+    const rat = rpcRatios.filter(r => revDepts.includes(r.dept_name));
+    const rat0 = rat[0] || rpcRatios[0] || {};
+
+    // For admin: total_mgmt_cost and total_emp_cost are same on every row
+    const totalMgmtCost = Number(rpcRatios[0]?.total_mgmt_cost || 0);
+    const totalEmpCost  = Number(rpcRatios[0]?.total_emp_cost  || 0);
+    const adminMgmtRatio = totalEmpCost ? (totalMgmtCost / totalEmpCost * 100) : 0;
+
     return {
-      total_revenue:         rev,
-      total_fee:             fee,
-      total_tds:             tds,
-      fee_to_revenue_pct:    Number(rat.fee_to_revenue || 0),
-      internal_salary:       Number(rat.total_internal_salary || 0),
-      external_cost:         Number(rat.total_external_cost || 0),
-      non_salary_exp:        Number(rat.total_non_salary || 0),
-      internal_headcount:    Number(rat.internal_headcount || 0),
-      external_headcount:    Number(rat.external_headcount || 0),
-      revenue_per_ext_head:  Number(rat.revenue_per_ext_head || 0),
-      dept_salary_to_fee:    Number(rat.dept_salary_to_dept_fee || 0),
+      total_revenue:        rev,
+      total_fee:            fee,
+      total_tds:            tds,
+      fee_to_revenue_pct:   Number(rat0.fee_to_revenue || 0),
+      internal_salary:      Number(rat0.total_internal_salary || 0),
+      external_cost:        Number(rat0.total_external_cost || 0),
+      non_salary_exp:       Number(rat0.total_non_salary || 0),
+      internal_headcount:   Number(rat0.internal_headcount || 0),
+      external_headcount:   Number(rat0.external_headcount || 0),
+      revenue_per_ext_head: Number(rat0.revenue_per_ext_head || 0),
+      dept_salary_to_fee:   Number(rat0.dept_salary_to_dept_fee || 0),
+      // NEW
+      totalMgmtCost,
+      totalEmpCost,
+      adminMgmtRatio,
     };
   }, [rpcRevenue, rpcRatios]);
 
@@ -356,10 +370,21 @@ const DeptReports = () => {
     return { months, last, prev, revMoM, feeMoM };
   }, [rpcRevenue]);
 
-  // Section 3: Salary breakdown table
-  const salaryTable = useMemo(() =>
-    [...rpcSalary].sort((a, b) => String(a.month).localeCompare(String(b.month))),
-  [rpcSalary]);
+  // FIX 4: Salary — group by month from pay_head rows
+  const salByMonth = useMemo(() => {
+    const map = new Map();
+    for (const r of rpcSalary) {
+      const m = r.month;
+      if (!m) continue;
+      if (!map.has(m)) map.set(m, { month: m, fixed: 0, variable: 0, reimb: 0, total: 0 });
+      const entry = map.get(m);
+      entry.total += Number(r.net_payment || 0);
+      if (r.pay_head === 'Fixed Salary')   entry.fixed    += Number(r.net_payment || 0);
+      if (r.pay_head === 'Variable Salary' || r.pay_head === 'Incentive') entry.variable += Number(r.net_payment || 0);
+      if (r.pay_head === 'Reimbursement')  entry.reimb    += Number(r.net_payment || 0);
+    }
+    return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+  }, [rpcSalary]);
 
   // Section 4: HR KPIs from attrition RPC
   const hrKPIs = useMemo(() => {
@@ -467,6 +492,10 @@ const DeptReports = () => {
 
   const totalPages = Math.ceil(section1Table.length / ITEMS);
 
+  // FIX 2: Filter departments for mgmt cost ratio table
+  const revDepts = ['Operations', 'Recruitment', 'Temporary', 'Projects'];
+  const mgmtRatioData = rpcRatios.filter(r => revDepts.includes(r.dept_name));
+
   return (
     <div className="space-y-6 pb-10 bg-gray-50/60 min-h-screen" style={{ fontFamily: "'DM Sans', 'Geist', sans-serif" }}>
       <div className="flex items-center justify-between flex-wrap gap-3 pt-1">
@@ -529,9 +558,10 @@ const DeptReports = () => {
               <div className="relative">
                 <select
                   value={deptId || ""}
-                  onChange={(e) => setDeptId(Number(e.target.value))}
+                  onChange={(e) => setDeptId(e.target.value || null)} // FIX 5: Keep as string, allow "All"
                   className="w-full appearance-none bg-white border border-slate-200 rounded-xl px-3 py-2 pr-8 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-200"
                 >
+                  <option value="">All Departments</option> {/* FIX 5: Add "All" option */}
                   {allDepts.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.dept_name}
@@ -655,13 +685,14 @@ const DeptReports = () => {
           ))}
         </ChartCard>
         <ChartCard title="Salary Breakdown" subtitle="Internal vs External salary costs">
-          {rpcSalary.length === 0 ? <Empty msg="No salary data" /> : (
+          {salByMonth.length === 0 ? <Empty msg="No salary data" /> : (
             <div className="space-y-2">
-              {rpcSalary.slice(-6).map((r, i) => (
+              {/* FIX 4: Use salByMonth with grouped data */}
+              {salByMonth.slice(-6).map((r, i) => (
                 <div key={`${r.month}-${i}`} className="flex items-center justify-between py-1 border-b border-slate-100">
                   <span className="text-xs font-semibold text-slate-700">{fmtMonth(r.month)}</span>
                   <span className="text-xs font-bold tabular-nums text-slate-700">
-                    Internal: {fmt(r.total_internal_salary)} · External: {fmt(r.total_external_salary)}
+                    Fixed: {fmt(r.fixed)} · Var: {fmt(r.variable)} · Reimb: {fmt(r.reimb)}
                   </span>
                 </div>
               ))}
@@ -697,11 +728,12 @@ const DeptReports = () => {
         <ChartCard title="Attrition Summary" subtitle="Active vs Inactive employees">
           {rpcAttrition.length === 0 ? <Empty msg="No attrition data" /> : (
             <div className="space-y-2">
+              {/* FIX 3: Use r.department instead of r.month */}
               {rpcAttrition.slice(-6).map((r, i) => (
-                <div key={`${r.department || r.month}-${i}`} className="flex items-center justify-between py-1 border-b border-slate-100">
-                  <span className="text-xs font-semibold text-slate-700">{fmtMonth(r.month)}</span>
+                <div key={`${r.department}-${i}`} className="flex items-center justify-between py-1 border-b border-slate-100">
+                  <span className="text-xs font-semibold text-slate-700">{r.department}</span>
                   <span className="text-xs font-bold tabular-nums text-slate-700">
-                    Active: {r.total_active} · Inactive: {r.total_inactive} · Tenure: {r.avg_tenure_months?.toFixed(1)}m
+                    Active: {r.total_active} · Inactive: {r.total_inactive} · Attrition: {Number(r.attrition_rate||0).toFixed(1)}% · Tenure: {Number(r.avg_tenure_months||0).toFixed(1)}m
                   </span>
                 </div>
               ))}
@@ -718,6 +750,59 @@ const DeptReports = () => {
         <KpiCard label="Variable to Fixed"        value={`${Number(rpcRatios[0]?.variable_to_fixed || 0).toFixed(1)}%`}       sub="variable / fixed salary"       icon={CreditCard}  color={P.clay} />
         <KpiCard label="Reimbursement to Fixed"   value={`${Number(rpcRatios[0]?.reimbursement_to_fixed || 0).toFixed(1)}%`}  sub="reimb / fixed salary"          icon={FileText}    color={P.sky} />
       </div>
+
+      {/* SECTION 5b — Management Cost Ratio (FIX 2) */}
+      <SH icon={Wallet} title="Management Cost Ratio" color={P.plum} />
+
+      {/* Admin view: overall ratio */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <KpiCard
+            label="Total Mgmt Cost"
+            value={fmt(kpi.totalMgmtCost)}
+            sub="Management dept salary paid"
+            icon={Wallet}
+            color={P.plum}
+          />
+          <KpiCard
+            label="Total Employee Cost"
+            value={fmt(kpi.totalEmpCost)}
+            sub="All employee_expense_payouts"
+            icon={Users}
+            color={P.slate}
+          />
+          <KpiCard
+            label="Mgmt Cost / Total Emp Cost"
+            value={`${kpi.adminMgmtRatio.toFixed(2)}%`}
+            sub="Overall management overhead"
+            icon={TrendingUp}
+            color={P.plum}
+          />
+        </div>
+      )}
+
+      {/* Dept-wise mgmt cost ratio table */}
+      <ChartCard title="Mgmt Cost Ratio by Department" subtitle="Allocated management cost ÷ department employee cost">
+        {mgmtRatioData.length === 0 ? (
+          <Empty msg="No management employees paid yet" />
+        ) : (
+          <DataTable
+            columns={[
+              { header: "Department",       key: "dept_name",       className: "font-medium text-slate-800" },
+              { header: "Dept Emp Cost",    key: "total_internal_salary", align: "right",
+                formatter: (v) => <span className="text-slate-600">{fmt(v)}</span> },
+              { header: "Mgmt Cost %",      key: "mgmt_cost_ratio", align: "right",
+                formatter: (v) => (
+                  <span className={`font-bold ${Number(v) > 20 ? "text-rose-600" : Number(v) > 10 ? "text-amber-600" : "text-emerald-600"}`}>
+                    {v != null ? `${Number(v).toFixed(2)}%` : "—"}
+                  </span>
+                )
+              },
+            ]}
+            data={mgmtRatioData}
+          />
+        )}
+      </ChartCard>
 
       {/* SECTION 6 HR Intelligence */}
       <SH icon={Users} title="HR Intelligence" color={P.slate} />

@@ -287,7 +287,6 @@ const InvoiceCard = ({ d }) => (
       ))}
     </div>
 
-    {/* Statutory breakdown row — only shown if invoice has any statutory amounts */}
     {num(d.co_pf) +
       num(d.co_esi) +
       num(d.lwf_tax) +
@@ -430,20 +429,7 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
 
   const formatMonth = (key) => {
     const [yr, mo] = key.split("-");
-    const names = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
+    const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     return `${names[parseInt(mo) - 1]} ${yr}`;
   };
 
@@ -484,31 +470,17 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
       list = list.filter((r) => {
         if (!r.issue_date) return false;
         const d = new Date(r.issue_date);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-          2,
-          "0"
-        )}`;
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
         return key === filterMonth;
       });
     }
     list.sort((a, b) => {
       let av, bv;
-      if (sortField === "amount") {
-        av = num(a.amount);
-        bv = num(b.amount);
-      } else if (sortField === "issue_date") {
-        av = a.issue_date || "";
-        bv = b.issue_date || "";
-      } else if (sortField === "client") {
-        av = a.invoices?.clients_master?.client_name || "";
-        bv = b.invoices?.clients_master?.client_name || "";
-      } else if (sortField === "invoice_number") {
-        av = a.invoice_number || "";
-        bv = b.invoice_number || "";
-      } else {
-        av = a.created_at || "";
-        bv = b.created_at || "";
-      }
+      if (sortField === "amount") { av = num(a.amount); bv = num(b.amount); }
+      else if (sortField === "issue_date") { av = a.issue_date || ""; bv = b.issue_date || ""; }
+      else if (sortField === "client") { av = a.invoices?.clients_master?.client_name || ""; bv = b.invoices?.clients_master?.client_name || ""; }
+      else if (sortField === "invoice_number") { av = a.invoice_number || ""; bv = b.invoice_number || ""; }
+      else { av = a.created_at || ""; bv = b.created_at || ""; }
       if (av < bv) return sortDir === "asc" ? -1 : 1;
       if (av > bv) return sortDir === "asc" ? 1 : -1;
       return 0;
@@ -543,10 +515,7 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
             </p>
           </div>
         </div>
-        <button
-          onClick={fetchRecords}
-          className="text-violet-100 hover:text-white"
-        >
+        <button onClick={fetchRecords} className="text-violet-100 hover:text-white">
           <RefreshCcw className="w-4 h-4" />
         </button>
       </div>
@@ -570,9 +539,7 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
                 onClick={() => setFilterType(t)}
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
                   filterType === t
-                    ? t === "Bad Debt"
-                      ? "bg-red-500 text-white"
-                      : "bg-violet-600 text-white"
+                    ? t === "Bad Debt" ? "bg-red-500 text-white" : "bg-violet-600 text-white"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
@@ -587,9 +554,7 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
           >
             <option value="All">All Months</option>
             {allMonths.map((m) => (
-              <option key={m} value={m}>
-                {formatMonth(m)}
-              </option>
+              <option key={m} value={m}>{formatMonth(m)}</option>
             ))}
           </select>
           <div className="ml-auto flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
@@ -604,9 +569,7 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
                 key={field}
                 onClick={() => toggleSort(field)}
                 className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                  sortField === field
-                    ? "bg-violet-100 text-violet-700"
-                    : "text-gray-400 hover:text-gray-600"
+                  sortField === field ? "bg-violet-100 text-violet-700" : "text-gray-400 hover:text-gray-600"
                 }`}
               >
                 {label} <SortIcon field={field} />
@@ -626,11 +589,7 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
             <Filter className="w-8 h-8 mb-2 opacity-30" />
             <p className="text-sm font-semibold">No records match filters</p>
             <button
-              onClick={() => {
-                setSearch("");
-                setFilterType("All");
-                setFilterMonth("All");
-              }}
+              onClick={() => { setSearch(""); setFilterType("All"); setFilterMonth("All"); }}
               className="mt-2 text-xs text-violet-500 hover:underline"
             >
               Clear filters
@@ -639,21 +598,8 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
         ) : (
           processed.map((row) => {
             const clientName = row.invoices?.clients_master?.client_name || "—";
-            const hasBreakdown =
-              num(row.pay_cn) +
-                num(row.verto_fee_cn) +
-                num(row.gst_cn) +
-                num(row.tds_cn) >
-              0;
-            const hasStatutory =
-              num(row.er_pf) +
-                num(row.ee_pf) +
-                num(row.er_esic) +
-                num(row.ee_esic) +
-                num(row.lwf_cn) +
-                num(row.pt_cn) +
-                num(row.other_ded_cn) >
-              0;
+            const hasBreakdown = num(row.pay_cn) + num(row.verto_fee_cn) + num(row.gst_cn) + num(row.tds_cn) > 0;
+            const hasStatutory = num(row.er_pf) + num(row.ee_pf) + num(row.er_esic) + num(row.ee_esic) + num(row.lwf_cn) + num(row.pt_cn) + num(row.other_ded_cn) > 0;
             const isBadDebt = row.type === "Bad Debt";
             const co_pf_cn = num(row.er_pf) + num(row.ee_pf);
             const co_esi_cn = num(row.er_esic) + num(row.ee_esic);
@@ -665,169 +611,75 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
                   deletingId === row.id ? "opacity-40 pointer-events-none" : ""
                 }`}
               >
-                <div
-                  className={`px-3.5 py-2 flex items-center justify-between ${
-                    isBadDebt
-                      ? "bg-red-50 border-b border-red-100"
-                      : "bg-violet-50 border-b border-violet-100"
-                  }`}
-                >
+                <div className={`px-3.5 py-2 flex items-center justify-between ${
+                  isBadDebt ? "bg-red-50 border-b border-red-100" : "bg-violet-50 border-b border-violet-100"
+                }`}>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span
-                      className={`font-mono text-xs font-bold px-2.5 py-0.5 rounded-lg flex items-center gap-1 ${
-                        isBadDebt
-                          ? "bg-red-600 text-white"
-                          : "bg-violet-600 text-white"
-                      }`}
-                    >
+                    <span className={`font-mono text-xs font-bold px-2.5 py-0.5 rounded-lg flex items-center gap-1 ${
+                      isBadDebt ? "bg-red-600 text-white" : "bg-violet-600 text-white"
+                    }`}>
                       <Hash className="w-3 h-3" />
                       {row.reference_no || row.id?.slice(0, 8) || "—"}
                     </span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                        isBadDebt
-                          ? "bg-red-50 text-red-600 border-red-200"
-                          : "bg-violet-50 text-violet-600 border-violet-200"
-                      }`}
-                    >
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      isBadDebt ? "bg-red-50 text-red-600 border-red-200" : "bg-violet-50 text-violet-600 border-violet-200"
+                    }`}>
                       {row.type}
                     </span>
                     {row.issue_date && (
                       <span className="text-[10px] text-gray-400 flex items-center gap-1">
                         <Calendar className="w-2.5 h-2.5" />
-                        {new Date(row.issue_date).toLocaleDateString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
+                        {new Date(row.issue_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                       </span>
                     )}
                   </div>
-                  <span className="font-bold text-gray-800 text-sm">
-                    ₹{fmt(row.amount)}
-                  </span>
+                  <span className="font-bold text-gray-800 text-sm">₹{fmt(row.amount)}</span>
                 </div>
 
                 <div className="px-3.5 py-2.5">
                   <div className="flex items-center gap-2 flex-wrap mb-1.5">
                     <span className="text-xs font-semibold text-gray-800">
-                      {row.invoice_number ||
-                        row.invoices?.invoice_number ||
-                        "—"}
+                      {row.invoice_number || row.invoices?.invoice_number || "—"}
                     </span>
                     <span className="text-gray-300 text-xs">·</span>
                     <span className="text-xs text-gray-600">{clientName}</span>
-                    {row.entity && (
-                      <>
-                        <span className="text-gray-300 text-xs">·</span>
-                        <span className="text-[10px] text-gray-500">
-                          {row.entity}
-                        </span>
-                      </>
-                    )}
-                    {row.bank_name && (
-                      <>
-                        <span className="text-gray-300 text-xs">·</span>
-                        <span className="flex items-center gap-1 text-[10px] text-gray-500">
-                          <Building2 className="w-2.5 h-2.5" />
-                          {row.bank_name}
-                        </span>
-                      </>
-                    )}
+                    {row.entity && (<><span className="text-gray-300 text-xs">·</span><span className="text-[10px] text-gray-500">{row.entity}</span></>)}
+                    {row.bank_name && (<><span className="text-gray-300 text-xs">·</span><span className="flex items-center gap-1 text-[10px] text-gray-500"><Building2 className="w-2.5 h-2.5" />{row.bank_name}</span></>)}
                   </div>
 
-                  {/* Financial breakdown chips */}
                   {hasBreakdown && (
                     <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                      {num(row.pay_cn) > 0 && (
-                        <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium">
-                          Pay ₹{fmt(row.pay_cn)}
-                        </span>
-                      )}
-                      {num(row.verto_fee_cn) > 0 && (
-                        <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded font-medium">
-                          Verto ₹{fmt(row.verto_fee_cn)}
-                        </span>
-                      )}
-                      {num(row.gst_cn) > 0 && (
-                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">
-                          GST ₹{fmt(row.gst_cn)}
-                        </span>
-                      )}
-                      {num(row.tds_cn) > 0 && (
-                        <span className="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-medium">
-                          TDS ₹{fmt(row.tds_cn)}
-                        </span>
-                      )}
+                      {num(row.pay_cn) > 0 && <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium">Pay ₹{fmt(row.pay_cn)}</span>}
+                      {num(row.verto_fee_cn) > 0 && <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded font-medium">Verto ₹{fmt(row.verto_fee_cn)}</span>}
+                      {num(row.gst_cn) > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">GST ₹{fmt(row.gst_cn)}</span>}
+                      {num(row.tds_cn) > 0 && <span className="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-medium">TDS ₹{fmt(row.tds_cn)}</span>}
                     </div>
                   )}
 
-                  {/* Statutory breakdown chips */}
                   {hasStatutory && (
                     <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
                       <span className="text-[9px] text-indigo-500 font-bold uppercase tracking-wider flex items-center gap-0.5">
-                        <ShieldCheck className="w-2.5 h-2.5" />
-                        Statutory:
+                        <ShieldCheck className="w-2.5 h-2.5" />Statutory:
                       </span>
-                      {co_pf_cn > 0 && (
-                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">
-                          CO PF ₹{fmt(co_pf_cn)}{" "}
-                          <span className="opacity-60">
-                            (ER ₹{fmt(row.er_pf)}+EE ₹{fmt(row.ee_pf)})
-                          </span>
-                        </span>
-                      )}
-                      {co_esi_cn > 0 && (
-                        <span className="text-[10px] bg-teal-100 text-teal-700 px-2 py-0.5 rounded font-medium">
-                          CO ESI ₹{fmt(co_esi_cn)}{" "}
-                          <span className="opacity-60">
-                            (ER ₹{fmt(row.er_esic)}+EE ₹{fmt(row.ee_esic)})
-                          </span>
-                        </span>
-                      )}
-                      {num(row.lwf_cn) > 0 && (
-                        <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-medium">
-                          LWF ₹{fmt(row.lwf_cn)}
-                        </span>
-                      )}
-                      {num(row.pt_cn) > 0 && (
-                        <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-medium">
-                          PT ₹{fmt(row.pt_cn)}
-                        </span>
-                      )}
-                      {num(row.other_ded_cn) > 0 && (
-                        <span className="text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-medium">
-                          Other ₹{fmt(row.other_ded_cn)}
-                        </span>
-                      )}
+                      {co_pf_cn > 0 && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">CO PF ₹{fmt(co_pf_cn)} <span className="opacity-60">(ER ₹{fmt(row.er_pf)}+EE ₹{fmt(row.ee_pf)})</span></span>}
+                      {co_esi_cn > 0 && <span className="text-[10px] bg-teal-100 text-teal-700 px-2 py-0.5 rounded font-medium">CO ESI ₹{fmt(co_esi_cn)} <span className="opacity-60">(ER ₹{fmt(row.er_esic)}+EE ₹{fmt(row.ee_esic)})</span></span>}
+                      {num(row.lwf_cn) > 0 && <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-medium">LWF ₹{fmt(row.lwf_cn)}</span>}
+                      {num(row.pt_cn) > 0 && <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-medium">PT ₹{fmt(row.pt_cn)}</span>}
+                      {num(row.other_ded_cn) > 0 && <span className="text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-medium">Other ₹{fmt(row.other_ded_cn)}</span>}
                     </div>
                   )}
 
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {row.remarks && (
-                        <span className="text-[10px] text-gray-400 italic truncate max-w-[200px]">
-                          {row.remarks}
-                        </span>
-                      )}
+                      {row.remarks && <span className="text-[10px] text-gray-400 italic truncate max-w-[200px]">{row.remarks}</span>}
                     </div>
                     <div className="flex-shrink-0">
                       {deletingId === row.id ? (
                         <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
                       ) : confirmId === row.id ? (
                         <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => handleDelete(row.id)}
-                            className="px-2.5 py-1 bg-red-600 text-white text-[11px] font-black rounded-lg hover:bg-red-700 transition-colors"
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            onClick={() => setConfirmId(null)}
-                            className="px-2 py-1 border border-gray-200 text-gray-500 text-[11px] rounded-lg hover:bg-gray-50 transition-colors"
-                          >
-                            Cancel
-                          </button>
+                          <button onClick={() => handleDelete(row.id)} className="px-2.5 py-1 bg-red-600 text-white text-[11px] font-black rounded-lg hover:bg-red-700 transition-colors">Confirm</button>
+                          <button onClick={() => setConfirmId(null)} className="px-2 py-1 border border-gray-200 text-gray-500 text-[11px] rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5">
@@ -840,9 +692,7 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
                                 disabled={lockedByDate}
                                 title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : "Edit"}
                                 className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                                  lockedByDate
-                                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                                    : "bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200"
+                                  lockedByDate ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed" : "bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200"
                                 }`}
                               >
                                 {lockedByDate ? <Lock className="w-3 h-3" /> : <Pencil className="w-3 h-3" />}
@@ -859,9 +709,7 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
                                 disabled={lockedByDate}
                                 title={lockedByDate ? "Locked — entries older than 45 days can only be edited by an Admin." : "Delete"}
                                 className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                                  lockedByDate
-                                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                                    : "bg-red-50 hover:bg-red-100 text-red-600 border-red-100"
+                                  lockedByDate ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed" : "bg-red-50 hover:bg-red-100 text-red-600 border-red-100"
                                 }`}
                               >
                                 {lockedByDate ? <Lock className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
@@ -881,12 +729,8 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
       </div>
 
       <div className="flex-shrink-0 border-t border-violet-100 bg-violet-50 px-4 py-2.5 flex items-center justify-between">
-        <span className="text-xs text-violet-700 font-bold">
-          {processed.length} records shown
-        </span>
-        <span className="text-sm font-black text-violet-800">
-          Total: ₹{fmt(totalAmount)}
-        </span>
+        <span className="text-xs text-violet-700 font-bold">{processed.length} records shown</span>
+        <span className="text-sm font-black text-violet-800">Total: ₹{fmt(totalAmount)}</span>
       </div>
 
       <AnimatePresence>
@@ -909,23 +753,11 @@ const CNRecordsPanel = ({ onClose, onEdit, canEdit, canDelete, isAdmin }) => {
 };
 
 // ─── Statutory Amount Input Row ───────────────────────────────────────────────
-const StatutoryInputRow = ({
-  label,
-  fieldKey,
-  value,
-  hint,
-  onChange,
-  colorClass,
-  disabled,
-}) => (
+const StatutoryInputRow = ({ label, fieldKey, value, hint, onChange, colorClass, disabled }) => (
   <div>
     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
       {label}
-      {hint && (
-        <span className="ml-1 text-gray-400 font-normal normal-case">
-          (Net: ₹{fmt(hint)})
-        </span>
-      )}
+      {hint && <span className="ml-1 text-gray-400 font-normal normal-case">(Net: ₹{fmt(hint)})</span>}
     </label>
     <input
       type="text"
@@ -942,13 +774,7 @@ const StatutoryInputRow = ({
 );
 
 // ─── Main Modal ────────────────────────────────────────────────────────────────
-const AddCNBadDebtModal = ({
-  isOpen,
-  onClose,
-  invoices = [],
-  paymentReferences = [],
-  editData,
-}) => {
+const AddCNBadDebtModal = ({ isOpen, onClose, invoices = [], paymentReferences = [], editData }) => {
   const EMPTY = {
     invoiceOrRef: "",
     optionType: "CN",
@@ -958,7 +784,6 @@ const AddCNBadDebtModal = ({
     vertoFeeCN: "",
     gstCN: "",
     tdsCN: "",
-    // Statutory fields
     coPf: "",
     coEsi: "",
     lwfCN: "",
@@ -974,7 +799,7 @@ const AddCNBadDebtModal = ({
   const [selectedDetails, setSelectedDetails] = useState(null);
   const [loading, setLoading] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
-  const [editingEntry, setEditingEntry] = useState(null); // { id, ...full row }
+  const [editingEntry, setEditingEntry] = useState(null);
   const [refStatus, setRefStatus] = useState(null);
   const [invoiceList, setInvoiceList] = useState([]);
   const refCheckTimer = useRef(null);
@@ -986,9 +811,7 @@ const AddCNBadDebtModal = ({
     const fetchList = async () => {
       const { data } = await supabase
         .from("outstanding_invoice_view")
-        .select(
-          "id, invoice_number, client_name, ledger_name, entity_name, dept_name, outstanding"
-        )
+        .select("id, invoice_number, client_name, ledger_name, entity_name, dept_name, outstanding")
         .order("invoice_number", { ascending: false });
       setInvoiceList(data || []);
     };
@@ -1026,10 +849,7 @@ const AddCNBadDebtModal = ({
   // ── Reference uniqueness check ──────────────────────────────────────────────
   useEffect(() => {
     const val = formData.referenceNo.trim();
-    if (!val) {
-      setRefStatus(null);
-      return;
-    }
+    if (!val) { setRefStatus(null); return; }
     if (editData?.reference_no === val || editingEntry?.reference_no === val) {
       setRefStatus("ok");
       return;
@@ -1049,10 +869,7 @@ const AddCNBadDebtModal = ({
   // ── Auto-populate invoice details ──────────────────────────────────────────
   useEffect(() => {
     const fetchDetails = async () => {
-      if (!formData.invoiceOrRef) {
-        setSelectedDetails(null);
-        return;
-      }
+      if (!formData.invoiceOrRef) { setSelectedDetails(null); return; }
 
       let invoiceId = null;
       const { data: pay } = await supabase
@@ -1070,20 +887,14 @@ const AddCNBadDebtModal = ({
           .maybeSingle();
         invoiceId = inv?.id;
       }
-      if (!invoiceId) {
-        setSelectedDetails(null);
-        return;
-      }
+      if (!invoiceId) { setSelectedDetails(null); return; }
 
       const { data } = await supabase
         .from("outstanding_invoice_view")
         .select("*")
         .eq("id", invoiceId)
         .maybeSingle();
-      if (!data) {
-        setSelectedDetails(null);
-        return;
-      }
+      if (!data) { setSelectedDetails(null); return; }
 
       const { data: invRow } = await supabase
         .from("invoices")
@@ -1095,10 +906,6 @@ const AddCNBadDebtModal = ({
       const gstRate = netBase ? num(data.net_gst) / netBase : 0;
       const tdsRate = netBase ? num(data.net_tds) / netBase : 0;
 
-      // Compute net ER/EE PF and ESIC from invoice's co_pf / co_esi
-      // Standard PF split: ER PF = 13%, EE PF = 12% of basic
-      // But we don't know the split stored. Use 50/50 as default hint if not split stored.
-      // The invoice stores co_pf and co_esi as totals — we expose both as hints.
       const net_co_pf = num(data.net_co_pf ?? data.co_pf ?? 0);
       const net_co_esi = num(data.net_co_esi ?? data.co_esi ?? 0);
 
@@ -1110,45 +917,29 @@ const AddCNBadDebtModal = ({
         department: data.dept_name,
         dept_code: data.dept_code,
         entity: data.entity_name,
-
         pay: data.net_pay ?? data.pay ?? 0,
         vertoFee: data.net_verto_fee ?? data.verto_fee ?? 0,
         gst: data.net_gst ?? data.gst ?? 0,
         tds: data.net_tds ?? data.tds ?? 0,
-
         netPay: data.net_pay ?? data.pay ?? 0,
         netVertoFee: data.net_verto_fee ?? data.verto_fee ?? 0,
         netGst: data.net_gst ?? data.gst ?? 0,
         netTds: data.net_tds ?? data.tds ?? 0,
-
-        // Statutory originals from invoice
         co_pf: data.co_pf ?? 0,
         co_esi: data.co_esi ?? 0,
         lwf_tax: data.lwf_tax ?? 0,
         pt_tax: data.pt_tax ?? 0,
         other_ded: data.other_ded ?? 0,
-
-        // Net statutory after existing CNs
         net_co_pf,
         net_co_esi,
         net_lwf_tax: data.net_lwf_tax ?? data.lwf_tax ?? 0,
         net_pt_tax: data.net_pt_tax ?? data.pt_tax ?? 0,
         net_other_ded: data.net_other_ded ?? data.other_ded ?? 0,
-
-        // Half-split hint for ER/EE (for display only — user enters actual split)
         net_er_pf: +(net_co_pf / 2).toFixed(2),
         net_ee_pf: +(net_co_pf / 2).toFixed(2),
         net_er_esic: +(net_co_esi / 2).toFixed(2),
         net_ee_esic: +(net_co_esi / 2).toFixed(2),
-
-        hasStatutory:
-          num(data.co_pf) +
-            num(data.co_esi) +
-            num(data.lwf_tax) +
-            num(data.pt_tax) +
-            num(data.other_ded) >
-          0,
-
+        hasStatutory: num(data.co_pf) + num(data.co_esi) + num(data.lwf_tax) + num(data.pt_tax) + num(data.other_ded) > 0,
         gstRate,
         tdsRate,
         originalAmount: data.receivable_amount || 0,
@@ -1161,6 +952,52 @@ const AddCNBadDebtModal = ({
     };
     fetchDetails();
   }, [formData.invoiceOrRef]);
+
+  // ── FIX: Adjusted details for edit mode ────────────────────────────────────
+  // When editing an existing CN, outstanding_invoice_view already has the original
+  // CN deducted (e.g. invoice fully CN'd → outstanding = 0). We add the original
+  // CN amounts back so the form allows re-entering up to the pre-CN outstanding.
+  const adjustedDetails = useMemo(() => {
+    if (!selectedDetails || !editingEntry) return selectedDetails;
+
+    const origPay    = num(editingEntry.pay_cn);
+    const origVerto  = num(editingEntry.verto_fee_cn);
+    const origGst    = num(editingEntry.gst_cn);
+    const origTds    = num(editingEntry.tds_cn);
+    const origCnAmt  = num(editingEntry.amount);   // the pay+verto+gst total that was applied
+    const origErPf   = num(editingEntry.er_pf);
+    const origEePf   = num(editingEntry.ee_pf);
+    const origErEsic = num(editingEntry.er_esic);
+    const origEeEsic = num(editingEntry.ee_esic);
+    const origLwf    = num(editingEntry.lwf_cn);
+    const origPt     = num(editingEntry.pt_cn);
+    const origOther  = num(editingEntry.other_ded_cn);
+
+    const adj_co_pf  = num(selectedDetails.net_co_pf)  + origErPf  + origEePf;
+    const adj_co_esi = num(selectedDetails.net_co_esi) + origErEsic + origEeEsic;
+
+    return {
+      ...selectedDetails,
+      // Restore the financial net values to pre-CN state
+      netPay:        num(selectedDetails.netPay)        + origPay,
+      netVertoFee:   num(selectedDetails.netVertoFee)   + origVerto,
+      netGst:        num(selectedDetails.netGst)        + origGst,
+      netTds:        num(selectedDetails.netTds)        + origTds,
+      // Restore outstanding to pre-CN state (this is the key fix)
+      amountPayable: num(selectedDetails.amountPayable) + origCnAmt,
+      // Restore statutory nets
+      net_co_pf:     adj_co_pf,
+      net_co_esi:    adj_co_esi,
+      net_er_pf:     +(adj_co_pf  / 2).toFixed(2),
+      net_ee_pf:     +(adj_co_pf  / 2).toFixed(2),
+      net_er_esic:   +(adj_co_esi / 2).toFixed(2),
+      net_ee_esic:   +(adj_co_esi / 2).toFixed(2),
+      net_lwf_tax:   num(selectedDetails.net_lwf_tax)   + origLwf,
+      net_pt_tax:    num(selectedDetails.net_pt_tax)    + origPt,
+      net_other_ded: num(selectedDetails.net_other_ded) + origOther,
+    };
+  }, [selectedDetails, editingEntry]);
+  // ──────────────────────────────────────────────────────────────────────────
 
   // ── Auto-calc GST/TDS from net rates ───────────────────────────────────────
   useEffect(() => {
@@ -1177,119 +1014,63 @@ const AddCNBadDebtModal = ({
   }, [formData.payCN, formData.vertoFeeCN, selectedDetails]);
 
   // ── Derived totals ─────────────────────────────────────────────────────────
-  // CN Total = Pay + Verto Fee + GST only (3 values)
-  // TDS is separate (govt liability)
-  // Statutory is separate (govt liability)
-  const totalFinancialCN =
-    num(formData.payCN) + num(formData.vertoFeeCN) + num(formData.gstCN);
-
-  const totalStatutoryCN =
-    num(formData.coPf) +
-    num(formData.coEsi) +
-    num(formData.lwfCN) +
-    num(formData.ptCN) +
-    num(formData.otherDedCN);
-
-  // CN Total = ONLY Pay + Verto + GST (what actually gets written off)
+  const totalFinancialCN = num(formData.payCN) + num(formData.vertoFeeCN) + num(formData.gstCN);
+  const totalStatutoryCN = num(formData.coPf) + num(formData.coEsi) + num(formData.lwfCN) + num(formData.ptCN) + num(formData.otherDedCN);
   const totalCN = totalFinancialCN;
-
-  // Total impact on invoice (for reference only)
   const totalImpact = totalCN + num(formData.tdsCN) + totalStatutoryCN;
-
-  // Computed display aggregates
   const co_pf_cn = num(formData.coPf);
   const co_esi_cn = num(formData.coEsi);
 
-  // ── Max CN limit ────────────────────────────────────────────────────────────
-  // ── Max CN limit ────────────────────────────────────────────────────────────
-  // CN can only reduce Pay + Verto + GST (not TDS, not statutory)
-  const invoiceBaseValue = selectedDetails
-    ? num(selectedDetails.netPay) +
-      num(selectedDetails.netVertoFee) +
-      num(selectedDetails.netGst)
+  // ── Max CN limit — use adjustedDetails so edit mode sees pre-CN outstanding ─
+  const invoiceBaseValue = adjustedDetails
+    ? num(adjustedDetails.netPay) + num(adjustedDetails.netVertoFee) + num(adjustedDetails.netGst)
     : Infinity;
 
-  const maxCN = selectedDetails
-    ? Math.min(invoiceBaseValue, num(selectedDetails.amountPayable))
+  const maxCN = adjustedDetails
+    ? Math.min(invoiceBaseValue, num(adjustedDetails.amountPayable))
     : Infinity;
 
   const limitedByOutstanding =
-    selectedDetails && num(selectedDetails.amountPayable) < invoiceBaseValue;
+    adjustedDetails && num(adjustedDetails.amountPayable) < invoiceBaseValue;
 
-  // Over-limit check: totalCN (Pay+Verto+GST only) should not exceed maxCN
-  const overLimit = selectedDetails && totalCN > maxCN + 1;
+  const overLimit = adjustedDetails && totalCN > maxCN + 1;
 
-  // Outstanding after CN (only CN amount reduces outstanding)
-  const impactOutstanding = selectedDetails
-    ? Math.max(0, num(selectedDetails.amountPayable) - totalCN)
+  const impactOutstanding = adjustedDetails
+    ? Math.max(0, num(adjustedDetails.amountPayable) - totalCN)
     : null;
 
-  // ── Validation ─────────────────────────────────────────────────────────────
+  // ── Validation — use adjustedDetails for all limit checks ─────────────────
   const validateForm = () => {
     const e = {};
-    if (!formData.invoiceOrRef.trim())
-      e.invoiceOrRef = "Invoice number or payment reference is required";
-    if (!formData.referenceNo.trim())
-      e.referenceNo = "Reference number is required";
-    if (refStatus === "taken")
-      e.referenceNo = "This reference number already exists";
-    if (refStatus === "checking")
-      e.referenceNo = "Wait for reference check to complete";
+    if (!formData.invoiceOrRef.trim()) e.invoiceOrRef = "Invoice number or payment reference is required";
+    if (!formData.referenceNo.trim()) e.referenceNo = "Reference number is required";
+    if (refStatus === "taken") e.referenceNo = "This reference number already exists";
+    if (refStatus === "checking") e.referenceNo = "Wait for reference check to complete";
     if (!formData.dateIssued) e.dateIssued = "Date is required";
-    if (totalCN <= 0)
-      e.payCN =
-        "Enter at least one amount across Financial or Statutory fields";
+    if (totalCN <= 0) e.payCN = "Enter at least one amount across Financial or Statutory fields";
 
     if (overLimit) {
       if (limitedByOutstanding) {
-        e.payCN = `CN total ₹${fmt(totalCN)} exceeds outstanding ₹${fmt(
-          num(selectedDetails.amountPayable)
-        )}`;
+        e.payCN = `CN total ₹${fmt(totalCN)} exceeds outstanding ₹${fmt(num(adjustedDetails.amountPayable))}`;
       } else {
-        e.payCN = `CN total ₹${fmt(
-          totalCN
-        )} exceeds invoice base (Pay+Verto+GST) ₹${fmt(invoiceBaseValue)}`;
+        e.payCN = `CN total ₹${fmt(totalCN)} exceeds invoice base (Pay+Verto+GST) ₹${fmt(invoiceBaseValue)}`;
       }
     }
 
-    // Validate co_pf does not exceed net_co_pf
-    if (selectedDetails && co_pf_cn > num(selectedDetails.net_co_pf)) {
-      e.coPf = `CO PF (ER+EE) ₹${fmt(co_pf_cn)} exceeds net remaining ₹${fmt(
-        selectedDetails.net_co_pf
-      )}`;
+    if (adjustedDetails && co_pf_cn > num(adjustedDetails.net_co_pf)) {
+      e.coPf = `CO PF (ER+EE) ₹${fmt(co_pf_cn)} exceeds net remaining ₹${fmt(adjustedDetails.net_co_pf)}`;
     }
-    // Validate co_esi does not exceed net_co_esi
-    if (selectedDetails && co_esi_cn > num(selectedDetails.net_co_esi)) {
-      e.coEsi = `CO ESI (ER+EE) ₹${fmt(co_esi_cn)} exceeds net remaining ₹${fmt(
-        selectedDetails.net_co_esi
-      )}`;
+    if (adjustedDetails && co_esi_cn > num(adjustedDetails.net_co_esi)) {
+      e.coEsi = `CO ESI (ER+EE) ₹${fmt(co_esi_cn)} exceeds net remaining ₹${fmt(adjustedDetails.net_co_esi)}`;
     }
-    // LWF limit
-    if (
-      selectedDetails &&
-      num(formData.lwfCN) > num(selectedDetails.net_lwf_tax)
-    ) {
-      e.lwfCN = `LWF ₹${fmt(formData.lwfCN)} exceeds net remaining ₹${fmt(
-        selectedDetails.net_lwf_tax
-      )}`;
+    if (adjustedDetails && num(formData.lwfCN) > num(adjustedDetails.net_lwf_tax)) {
+      e.lwfCN = `LWF ₹${fmt(formData.lwfCN)} exceeds net remaining ₹${fmt(adjustedDetails.net_lwf_tax)}`;
     }
-    // PT limit
-    if (
-      selectedDetails &&
-      num(formData.ptCN) > num(selectedDetails.net_pt_tax)
-    ) {
-      e.ptCN = `PT ₹${fmt(formData.ptCN)} exceeds net remaining ₹${fmt(
-        selectedDetails.net_pt_tax
-      )}`;
+    if (adjustedDetails && num(formData.ptCN) > num(adjustedDetails.net_pt_tax)) {
+      e.ptCN = `PT ₹${fmt(formData.ptCN)} exceeds net remaining ₹${fmt(adjustedDetails.net_pt_tax)}`;
     }
-    // Other Ded limit
-    if (
-      selectedDetails &&
-      num(formData.otherDedCN) > num(selectedDetails.net_other_ded)
-    ) {
-      e.otherDedCN = `Other Ded ₹${fmt(
-        formData.otherDedCN
-      )} exceeds net remaining ₹${fmt(selectedDetails.net_other_ded)}`;
+    if (adjustedDetails && num(formData.otherDedCN) > num(adjustedDetails.net_other_ded)) {
+      e.otherDedCN = `Other Ded ₹${fmt(formData.otherDedCN)} exceeds net remaining ₹${fmt(adjustedDetails.net_other_ded)}`;
     }
 
     if (selectedDetails?.dept_code === "OS" && !formData.employeeCount) {
@@ -1302,7 +1083,6 @@ const AddCNBadDebtModal = ({
 
   // ── Handle Edit Entry ──────────────────────────────────────────────────────
   const handleEditEntry = (row) => {
-    // Pre-fill every form field from the record row
     setFormData({
       invoiceOrRef: row.invoice_number || row.invoices?.invoice_number || "",
       optionType: row.type || "CN",
@@ -1320,11 +1100,11 @@ const AddCNBadDebtModal = ({
       employeeCount: row.employee_count?.toString() || "",
       remarks: row.remarks || "",
     });
-    setEditingEntry(row); // store old row so we know its id on submit
-    setViewOpen(false); // close records panel
+    setEditingEntry(row);
+    setViewOpen(false);
     setErrors({});
     setShowErrors(false);
-    setRefStatus("ok"); // ref is already known good (it's the existing one)
+    setRefStatus("ok");
   };
 
   // ── Submit ─────────────────────────────────────────────────────────────────
@@ -1350,10 +1130,7 @@ const AddCNBadDebtModal = ({
             p_gst_cn: num(formData.gstCN),
             p_tds_cn: num(formData.tdsCN),
             p_entity: selectedDetails.entity,
-            p_employee_count:
-              selectedDetails?.dept_code === "OS"
-                ? Number(formData.employeeCount)
-                : null,
+            p_employee_count: selectedDetails?.dept_code === "OS" ? Number(formData.employeeCount) : null,
             p_remarks: formData.remarks || "",
             p_bank_name: selectedDetails.bankName || null,
             p_er_pf: +(num(formData.coPf) / 2).toFixed(2),
@@ -1376,10 +1153,7 @@ const AddCNBadDebtModal = ({
             p_gst_cn: num(formData.gstCN),
             p_tds_cn: num(formData.tdsCN),
             p_entity: selectedDetails.entity,
-            p_employee_count:
-              selectedDetails?.dept_code === "OS"
-                ? Number(formData.employeeCount)
-                : null,
+            p_employee_count: selectedDetails?.dept_code === "OS" ? Number(formData.employeeCount) : null,
             p_remarks: formData.remarks || "",
             p_bank_name: selectedDetails.bankName || null,
             p_er_pf: +(num(formData.coPf) / 2).toFixed(2),
@@ -1392,7 +1166,6 @@ const AddCNBadDebtModal = ({
           });
 
       if (error) throw error;
-
       window.refreshDashboard?.();
       alert("✅ " + formData.optionType + " saved successfully");
       resetForm();
@@ -1414,10 +1187,7 @@ const AddCNBadDebtModal = ({
     setEditingEntry(null);
   };
 
-  const handleClose = () => {
-    resetForm();
-    onClose();
-  };
+  const handleClose = () => { resetForm(); onClose(); };
 
   const ErrorMsg = ({ field }) => {
     if (!showErrors || !errors[field]) return null;
@@ -1431,16 +1201,12 @@ const AddCNBadDebtModal = ({
 
   const RefIcon = () => {
     if (!formData.referenceNo.trim()) return null;
-    if (refStatus === "checking")
-      return <Loader2 className="w-4 h-4 animate-spin text-gray-400" />;
-    if (refStatus === "ok")
-      return <BadgeCheck className="w-4 h-4 text-emerald-500" />;
-    if (refStatus === "taken")
-      return <XCircle className="w-4 h-4 text-red-500" />;
+    if (refStatus === "checking") return <Loader2 className="w-4 h-4 animate-spin text-gray-400" />;
+    if (refStatus === "ok") return <BadgeCheck className="w-4 h-4 text-emerald-500" />;
+    if (refStatus === "taken") return <XCircle className="w-4 h-4 text-red-500" />;
     return null;
   };
 
-  // Whether the selected invoice has statutory amounts worth showing
   const showStatutorySection = selectedDetails?.hasStatutory;
 
   return (
@@ -1479,9 +1245,7 @@ const AddCNBadDebtModal = ({
                   <h2 className="text-2xl font-bold">+ ADD CN / BAD DEBT</h2>
                   <p className="text-violet-100 text-sm mt-1">
                     {editingEntry
-                      ? `✏️ Editing ${
-                          editingEntry.reference_no || "entry"
-                        } — old record will be replaced`
+                      ? `✏️ Editing ${editingEntry.reference_no || "entry"} — old record will be replaced`
                       : "Record credit note or bad debt write-off"}
                   </p>
                 </div>
@@ -1493,10 +1257,7 @@ const AddCNBadDebtModal = ({
                   >
                     <Eye className="w-3.5 h-3.5" /> View Records
                   </button>
-                  <button
-                    onClick={handleClose}
-                    className="text-violet-100 hover:text-white transition-colors"
-                  >
+                  <button onClick={handleClose} className="text-violet-100 hover:text-white transition-colors">
                     <X className="w-6 h-6" />
                   </button>
                 </div>
@@ -1506,28 +1267,14 @@ const AddCNBadDebtModal = ({
             {/* Form */}
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
               <form onSubmit={handleSubmit} className="space-y-5">
-                {/* Intern banner */}
                 {isIntern && (
-                  <div
-                    style={{
-                      background: "#f3e8ff",
-                      border: "1px solid #a855f7",
-                      borderRadius: "0.75rem",
-                      padding: "0.75rem 1rem",
-                    }}
-                  >
-                    <p
-                      style={{
-                        fontSize: "0.875rem",
-                        color: "#6b21a8",
-                        margin: 0,
-                      }}
-                    >
-                      <strong>Training Mode</strong> — You can explore but
-                      cannot save.
+                  <div style={{ background: "#f3e8ff", border: "1px solid #a855f7", borderRadius: "0.75rem", padding: "0.75rem 1rem" }}>
+                    <p style={{ fontSize: "0.875rem", color: "#6b21a8", margin: 0 }}>
+                      <strong>Training Mode</strong> — You can explore but cannot save.
                     </p>
                   </div>
                 )}
+
                 {/* Type toggle */}
                 <div className="flex gap-3">
                   {["CN", "Bad Debt"].map((t) => (
@@ -1548,28 +1295,21 @@ const AddCNBadDebtModal = ({
                   ))}
                 </div>
 
-                {/* ── Editing mode banner ── */}
+                {/* Edit mode banner */}
                 {editingEntry && (
                   <div className="flex items-center gap-3 bg-amber-50 border-2 border-amber-300 rounded-xl px-4 py-3 text-sm">
                     <span className="text-amber-600 text-lg">✏️</span>
                     <div className="flex-1">
                       <p className="font-bold text-amber-800">Edit Mode</p>
                       <p className="text-amber-600 text-xs">
-                        Ref:{" "}
-                        <span className="font-mono font-bold">
-                          {editingEntry.reference_no}
-                        </span>
+                        Ref: <span className="font-mono font-bold">{editingEntry.reference_no}</span>
                         {" · "}Original: ₹{fmt(editingEntry.amount)}
-                        {" · "}Saving will delete the old entry and create a
-                        corrected one.
+                        {" · "}Saving will delete the old entry and create a corrected one.
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        setEditingEntry(null);
-                        resetForm();
-                      }}
+                      onClick={() => { setEditingEntry(null); resetForm(); }}
                       className="text-amber-500 hover:text-amber-700 text-xs font-semibold underline"
                     >
                       Cancel Edit
@@ -1578,19 +1318,17 @@ const AddCNBadDebtModal = ({
                 )}
 
                 {/* Type banner */}
-                <div
-                  className={`text-xs px-4 py-2.5 rounded-lg font-medium border ${
-                    formData.optionType === "Bad Debt"
-                      ? "bg-red-50 border-red-200 text-red-700"
-                      : "bg-violet-50 border-violet-200 text-violet-700"
-                  }`}
-                >
+                <div className={`text-xs px-4 py-2.5 rounded-lg font-medium border ${
+                  formData.optionType === "Bad Debt"
+                    ? "bg-red-50 border-red-200 text-red-700"
+                    : "bg-violet-50 border-violet-200 text-violet-700"
+                }`}>
                   {formData.optionType === "Bad Debt"
                     ? "⚠️ Bad Debt: Unrecoverable amount — permanently reduces outstanding."
                     : "📄 Credit Note: Customer discount or adjustment — reduces amount payable."}
                 </div>
 
-                {/* ── Reference Details ── */}
+                {/* Reference Details */}
                 <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
                   <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wider mb-4 flex items-center gap-2">
                     <FileX className="w-4 h-4" /> Reference Details
@@ -1598,8 +1336,7 @@ const AddCNBadDebtModal = ({
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        Invoice No. or Payment Ref{" "}
-                        <span className="text-red-500">*</span>
+                        Invoice No. or Payment Ref <span className="text-red-500">*</span>
                       </label>
                       <SearchableInvoiceDropdown
                         invoiceList={invoiceList}
@@ -1608,111 +1345,79 @@ const AddCNBadDebtModal = ({
                         disabled={!!editData || !!editingEntry}
                       />
                       <ErrorMsg field="invoiceOrRef" />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Auto-populates details below
-                      </p>
+                      <p className="text-xs text-gray-500 mt-1">Auto-populates details below</p>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                        CN / BD Reference No.{" "}
-                        <span className="text-red-500">*</span>
+                        CN / BD Reference No. <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
                         <input
                           type="text"
                           value={formData.referenceNo}
-                          onChange={(e) =>
-                            handleChange(
-                              "referenceNo",
-                              e.target.value.toUpperCase()
-                            )
-                          }
+                          onChange={(e) => handleChange("referenceNo", e.target.value.toUpperCase())}
                           className={`w-full bg-white border text-gray-900 px-3 py-2.5 pr-9 rounded-lg focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 text-sm font-mono ${
-                            showErrors && errors.referenceNo
-                              ? "border-red-500"
-                              : refStatus === "ok"
-                              ? "border-emerald-400"
-                              : refStatus === "taken"
-                              ? "border-red-400"
+                            showErrors && errors.referenceNo ? "border-red-500"
+                              : refStatus === "ok" ? "border-emerald-400"
+                              : refStatus === "taken" ? "border-red-400"
                               : "border-gray-300"
                           }`}
-                          placeholder={
-                            formData.optionType === "Bad Debt"
-                              ? "BD-2024-001"
-                              : "CN-2024-001"
-                          }
+                          placeholder={formData.optionType === "Bad Debt" ? "BD-2024-001" : "CN-2024-001"}
                         />
-                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                          <RefIcon />
-                        </div>
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2"><RefIcon /></div>
                       </div>
                       {refStatus === "ok" && formData.referenceNo.trim() && (
                         <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-                          <BadgeCheck className="w-3 h-3" /> Reference is
-                          available
+                          <BadgeCheck className="w-3 h-3" /> Reference is available
                         </p>
                       )}
                       {refStatus === "taken" && (
                         <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                          <XCircle className="w-3 h-3" /> Already used — enter a
-                          different one
+                          <XCircle className="w-3 h-3" /> Already used — enter a different one
                         </p>
                       )}
                       <ErrorMsg field="referenceNo" />
                     </div>
                   </div>
-                  {selectedDetails && <InvoiceCard d={selectedDetails} />}
+                  {/* Pass adjustedDetails to InvoiceCard so it shows pre-CN values in edit mode */}
+                  {adjustedDetails && <InvoiceCard d={adjustedDetails} />}
                 </div>
 
-                {/* ── Financial Amount Breakdown ── */}
-                <div
-                  className={`border-2 rounded-xl p-4 ${
-                    formData.optionType === "Bad Debt"
-                      ? "bg-red-50 border-red-200"
-                      : "bg-violet-50 border-violet-200"
-                  }`}
-                >
+                {/* Financial Amount Breakdown */}
+                <div className={`border-2 rounded-xl p-4 ${
+                  formData.optionType === "Bad Debt" ? "bg-red-50 border-red-200" : "bg-violet-50 border-violet-200"
+                }`}>
                   <div className="flex items-center justify-between mb-4">
-                    <h3
-                      className={`text-sm font-bold uppercase tracking-wider ${
-                        formData.optionType === "Bad Debt"
-                          ? "text-red-900"
-                          : "text-violet-900"
-                      }`}
-                    >
+                    <h3 className={`text-sm font-bold uppercase tracking-wider ${
+                      formData.optionType === "Bad Debt" ? "text-red-900" : "text-violet-900"
+                    }`}>
                       {formData.optionType} Financial Breakdown
                     </h3>
                     {totalFinancialCN > 0 && (
-                      <span
-                        className={`text-sm font-bold px-3 py-1 rounded-lg ${
-                          formData.optionType === "Bad Debt"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-violet-100 text-violet-700"
-                        }`}
-                      >
+                      <span className={`text-sm font-bold px-3 py-1 rounded-lg ${
+                        formData.optionType === "Bad Debt" ? "bg-red-100 text-red-700" : "bg-violet-100 text-violet-700"
+                      }`}>
                         Financial: ₹{fmt(totalFinancialCN)}
                       </span>
                     )}
                   </div>
 
-                  {selectedDetails && (
+                  {adjustedDetails && (
                     <div className="mb-4 flex items-center gap-3 text-[11px] bg-white border border-gray-200 rounded-lg px-3 py-2">
-                      <span className="text-gray-500 font-medium">
-                        Max CN allowed:
-                      </span>
-                      <span className="font-bold text-emerald-700">
-                        ₹{fmt(maxCN)}
-                      </span>
+                      <span className="text-gray-500 font-medium">Max CN allowed:</span>
+                      <span className="font-bold text-emerald-700">₹{fmt(maxCN)}</span>
                       <span className="text-gray-400">
-                        {limitedByOutstanding
-                          ? "(capped at outstanding amount)"
-                          : "(capped at invoice value excl. TDS)"}
+                        {limitedByOutstanding ? "(capped at outstanding amount)" : "(capped at invoice value excl. TDS)"}
                       </span>
+                      {editingEntry && (
+                        <span className="ml-auto text-amber-600 font-semibold">
+                          ↩ restored from original CN
+                        </span>
+                      )}
                     </div>
                   )}
 
                   <div className="grid grid-cols-2 gap-4">
-                    {/* Date */}
                     <div className="col-span-2 grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
@@ -1721,13 +1426,9 @@ const AddCNBadDebtModal = ({
                         <input
                           type="date"
                           value={formData.dateIssued}
-                          onChange={(e) =>
-                            handleChange("dateIssued", e.target.value)
-                          }
+                          onChange={(e) => handleChange("dateIssued", e.target.value)}
                           className={`w-full bg-white border text-gray-900 px-3 py-2.5 rounded-lg focus:outline-none ${
-                            showErrors && errors.dateIssued
-                              ? "border-red-500"
-                              : "border-gray-300"
+                            showErrors && errors.dateIssued ? "border-red-500" : "border-gray-300"
                           }`}
                         />
                         <ErrorMsg field="dateIssued" />
@@ -1738,21 +1439,14 @@ const AddCNBadDebtModal = ({
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
                         Pay
-                        {selectedDetails && (
-                          <span className="ml-1 text-gray-400 font-normal normal-case">
-                            (Net: ₹{fmt(selectedDetails.netPay)})
-                          </span>
-                        )}
+                        {adjustedDetails && <span className="ml-1 text-gray-400 font-normal normal-case">(Net: ₹{fmt(adjustedDetails.netPay)})</span>}
                       </label>
                       <input
-                        type="text"
-                        inputMode="decimal"
+                        type="text" inputMode="decimal"
                         value={formData.payCN}
                         onChange={(e) => handleChange("payCN", e.target.value)}
                         className={`w-full bg-white border text-gray-900 px-3 py-2.5 rounded-lg focus:outline-none focus:border-violet-500 ${
-                          showErrors && errors.payCN
-                            ? "border-red-500"
-                            : "border-gray-300"
+                          showErrors && errors.payCN ? "border-red-500" : "border-gray-300"
                         }`}
                         placeholder="₹ 0"
                       />
@@ -1762,96 +1456,63 @@ const AddCNBadDebtModal = ({
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
                         Verto Fee
-                        {selectedDetails && (
-                          <span className="ml-1 text-gray-400 font-normal normal-case">
-                            (Net: ₹{fmt(selectedDetails.netVertoFee)})
-                          </span>
-                        )}
+                        {adjustedDetails && <span className="ml-1 text-gray-400 font-normal normal-case">(Net: ₹{fmt(adjustedDetails.netVertoFee)})</span>}
                       </label>
                       <input
-                        type="text"
-                        inputMode="decimal"
+                        type="text" inputMode="decimal"
                         value={formData.vertoFeeCN}
-                        onChange={(e) =>
-                          handleChange("vertoFeeCN", e.target.value)
-                        }
+                        onChange={(e) => handleChange("vertoFeeCN", e.target.value)}
                         className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2.5 rounded-lg focus:outline-none focus:border-violet-500"
                         placeholder="₹ 0"
                       />
-                      <p className="text-[10px] text-violet-600 mt-1">
-                        Reduces Verto revenue
-                      </p>
+                      <p className="text-[10px] text-violet-600 mt-1">Reduces Verto revenue</p>
                     </div>
 
                     {/* GST CN */}
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
                         GST
-                        {selectedDetails && (
-                          <span className="ml-1 text-gray-400 font-normal normal-case">
-                            (Net: ₹{fmt(selectedDetails.netGst)})
-                          </span>
-                        )}
+                        {adjustedDetails && <span className="ml-1 text-gray-400 font-normal normal-case">(Net: ₹{fmt(adjustedDetails.netGst)})</span>}
                       </label>
                       <input
-                        type="text"
-                        inputMode="decimal"
+                        type="text" inputMode="decimal"
                         value={formData.gstCN}
                         onChange={(e) => handleChange("gstCN", e.target.value)}
                         className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2.5 rounded-lg focus:outline-none focus:border-amber-400"
                         placeholder="₹ 0"
                       />
-                      <p className="text-[10px] text-amber-600 mt-1">
-                        Auto-calculated · based on net GST rate
-                      </p>
+                      <p className="text-[10px] text-amber-600 mt-1">Auto-calculated · based on net GST rate</p>
                     </div>
 
                     {/* TDS CN */}
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
                         TDS
-                        {selectedDetails && (
-                          <span className="ml-1 text-gray-400 font-normal normal-case">
-                            (Net: ₹{fmt(selectedDetails.netTds)})
-                          </span>
-                        )}
+                        {adjustedDetails && <span className="ml-1 text-gray-400 font-normal normal-case">(Net: ₹{fmt(adjustedDetails.netTds)})</span>}
                       </label>
                       <input
-                        type="text"
-                        inputMode="decimal"
+                        type="text" inputMode="decimal"
                         value={formData.tdsCN}
                         onChange={(e) => handleChange("tdsCN", e.target.value)}
                         className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2.5 rounded-lg focus:outline-none focus:border-rose-400"
                         placeholder="₹ 0"
                       />
-                      <p className="text-[10px] text-rose-600 mt-1">
-                        Auto-calculated · based on net TDS rate
-                      </p>
+                      <p className="text-[10px] text-rose-600 mt-1">Auto-calculated · based on net TDS rate</p>
                     </div>
                   </div>
                   <ErrorMsg field="payCN" />
 
-                  {/* Employee count for OS */}
                   {selectedDetails?.dept_code === "OS" && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="mt-4"
-                    >
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-4">
                       <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5" /> Employee Count{" "}
-                        <span className="text-red-500">*</span>
+                        <Users className="w-3.5 h-3.5" /> Employee Count <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="number"
                         value={formData.employeeCount}
-                        onChange={(e) =>
-                          handleChange("employeeCount", e.target.value)
-                        }
+                        onChange={(e) => handleChange("employeeCount", e.target.value)}
                         className={`w-full bg-white border text-gray-900 px-3 py-2.5 rounded-lg ${
-                          showErrors && errors.employeeCount
-                            ? "border-red-500"
-                            : "border-gray-300"
+                          showErrors && errors.employeeCount ? "border-red-500" : "border-gray-300"
                         }`}
                         placeholder="0"
                       />
@@ -1860,7 +1521,7 @@ const AddCNBadDebtModal = ({
                   )}
                 </div>
 
-                {/* ── Statutory Description Section ── */}
+                {/* Statutory Section */}
                 <AnimatePresence>
                   {showStatutorySection && (
                     <motion.div
@@ -1869,13 +1530,10 @@ const AddCNBadDebtModal = ({
                       exit={{ opacity: 0, y: -8 }}
                       className="border-2 border-indigo-200 rounded-xl overflow-hidden"
                     >
-                      {/* Section Header */}
                       <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-4 py-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <ShieldCheck className="w-4 h-4 text-indigo-100" />
-                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                            Statutory Description
-                          </h3>
+                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Statutory Description</h3>
                         </div>
                         {totalStatutoryCN > 0 && (
                           <span className="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-lg">
@@ -1885,208 +1543,79 @@ const AddCNBadDebtModal = ({
                       </div>
 
                       <div className="bg-indigo-50 p-4 space-y-4">
-                        {/* Info banner */}
                         <div className="bg-white border border-indigo-200 rounded-lg px-3 py-2 text-[11px] text-indigo-700">
-                          <p className="font-semibold mb-0.5">
-                            How statutory CN works:
-                          </p>
-                          <p className="text-indigo-600">
-                            CO PF = ER PF + EE PF &nbsp;·&nbsp; CO ESI = ER ESIC
-                            + EE ESIC &nbsp;·&nbsp; Each reduces the
-                            corresponding statutory liability for this invoice.
-                          </p>
+                          <p className="font-semibold mb-0.5">How statutory CN works:</p>
+                          <p className="text-indigo-600">CO PF = ER PF + EE PF · CO ESI = ER ESIC + EE ESIC · Each reduces the corresponding statutory liability for this invoice.</p>
                         </div>
 
-                        {/* ── CO PF Block (ER PF + EE PF) ── */}
+                        {/* CO PF */}
                         <div className="bg-white border border-indigo-200 rounded-xl p-3">
                           <div className="flex items-center justify-between mb-3">
-                            <p className="text-xs font-black text-indigo-800 uppercase tracking-wider">
-                              CO PF (Provident Fund)
-                            </p>
-                            <div className="flex items-center gap-2">
-                              {co_pf_cn > 0 && (
-                                <span
-                                  className={`text-xs font-bold px-2 py-0.5 rounded-lg ${
-                                    co_pf_cn > num(selectedDetails?.net_co_pf)
-                                      ? "bg-red-100 text-red-700"
-                                      : "bg-indigo-100 text-indigo-700"
-                                  }`}
-                                >
-                                  = ₹{fmt(co_pf_cn)}
-                                </span>
-                              )}
-                            </div>
+                            <p className="text-xs font-black text-indigo-800 uppercase tracking-wider">CO PF (Provident Fund)</p>
+                            {co_pf_cn > 0 && (
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${
+                                co_pf_cn > num(adjustedDetails?.net_co_pf) ? "bg-red-100 text-red-700" : "bg-indigo-100 text-indigo-700"
+                              }`}>= ₹{fmt(co_pf_cn)}</span>
+                            )}
                           </div>
-                          <StatutoryInputRow
-                            label="CO PF"
-                            fieldKey="coPf"
-                            value={formData.coPf}
-                            hint={selectedDetails?.net_co_pf}
-                            onChange={handleChange}
-                            colorClass="border-indigo-200 focus:border-indigo-500"
-                          />
+                          <StatutoryInputRow label="CO PF" fieldKey="coPf" value={formData.coPf} hint={adjustedDetails?.net_co_pf} onChange={handleChange} colorClass="border-indigo-200 focus:border-indigo-500" />
                           <ErrorMsg field="coPf" />
                         </div>
 
-                        {/* ── CO ESI Block (ER ESIC + EE ESIC) ── */}
+                        {/* CO ESI */}
                         <div className="bg-white border border-teal-200 rounded-xl p-3">
                           <div className="flex items-center justify-between mb-3">
-                            <p className="text-xs font-black text-teal-800 uppercase tracking-wider">
-                              CO ESI (Employee State Insurance)
-                            </p>
-                            <div className="flex items-center gap-2">
-                              {co_esi_cn > 0 && (
-                                <span
-                                  className={`text-xs font-bold px-2 py-0.5 rounded-lg ${
-                                    co_esi_cn > num(selectedDetails?.net_co_esi)
-                                      ? "bg-red-100 text-red-700"
-                                      : "bg-teal-100 text-teal-700"
-                                  }`}
-                                >
-                                  = ₹{fmt(co_esi_cn)}
-                                </span>
-                              )}
-                            </div>
+                            <p className="text-xs font-black text-teal-800 uppercase tracking-wider">CO ESI (Employee State Insurance)</p>
+                            {co_esi_cn > 0 && (
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${
+                                co_esi_cn > num(adjustedDetails?.net_co_esi) ? "bg-red-100 text-red-700" : "bg-teal-100 text-teal-700"
+                              }`}>= ₹{fmt(co_esi_cn)}</span>
+                            )}
                           </div>
-                          <StatutoryInputRow
-                            label="CO ESI"
-                            fieldKey="coEsi"
-                            value={formData.coEsi}
-                            hint={selectedDetails?.net_co_esi}
-                            onChange={handleChange}
-                            colorClass="border-teal-200 focus:border-teal-500"
-                          />
+                          <StatutoryInputRow label="CO ESI" fieldKey="coEsi" value={formData.coEsi} hint={adjustedDetails?.net_co_esi} onChange={handleChange} colorClass="border-teal-200 focus:border-teal-500" />
                           <ErrorMsg field="coEsi" />
                         </div>
 
-                        {/* ── LWF · PT · Other Ded ── */}
+                        {/* LWF · PT · Other */}
                         <div className="grid grid-cols-3 gap-3">
-                          {/* LWF */}
                           <div className="bg-white border border-orange-200 rounded-xl p-3">
-                            <p className="text-xs font-black text-orange-800 uppercase tracking-wider mb-2">
-                              LWF Tax
-                            </p>
-                            <StatutoryInputRow
-                              label="LWF"
-                              fieldKey="lwfCN"
-                              value={formData.lwfCN}
-                              hint={selectedDetails?.net_lwf_tax}
-                              onChange={handleChange}
-                              colorClass="border-orange-200 focus:border-orange-500"
-                            />
-                            <p className="text-[10px] text-orange-500 mt-1">
-                              Labour Welfare Fund
-                            </p>
+                            <p className="text-xs font-black text-orange-800 uppercase tracking-wider mb-2">LWF Tax</p>
+                            <StatutoryInputRow label="LWF" fieldKey="lwfCN" value={formData.lwfCN} hint={adjustedDetails?.net_lwf_tax} onChange={handleChange} colorClass="border-orange-200 focus:border-orange-500" />
+                            <p className="text-[10px] text-orange-500 mt-1">Labour Welfare Fund</p>
                             <ErrorMsg field="lwfCN" />
                           </div>
-
-                          {/* PT */}
                           <div className="bg-white border border-purple-200 rounded-xl p-3">
-                            <p className="text-xs font-black text-purple-800 uppercase tracking-wider mb-2">
-                              PT Tax
-                            </p>
-                            <StatutoryInputRow
-                              label="PT"
-                              fieldKey="ptCN"
-                              value={formData.ptCN}
-                              hint={selectedDetails?.net_pt_tax}
-                              onChange={handleChange}
-                              colorClass="border-purple-200 focus:border-purple-500"
-                            />
-                            <p className="text-[10px] text-purple-500 mt-1">
-                              Professional Tax
-                            </p>
+                            <p className="text-xs font-black text-purple-800 uppercase tracking-wider mb-2">PT Tax</p>
+                            <StatutoryInputRow label="PT" fieldKey="ptCN" value={formData.ptCN} hint={adjustedDetails?.net_pt_tax} onChange={handleChange} colorClass="border-purple-200 focus:border-purple-500" />
+                            <p className="text-[10px] text-purple-500 mt-1">Professional Tax</p>
                             <ErrorMsg field="ptCN" />
                           </div>
-
-                          {/* Other Ded */}
                           <div className="bg-white border border-gray-200 rounded-xl p-3">
-                            <p className="text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                              Other Ded
-                            </p>
-                            <StatutoryInputRow
-                              label="Other"
-                              fieldKey="otherDedCN"
-                              value={formData.otherDedCN}
-                              hint={selectedDetails?.net_other_ded}
-                              onChange={handleChange}
-                              colorClass="border-gray-200 focus:border-gray-500"
-                            />
-                            <p className="text-[10px] text-gray-400 mt-1">
-                              Other deductions
-                            </p>
+                            <p className="text-xs font-black text-gray-700 uppercase tracking-wider mb-2">Other Ded</p>
+                            <StatutoryInputRow label="Other" fieldKey="otherDedCN" value={formData.otherDedCN} hint={adjustedDetails?.net_other_ded} onChange={handleChange} colorClass="border-gray-200 focus:border-gray-500" />
+                            <p className="text-[10px] text-gray-400 mt-1">Other deductions</p>
                             <ErrorMsg field="otherDedCN" />
                           </div>
                         </div>
 
-                        {/* Live statutory total summary */}
-                        {co_pf_cn +
-                          co_esi_cn +
-                          num(formData.lwfCN) +
-                          num(formData.ptCN) +
-                          num(formData.otherDedCN) >
-                          0 && (
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            className="bg-white border border-indigo-200 rounded-xl p-3"
-                          >
+                        {co_pf_cn + co_esi_cn + num(formData.lwfCN) + num(formData.ptCN) + num(formData.otherDedCN) > 0 && (
+                          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white border border-indigo-200 rounded-xl p-3">
                             <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider mb-2 flex items-center gap-1">
-                              <ShieldCheck className="w-3 h-3" /> Statutory CN
-                              Summary
+                              <ShieldCheck className="w-3 h-3" /> Statutory CN Summary
                             </p>
                             <div className="grid grid-cols-5 gap-2">
                               {[
-                                {
-                                  label: "CO PF",
-                                  value: co_pf_cn,
-                                  sub: "Provident Fund",
-                                  color:
-                                    "border-indigo-200 text-indigo-800 bg-indigo-50",
-                                },
-                                {
-                                  label: "CO ESI",
-                                  value: co_esi_cn,
-                                  sub: "Employee State Insurance",
-                                  color:
-                                    "border-teal-200 text-teal-800 bg-teal-50",
-                                },
-                                {
-                                  label: "LWF Tax",
-                                  value: num(formData.lwfCN),
-                                  sub: "Labour Welfare",
-                                  color:
-                                    "border-orange-200 text-orange-800 bg-orange-50",
-                                },
-                                {
-                                  label: "PT Tax",
-                                  value: num(formData.ptCN),
-                                  sub: "Prof. Tax",
-                                  color:
-                                    "border-purple-200 text-purple-800 bg-purple-50",
-                                },
-                                {
-                                  label: "Other Ded",
-                                  value: num(formData.otherDedCN),
-                                  sub: "Other",
-                                  color:
-                                    "border-gray-200 text-gray-700 bg-gray-50",
-                                },
+                                { label: "CO PF", value: co_pf_cn, sub: "Provident Fund", color: "border-indigo-200 text-indigo-800 bg-indigo-50" },
+                                { label: "CO ESI", value: co_esi_cn, sub: "Employee State Insurance", color: "border-teal-200 text-teal-800 bg-teal-50" },
+                                { label: "LWF Tax", value: num(formData.lwfCN), sub: "Labour Welfare", color: "border-orange-200 text-orange-800 bg-orange-50" },
+                                { label: "PT Tax", value: num(formData.ptCN), sub: "Prof. Tax", color: "border-purple-200 text-purple-800 bg-purple-50" },
+                                { label: "Other Ded", value: num(formData.otherDedCN), sub: "Other", color: "border-gray-200 text-gray-700 bg-gray-50" },
                               ].map(({ label, value, sub, color }) =>
                                 value > 0 ? (
-                                  <div
-                                    key={label}
-                                    className={`rounded-lg border px-2 py-2 text-center ${color}`}
-                                  >
-                                    <p className="text-[9px] font-bold uppercase tracking-wide">
-                                      {label}
-                                    </p>
-                                    <p className="text-sm font-black mt-0.5">
-                                      ₹{fmt(value)}
-                                    </p>
-                                    <p className="text-[8px] mt-0.5 opacity-60">
-                                      {sub}
-                                    </p>
+                                  <div key={label} className={`rounded-lg border px-2 py-2 text-center ${color}`}>
+                                    <p className="text-[9px] font-bold uppercase tracking-wide">{label}</p>
+                                    <p className="text-sm font-black mt-0.5">₹{fmt(value)}</p>
+                                    <p className="text-[8px] mt-0.5 opacity-60">{sub}</p>
                                   </div>
                                 ) : null
                               )}
@@ -2098,11 +1627,9 @@ const AddCNBadDebtModal = ({
                   )}
                 </AnimatePresence>
 
-                {/* ── Remarks ── */}
+                {/* Remarks */}
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                    Remarks
-                  </label>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">Remarks</label>
                   <textarea
                     value={formData.remarks}
                     onChange={(e) => handleChange("remarks", e.target.value)}
@@ -2112,157 +1639,84 @@ const AddCNBadDebtModal = ({
                   />
                 </div>
 
-                {/* ── Impact Summary ── */}
-                {/* ── Impact Summary ── */}
-                {selectedDetails && totalCN > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4"
-                  >
-                    <h3 className="text-sm font-bold text-amber-900 uppercase tracking-wider mb-3">
-                      Impact Summary
-                    </h3>
-
-                    {/* Main 3 columns */}
+                {/* Impact Summary */}
+                {adjustedDetails && totalCN > 0 && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
+                    <h3 className="text-sm font-bold text-amber-900 uppercase tracking-wider mb-3">Impact Summary</h3>
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">
-                          Current Outstanding
-                        </p>
-                        <p className="text-lg font-bold text-gray-900 mt-1">
-                          ₹{fmt(selectedDetails.amountPayable)}
-                        </p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wider">Current Outstanding</p>
+                        <p className="text-lg font-bold text-gray-900 mt-1">₹{fmt(adjustedDetails.amountPayable)}</p>
+                        {editingEntry && <p className="text-[10px] text-amber-600 mt-0.5">↩ restored (pre-CN)</p>}
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">
-                          {formData.optionType} Total
-                        </p>
-                        <p className="text-lg font-bold text-violet-600 mt-1">
-                          − ₹{fmt(totalCN)}
-                        </p>
-                        {/* REMOVED: "incl. Statutory" line - statutory is NOT part of CN Total */}
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          Pay + Verto + GST only
-                        </p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wider">{formData.optionType} Total</p>
+                        <p className="text-lg font-bold text-violet-600 mt-1">− ₹{fmt(totalCN)}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Pay + Verto + GST only</p>
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">
-                          New Outstanding
-                        </p>
-                        <p
-                          className={`text-lg font-bold mt-1 ${
-                            impactOutstanding <= 0
-                              ? "text-emerald-600"
-                              : "text-gray-900"
-                          }`}
-                        >
+                        <p className="text-xs text-gray-500 uppercase tracking-wider">New Outstanding</p>
+                        <p className={`text-lg font-bold mt-1 ${impactOutstanding <= 0 ? "text-emerald-600" : "text-gray-900"}`}>
                           ₹{fmt(impactOutstanding)}
                         </p>
                         {impactOutstanding <= 0 && (
-                          <p className="text-xs text-emerald-600 font-semibold mt-0.5">
-                            Invoice will be marked PAID
-                          </p>
+                          <p className="text-xs text-emerald-600 font-semibold mt-0.5">Invoice will be marked PAID</p>
                         )}
                       </div>
                     </div>
 
-                    {/* TDS row (separate, not part of CN Total) */}
                     {num(formData.tdsCN) > 0 && (
                       <div className="mt-3 pt-3 border-t border-amber-200">
                         <div className="flex items-center gap-2 text-xs text-amber-700">
                           <span className="font-semibold">TDS Adjustment:</span>
                           <span>₹{fmt(formData.tdsCN)}</span>
-                          <span className="text-gray-400">
-                            (govt. liability — not part of CN)
-                          </span>
+                          <span className="text-gray-400">(govt. liability — not part of CN)</span>
                         </div>
                       </div>
                     )}
 
-                    {/* Statutory row (separate, not part of CN Total) */}
                     {totalStatutoryCN > 0 && (
                       <div className="mt-2 pt-2 border-t border-amber-200">
                         <div className="flex items-center gap-2 text-xs text-indigo-700">
-                          <span className="font-semibold">
-                            Statutory Adjustment:
-                          </span>
+                          <span className="font-semibold">Statutory Adjustment:</span>
                           <span>₹{fmt(totalStatutoryCN)}</span>
-                          <span className="text-gray-400">
-                            (statutory liability — not part of CN)
-                          </span>
+                          <span className="text-gray-400">(statutory liability — not part of CN)</span>
                         </div>
                         <div className="mt-1 flex items-center gap-3 flex-wrap text-[10px]">
-                          {co_pf_cn > 0 && (
-                            <span className="text-indigo-600">
-                              CO PF ₹{fmt(co_pf_cn)}
-                            </span>
-                          )}
-                          {co_esi_cn > 0 && (
-                            <span className="text-teal-600">
-                              CO ESI ₹{fmt(co_esi_cn)}
-                            </span>
-                          )}
-                          {num(formData.lwfCN) > 0 && (
-                            <span className="text-orange-600">
-                              LWF ₹{fmt(formData.lwfCN)}
-                            </span>
-                          )}
-                          {num(formData.ptCN) > 0 && (
-                            <span className="text-purple-600">
-                              PT ₹{fmt(formData.ptCN)}
-                            </span>
-                          )}
-                          {num(formData.otherDedCN) > 0 && (
-                            <span className="text-gray-600">
-                              Other ₹{fmt(formData.otherDedCN)}
-                            </span>
-                          )}
+                          {co_pf_cn > 0 && <span className="text-indigo-600">CO PF ₹{fmt(co_pf_cn)}</span>}
+                          {co_esi_cn > 0 && <span className="text-teal-600">CO ESI ₹{fmt(co_esi_cn)}</span>}
+                          {num(formData.lwfCN) > 0 && <span className="text-orange-600">LWF ₹{fmt(formData.lwfCN)}</span>}
+                          {num(formData.ptCN) > 0 && <span className="text-purple-600">PT ₹{fmt(formData.ptCN)}</span>}
+                          {num(formData.otherDedCN) > 0 && <span className="text-gray-600">Other ₹{fmt(formData.otherDedCN)}</span>}
                         </div>
                       </div>
                     )}
 
-                    {/* Total impact line */}
                     <div className="mt-3 pt-3 border-t-2 border-amber-300">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-xs text-gray-500 uppercase tracking-wider">
-                          Total Impact on Invoice
-                        </span>
-                        <span className="font-bold text-amber-800">
-                          ₹{fmt(totalImpact)}
-                        </span>
+                        <span className="text-xs text-gray-500 uppercase tracking-wider">Total Impact on Invoice</span>
+                        <span className="font-bold text-amber-800">₹{fmt(totalImpact)}</span>
                       </div>
                       <p className="text-[10px] text-gray-400 mt-0.5">
-                        CN ₹{fmt(totalCN)} + TDS ₹{fmt(formData.tdsCN)} +
-                        Statutory ₹{fmt(totalStatutoryCN)}
+                        CN ₹{fmt(totalCN)} + TDS ₹{fmt(formData.tdsCN)} + Statutory ₹{fmt(totalStatutoryCN)}
                       </p>
                     </div>
 
-                    {/* Over-limit warning */}
                     {overLimit && (
                       <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
                         <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
                         <div className="text-xs text-red-700 font-semibold">
                           {limitedByOutstanding ? (
-                            <>
-                              CN total ₹{fmt(totalCN)} exceeds the outstanding
-                              amount ₹{fmt(num(selectedDetails.amountPayable))}.
-                              Reduce Pay, Verto Fee, or GST amounts.
-                            </>
+                            <>CN total ₹{fmt(totalCN)} exceeds the outstanding amount ₹{fmt(num(adjustedDetails.amountPayable))}. Reduce Pay, Verto Fee, or GST amounts.</>
                           ) : (
-                            <>
-                              CN total ₹{fmt(totalCN)} exceeds the invoice base
-                              (Pay+Verto+GST = ₹{fmt(invoiceBaseValue)}). Reduce
-                              the amounts.
-                            </>
+                            <>CN total ₹{fmt(totalCN)} exceeds the invoice base (Pay+Verto+GST = ₹{fmt(invoiceBaseValue)}). Reduce the amounts.</>
                           )}
                         </div>
                       </div>
                     )}
 
                     <p className="text-xs text-gray-500 mt-2 italic">
-                      ℹ️ CN / Bad Debt reduces only Pay, Verto Fee, and GST. TDS
-                      and Statutory are separate adjustments.
+                      ℹ️ CN / Bad Debt reduces only Pay, Verto Fee, and GST. TDS and Statutory are separate adjustments.
                     </p>
                   </motion.div>
                 )}
@@ -2279,12 +1733,7 @@ const AddCNBadDebtModal = ({
                   {canSave && (
                     <button
                       type="submit"
-                      disabled={
-                        loading ||
-                        refStatus === "taken" ||
-                        refStatus === "checking" ||
-                        overLimit
-                      }
+                      disabled={loading || refStatus === "taken" || refStatus === "checking" || overLimit}
                       className={`px-8 py-2.5 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium shadow-lg flex items-center gap-2 ${
                         formData.optionType === "Bad Debt"
                           ? "bg-red-600 hover:bg-red-700 shadow-red-200"
@@ -2292,18 +1741,9 @@ const AddCNBadDebtModal = ({
                       }`}
                     >
                       {loading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" /> Saving…
-                        </>
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
                       ) : (
-                        <>
-                          <span>
-                            {editingEntry
-                              ? `Update ${formData.optionType}`
-                              : `Save ${formData.optionType}`}
-                          </span>
-                          <ArrowRight className="w-4 h-4" />
-                        </>
+                        <><span>{editingEntry ? `Update ${formData.optionType}` : `Save ${formData.optionType}`}</span><ArrowRight className="w-4 h-4" /></>
                       )}
                     </button>
                   )}
