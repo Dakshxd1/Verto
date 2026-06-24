@@ -232,6 +232,10 @@ const DeptReports = () => {
   const [allDepts, setAllDepts] = useState([]);
   const [deptId, setDeptId] = useState(null); // null = All Departments
 
+  // ── Change 5: Custom date range states ──────────────────────────────
+  const [customStart, setCustomStart] = useState("");  // "YYYY-MM-DD" or ""
+  const [customEnd,   setCustomEnd]   = useState("");
+
   // RPC STATES
   const [rpcRevenue, setRpcRevenue] = useState([]);
   const [rpcSalary, setRpcSalary] = useState([]);
@@ -296,8 +300,10 @@ const DeptReports = () => {
 
       // 3) Effective dept for all RPC calls — null = All Departments
       const effectiveDeptId = resolvedIsAdmin ? deptId : resolvedDeptId;
-      const p_start = fy.start;
-      const p_end   = fy.end;
+      
+      // ── Change 5: Custom date range overrides FY ────────────────────
+      const p_start = customStart || fy.start;
+      const p_end   = customEnd   || fy.end;
 
       // 4) Fetch all 11 RPCs in parallel (added 2 P&L RPCs)
       const [
@@ -336,7 +342,7 @@ const DeptReports = () => {
     } finally {
       setLoading(false);
     }
-  }, [fy.start, fy.end, deptId]);
+  }, [fy.start, fy.end, deptId, customStart, customEnd]);
 
   // ── Working Capital fetch ──────────────────────────────────────────────────
   const fetchWorkingCapital = useCallback(async (bankId = null) => {
@@ -365,46 +371,62 @@ const DeptReports = () => {
     }
   }, []);
 
+  // ── Change 5: Added customStart, customEnd to dependency array ────
   useEffect(() => {
     fetchAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fyStartYear, deptId]);
+  }, [fyStartYear, deptId, customStart, customEnd]);
 
   useEffect(() => {
     fetchWorkingCapital(wcSelectedBank);
   }, [wcSelectedBank]);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
-  const kpi = useMemo(() => {
-    const rev = rpcRevenue.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
-    const fee = rpcRevenue.reduce((s, r) => s + Number(r.total_fee || 0), 0);
-    const tds = rpcRevenue.reduce((s, r) => s + Number(r.total_tds || 0), 0);
+// AFTER — correct, sums ALL rows for headcount/cost, rat0 only for % ratios
+const kpi = useMemo(() => {
+  const rev = rpcRevenue.reduce((s, r) => s + Number(r.total_revenue || 0), 0);
+  const fee = rpcRevenue.reduce((s, r) => s + Number(r.total_fee || 0), 0);
+  const tds = rpcRevenue.reduce((s, r) => s + Number(r.total_tds || 0), 0);
 
-    const revDepts = ['Operations', 'Recruitment', 'Temporary', 'Projects'];
-    const rat = rpcRatios.filter(r => revDepts.includes(r.dept_name));
-    const rat0 = rat[0] || rpcRatios[0] || {};
+  const revDepts = ['Operations', 'Recruitment', 'Temporary', 'Projects'];
+  const rat = rpcRatios.filter(r => revDepts.includes(r.dept_name));
+  const rat0 = rat[0] || rpcRatios[0] || {};
 
-    const totalMgmtCost = Number(rpcRatios[0]?.total_mgmt_cost || 0);
-    const totalEmpCost  = Number(rpcRatios[0]?.total_emp_cost  || 0);
-    const adminMgmtRatio = totalEmpCost ? (totalMgmtCost / totalEmpCost * 100) : 0;
+  // ── Sum headcount across ALL dept rows returned ──────────────────
+  const internal_headcount = rpcRatios.reduce((s, r) => s + Number(r.internal_headcount || 0), 0);
+  const external_headcount = rpcRatios.reduce((s, r) => s + Number(r.external_headcount || 0), 0);
+  const total_internal_salary = rpcRatios.reduce((s, r) => s + Number(r.total_internal_salary || 0), 0);
+  const total_external_cost   = rpcRatios.reduce((s, r) => s + Number(r.total_external_cost   || 0), 0);
+  const total_non_salary      = rpcRatios.reduce((s, r) => s + Number(r.total_non_salary      || 0), 0);
 
-    return {
-      total_revenue:        rev,
-      total_fee:            fee,
-      total_tds:            tds,
-      fee_to_revenue_pct:   Number(rat0.fee_to_revenue || 0),
-      internal_salary:      Number(rat0.total_internal_salary || 0),
-      external_cost:        Number(rat0.total_external_cost || 0),
-      non_salary_exp:       Number(rat0.total_non_salary || 0),
-      internal_headcount:   Number(rat0.internal_headcount || 0),
-      external_headcount:   Number(rat0.external_headcount || 0),
-      revenue_per_ext_head: Number(rat0.revenue_per_ext_head || 0),
-      dept_salary_to_fee:   Number(rat0.dept_salary_to_dept_fee || 0),
-      totalMgmtCost,
-      totalEmpCost,
-      adminMgmtRatio,
-    };
-  }, [rpcRevenue, rpcRatios]);
+  // revenue_per_ext_head: recalculate from summed totals
+  const revenue_per_ext_head = external_headcount > 0 ? rev / external_headcount : 0;
+
+  // % ratios: still use rat0 (dept-level % doesn't aggregate by summing)
+  const totalMgmtCost  = Number(rpcRatios[0]?.total_mgmt_cost || 0);
+  const totalEmpCost   = Number(rpcRatios[0]?.total_emp_cost  || 0);
+  const adminMgmtRatio = totalEmpCost ? (totalMgmtCost / totalEmpCost * 100) : 0;
+
+  const bdRow  = rpcRatios.find(r => r.dept_name === 'Business Development' || r.dept_name === 'BD');
+  const bdCost = Number(bdRow?.total_internal_salary || 0);
+
+  return {
+    total_revenue:        rev,
+    total_fee:            fee,
+    total_tds:            tds,
+    fee_to_revenue_pct:   Number(rat0.fee_to_revenue || 0),
+    internal_salary:      total_internal_salary,
+    external_cost:        total_external_cost,
+    non_salary_exp:       total_non_salary,
+    internal_headcount,   // ← now sum of ALL depts from internal_team
+    external_headcount,   // ← now sum of ALL depts
+    revenue_per_ext_head, // ← recalculated from sums
+    dept_salary_to_fee:   Number(rat0.dept_salary_to_dept_fee || 0),
+    totalMgmtCost,
+    totalEmpCost,
+    adminMgmtRatio,
+    bdCost,
+  };
+}, [rpcRevenue, rpcRatios]);
 
   // ── Revenue Growth ──────────────────────────────────────────────────────
   const growth = useMemo(() => {
@@ -442,13 +464,19 @@ const DeptReports = () => {
   }, [rpcSalary]);
 
   // ── HR KPIs ─────────────────────────────────────────────────────────────
+  // ── Change 1: Add avgAge ──────────────────────────────────────────────
   const hrKPIs = useMemo(() => {
     const active    = rpcAttrition.reduce((s, r) => s + Number(r.total_active    || 0), 0);
     const inactive  = rpcAttrition.reduce((s, r) => s + Number(r.total_inactive  || 0), 0);
     const avgTenure = rpcAttrition.length
       ? rpcAttrition.reduce((s, r) => s + Number(r.avg_tenure_months || 0), 0) / rpcAttrition.length
       : 0;
-    return { active, inactive, totalEmployees: active + inactive, avgTenureMonths: avgTenure };
+    // avg_age_years: weighted by active headcount per dept
+    const totalActive = rpcAttrition.reduce((s, r) => s + Number(r.total_active || 0), 0);
+    const weightedAge = rpcAttrition.reduce((s, r) =>
+      s + (Number(r.avg_age_years || 0) * Number(r.total_active || 0)), 0);
+    const avgAge = totalActive > 0 ? weightedAge / totalActive : 0;
+    return { active, inactive, totalEmployees: active + inactive, avgTenureMonths: avgTenure, avgAge };
   }, [rpcAttrition]);
 
   // ── Birthday / Anniversary alerts ──────────────────────────────────────
@@ -645,6 +673,36 @@ const DeptReports = () => {
               </div>
             </div>
           )}
+
+          {/* ── Change 5: Custom date range pickers ────────────────────── */}
+          <div className="min-w-[150px]">
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">From Date</label>
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-200"
+            />
+          </div>
+          <div className="min-w-[150px]">
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">To Date</label>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-200"
+            />
+          </div>
+          {(customStart || customEnd) && (
+            <div className="flex items-end">
+              <button
+                onClick={() => { setCustomStart(""); setCustomEnd(""); }}
+                className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-500 hover:bg-slate-50 flex items-center gap-1"
+              >
+                <X className="w-3 h-3" /> Clear dates
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -766,6 +824,69 @@ const DeptReports = () => {
         </ChartCard>
       </div>
 
+      {/* ── Change 2: Non-Salary Expenses section ────────────────────── */}
+      <SH icon={CreditCard} title="Non-Salary Expenses" color={P.clay} />
+      {rpcNonSalary.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+          <Empty msg="No non-salary expense data" />
+        </div>
+      ) : (() => {
+        // Pivot: get all unique pay_heads as columns
+        const heads = [...new Set(rpcNonSalary.map(r => r.pay_head))].sort();
+        // Group by month
+        const byMonth = new Map();
+        for (const r of rpcNonSalary) {
+          const key = r.month || "—";
+          if (!byMonth.has(key)) byMonth.set(key, { month: key, dept: r.department || "", total: 0 });
+          byMonth.get(key)[r.pay_head] = (byMonth.get(key)[r.pay_head] || 0) + Number(r.total_amount || 0);
+          byMonth.get(key).total += Number(r.total_amount || 0);
+        }
+        const rows = Array.from(byMonth.values()).sort((a, b) => a.month.localeCompare(b.month));
+        const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+
+        return (
+          <ChartCard title="Non-Salary Expense Breakdown" subtitle="CC Bill · Mobile · Internet · Repair & other heads">
+            <div className="overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-white border-b border-slate-100 z-10">
+                  <tr>
+                    <th className="text-left py-2 pr-3 text-slate-400 font-semibold">Month</th>
+                    {heads.map((h, i) => (
+                      <th key={i} className="text-right py-2 pr-3 text-slate-400 font-semibold whitespace-nowrap">{h}</th>
+                    ))}
+                    <th className="text-right py-2 pr-3 text-slate-400 font-semibold">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {rows.map((r, i) => (
+                    <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-2 pr-3 font-semibold text-slate-700">{fmtMonth(r.month)}</td>
+                      {heads.map((h, j) => (
+                        <td key={j} className="py-2 pr-3 text-right tabular-nums text-slate-600">
+                          {r[h] ? fmt(r[h]) : "—"}
+                        </td>
+                      ))}
+                      <td className="py-2 pr-3 text-right tabular-nums font-bold text-slate-800">{fmt(r.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t-2 border-slate-200">
+                  <tr className="bg-slate-50/60">
+                    <td className="py-2 pr-3 font-bold text-slate-700 text-xs">Grand Total</td>
+                    {heads.map((h, i) => (
+                      <td key={i} className="py-2 pr-3 text-right tabular-nums font-semibold text-slate-700">
+                        {fmt(rows.reduce((s, r) => s + (r[h] || 0), 0))}
+                      </td>
+                    ))}
+                    <td className="py-2 pr-3 text-right tabular-nums font-black text-slate-900">{fmt(grandTotal)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </ChartCard>
+        );
+      })()}
+
       {/* SECTION 3 — Profit (Pre & Post TDS) */}
       <SH icon={TrendingUp} title="Profit & P&L" color={P.emerald} />
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -872,6 +993,77 @@ const DeptReports = () => {
         )}
       </ChartCard>
 
+      {/* ── Change 3: Amount Not Received from Client ────────────────── */}
+      {(() => {
+        const unpaid = rpcClientProfit
+          .filter(r => Number(r.money_not_received || 0) > 0)
+          .sort((a, b) => Number(b.money_not_received) - Number(a.money_not_received));
+        const totalUnpaid = unpaid.reduce((s, r) => s + Number(r.money_not_received || 0), 0);
+        if (unpaid.length === 0) return null;
+        return (
+          <>
+            <SH icon={AlertTriangle} title="Amount Paid but Not Yet Received" color={P.brick} count={`${unpaid.length} clients`} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
+              <KpiCard
+                label="Total Unreceived Amount"
+                value={fmt(totalUnpaid)}
+                sub="Invoiced + paid but not collected"
+                icon={AlertTriangle}
+                color={P.brick}
+              />
+              <KpiCard
+                label="Clients with Pending Receipt"
+                value={String(unpaid.length)}
+                sub="from current filter"
+                icon={Users}
+                color={P.amber}
+              />
+              <KpiCard
+                label="Largest Single Pending"
+                value={fmt(unpaid[0]?.money_not_received)}
+                sub={unpaid[0]?.client_name || "—"}
+                icon={FileText}
+                color={P.slate}
+              />
+            </div>
+            <ChartCard title="Client-wise Unreceived Amounts" subtitle="Sorted by amount pending — invoiced but cash not yet in">
+              <div className="overflow-auto" style={{ maxHeight: 320 }}>
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-white border-b border-slate-100 z-10">
+                    <tr>
+                      <th className="text-left py-2 pr-3 text-slate-400 font-semibold">Client</th>
+                      <th className="text-left py-2 pr-3 text-slate-400 font-semibold">Department</th>
+                      <th className="text-left py-2 pr-3 text-slate-400 font-semibold">Month</th>
+                      <th className="text-right py-2 pr-3 text-slate-400 font-semibold">Fee Earned</th>
+                      <th className="text-right py-2 pr-3 text-slate-400 font-semibold">Actual Profit</th>
+                      <th className="text-right py-2 pr-3 text-slate-400 font-semibold">Not Received</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {unpaid.map((r, i) => (
+                      <tr key={i} className="hover:bg-rose-50/30 transition-colors">
+                        <td className="py-2 pr-3 font-medium text-slate-800 max-w-[160px] truncate">{r.client_name}</td>
+                        <td className="py-2 pr-3 text-slate-500">{r.dept_name}</td>
+                        <td className="py-2 pr-3 text-slate-400">{r.month}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums font-semibold text-slate-700">{fmt(r.verto_fee_earned)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          <span className={Number(r.actual_profit) >= 0 ? "text-emerald-600" : "text-rose-500"}>
+                            {fmt(r.actual_profit)}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          <span className="font-bold text-rose-600">{fmt(r.money_not_received)}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </ChartCard>
+          </>
+        );
+      })()}
+
       {/* SECTION 4 Manpower */}
       <SH icon={Users} title="Manpower" color={P.plum} />
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -902,8 +1094,9 @@ const DeptReports = () => {
               {rpcAttrition.slice(-6).map((r, i) => (
                 <div key={`${r.department}-${i}`} className="flex items-center justify-between py-1 border-b border-slate-100">
                   <span className="text-xs font-semibold text-slate-700">{r.department}</span>
+                  {/* ── Change 1: Added Age to attrition card ── */}
                   <span className="text-xs font-bold tabular-nums text-slate-700">
-                    Active: {r.total_active} · Inactive: {r.total_inactive} · Attrition: {Number(r.attrition_rate||0).toFixed(1)}% · Tenure: {Number(r.avg_tenure_months||0).toFixed(1)}m
+                    Active: {r.total_active} · Inactive: {r.total_inactive} · Attrition: {Number(r.attrition_rate||0).toFixed(1)}% · Tenure: {Number(r.avg_tenure_months||0).toFixed(1)}m · Age: {Number(r.avg_age_years||0).toFixed(1)}y
                   </span>
                 </div>
               ))}
@@ -969,11 +1162,11 @@ const DeptReports = () => {
         </table>
       </div>
 
-      {/* Management Cost — Admin summary only */}
+      {/* ── Change 4: Management + BD Cost — Admin summary only ────── */}
       {isAdmin && (
         <>
-          <SH icon={Wallet} title="Management Cost Overview" color={P.plum} />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <SH icon={Wallet} title="Management & BD Cost Overview" color={P.plum} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
             <KpiCard
               label="Total Mgmt Cost"
               value={fmt(kpi.totalMgmtCost)}
@@ -995,6 +1188,13 @@ const DeptReports = () => {
               icon={TrendingUp}
               color={P.plum}
             />
+            <KpiCard
+              label="BD Cost / Total Emp Cost"
+              value={kpi.totalEmpCost > 0 ? `${(kpi.bdCost / kpi.totalEmpCost * 100).toFixed(2)}%` : "—"}
+              sub={`BD dept salary: ${fmt(kpi.bdCost)}`}
+              icon={TrendingUp}
+              color={P.sky}
+            />
           </div>
         </>
       )}
@@ -1011,11 +1211,13 @@ const DeptReports = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <KpiCard label="Active Headcount" value={fmtCount(hrKPIs.active)} sub="status=Active" icon={Users} color={P.teal} />
-        <KpiCard label="Inactive Headcount" value={fmtCount(hrKPIs.inactive)} sub="status=Inactive" icon={Users} color={P.brick} />
-        <KpiCard label="Total Employees" value={fmtCount(hrKPIs.totalEmployees)} sub="all records" icon={Users} color={P.slate} />
-        <KpiCard label="Avg Tenure" value={`${(hrKPIs.avgTenureMonths / 12).toFixed(1)} yrs`} sub="based on doj" icon={Calendar} color={P.sky} />
+      {/* ── Change 1: 5-card HR grid with Avg Age ────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+        <KpiCard label="Active Headcount"   value={fmtCount(hrKPIs.active)}                             sub="status=Active"        icon={Users}    color={P.teal} />
+        <KpiCard label="Inactive Headcount" value={fmtCount(hrKPIs.inactive)}                           sub="status=Inactive"      icon={Users}    color={P.brick} />
+        <KpiCard label="Total Employees"    value={fmtCount(hrKPIs.totalEmployees)}                     sub="all records"          icon={Users}    color={P.slate} />
+        <KpiCard label="Avg Tenure"         value={`${(hrKPIs.avgTenureMonths / 12).toFixed(1)} yrs`}   sub="based on doj"         icon={Calendar} color={P.sky} />
+        <KpiCard label="Avg Age of Team"    value={hrKPIs.avgAge > 0 ? `${hrKPIs.avgAge.toFixed(1)} yrs` : "—"} sub="avg across active employees" icon={Users} color={P.amber} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
