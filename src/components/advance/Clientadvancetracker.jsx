@@ -31,6 +31,7 @@ const COL_MAP = {
   "paid back": "paid_back", paid_back: "paid_back", "amount paid": "paid_back",
   status: "status",
   remarks: "remarks", notes: "remarks",
+  "bank name": "bank_name", bank_name: "bank_name", bank: "bank_name",
 };
 const normalizeHeader = (h) => String(h || "").trim().toLowerCase();
 
@@ -72,12 +73,23 @@ const isLocked = (dateStr) => {
 
 // ─── Download template ────────────────────────────────────────────────────────
 const downloadTemplate = () => {
-  const headers = ["Client Name", "Ledger Name", "Date", "Amount (LA)", "Interest", "Paid Back", "Status", "Remarks"];
-  const sample  = ["ABC Corp", "ABC Corp Ledger", "2026-06-01", 500000, 25000, 100000, "Pending", "Q1 advance"];
+  const headers = ["Client Name", "Ledger Name", "Date", "Amount (LA)", "Interest", "Paid Back", "Status", "Remarks", "Bank Name"];
+  const sample  = ["ABC Corp", "ABC Corp Ledger", "2026-06-01", 500000, 25000, 100000, "Pending", "Q1 advance", "HDFC Bank (VB) 5595"];
+  
   const wb = XLSX.utils.book_new();
+  
+  // Main data sheet
   const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
   ws["!cols"] = headers.map(() => ({ wch: 20 }));
   XLSX.utils.book_append_sheet(wb, ws, "Client Advance");
+
+  // Bank reference sheet — so users know exact names
+  const bankHeaders = ["Bank Name (copy exactly into Bank Name column)"];
+  const bankRows = banks.map(b => [b.bank_name]);
+  const wsBanks = XLSX.utils.aoa_to_sheet([bankHeaders, ...bankRows]);
+  wsBanks["!cols"] = [{ wch: 45 }];
+  XLSX.utils.book_append_sheet(wb, wsBanks, "Valid Bank Names");
+
   XLSX.writeFile(wb, "client_advance_template.xlsx");
   logExport({
     action:      EXPORT_ACTIONS.TEMPLATE,
@@ -762,6 +774,40 @@ export default function ClientAdvanceTracker() {
       for (const row of normalizedRows) {
         try {
           if (!row.client_name) throw new Error("client_name is empty");
+
+          // Resolve bank_name from Excel to bank_id
+          let rowBankId = null;
+          if (row.bank_name) {
+            const bankName = String(row.bank_name).trim().toLowerCase();
+          
+            // 1st: exact match
+            let matched = banks.find(b => b.bank_name.toLowerCase() === bankName);
+          
+            // 2nd: partial — bank name contains the input
+            if (!matched) {
+              const partials = banks.filter(b => b.bank_name.toLowerCase().includes(bankName));
+              if (partials.length === 1) matched = partials[0];
+              else if (partials.length > 1) {
+                throw new Error(
+                  `"${row.bank_name}" matches multiple banks: ${partials.map(b => b.bank_name).join(", ")}. Use a more specific name.`
+                );
+              }
+            }
+          
+            // 3rd: input contains bank name (e.g. user typed full name with extra spaces)
+            if (!matched) {
+              const partials = banks.filter(b => bankName.includes(b.bank_name.toLowerCase()));
+              if (partials.length === 1) matched = partials[0];
+            }
+          
+            if (!matched) {
+              throw new Error(
+                `Bank "${row.bank_name}" not found. Valid banks: ${banks.map(b => b.bank_name).join(" | ")}`
+              );
+            }
+            rowBankId = matched.id;
+          }
+
           const amount     = parseFloat(row.amount)    || 0;
           const interest   = parseFloat(row.interest)  || 0;
           const paid_back  = parseFloat(row.paid_back) || 0;
@@ -777,7 +823,7 @@ export default function ClientAdvanceTracker() {
             amount, interest, paid_back, pending_due, status,
             remarks:       row.remarks ? String(row.remarks).trim() : null,
             bulk_upload_id: uploadSession.id,
-            // bank_id is not set in bulk upload — trigger will skip bank entry creation
+            bank_id:       rowBankId,
           }]);
           if (insertErr) throw insertErr;
 
@@ -862,6 +908,7 @@ export default function ClientAdvanceTracker() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={downloadTemplate}
+              title="Template includes Bank Name column — enter exact bank name as registered"
               className="flex items-center gap-2 px-4 py-2.5 border border-orange-300 bg-orange-50 text-orange-700 rounded-xl text-sm font-semibold hover:bg-orange-100 transition">
               <Download className="w-4 h-4" /> Template
             </button>
