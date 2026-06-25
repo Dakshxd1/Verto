@@ -563,7 +563,7 @@ const ch = supabase.channel("todo-badge")
   .on("postgres_changes", {
     event: "INSERT", schema: "public", table: "employee_todos",
   }, () => {
-    playTaskSound();   // ← play sound on new task
+    playTaskSound(payload.new?.assigned_by_email, user?.email); // ← play sound on new task
     loadCount();
   })
   .on("postgres_changes", {
