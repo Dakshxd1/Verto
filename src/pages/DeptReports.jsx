@@ -2781,170 +2781,6 @@ const DeptReports = () => {
           </div>
 
           {/* Weekly Cash Forecast (PRESERVED) */}
-          <SH icon={TrendingUp} title="Weekly Cash Forecast" color={P.teal} />
-
-          <ChartCard title="Working Capital Forecast" subtitle="Blue = Cash Balance · Green = Inflow · Red = OS Outflow · Orange = Statutory">
-            {wcForecast.length === 0 ? <Empty msg="No forecast data" /> : (() => {
-              const chartData = wcForecast.map(w => ({
-                label: w.week_label,
-                offset: w.week_offset,
-                cash: Number(w.closing_cash || 0),
-                inflow: Number(w.actual_inflow || 0) + Number(w.forecast_inflow || 0),
-                actual_inflow: Number(w.actual_inflow || 0),
-                forecast_inflow: Number(w.forecast_inflow || 0),
-                outflow_os: Number(w.expected_outflow_os || 0),
-                outflow_statutory: Number(w.expected_outflow_statutory || 0),
-                actual_outflow: Number(w.actual_outflow || 0),
-                opening: Number(w.opening_cash || 0),
-                net: Number(w.net_movement || 0),
-                period: `${fmtDate(w.week_start)} – ${fmtDate(w.week_end)}`,
-                isCurrent: w.week_offset === 0,
-                isPast: w.week_offset < 0,
-              }));
-
-              const fmtAxis = (v) => {
-                if (Math.abs(v) >= 1e7) return `₹${(v/1e7).toFixed(1)}Cr`;
-                if (Math.abs(v) >= 1e5) return `₹${(v/1e5).toFixed(1)}L`;
-                if (Math.abs(v) >= 1e3) return `₹${(v/1e3).toFixed(0)}K`;
-                return `₹${v}`;
-              };
-
-              const CustomTooltip = ({ active, payload, label }) => {
-                if (!active || !payload?.length) return null;
-                const d = payload[0]?.payload;
-                return (
-                  <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-xs min-w-[220px]">
-                    <p className="font-bold text-slate-800 mb-1">{label}</p>
-                    <p className="text-[10px] text-slate-400 mb-2">{d?.period}</p>
-                    <div className="space-y-1 border-t border-slate-100 pt-2">
-                      {[
-                        { label: "Opening Cash", value: d?.opening, color: "#94a3b8" },
-                        { label: "Inflow", value: d?.inflow, color: "#2F8577" },
-                        { label: "OS Outflow", value: d?.outflow_os, color: "#B14B3F" },
-                        { label: "Statutory", value: d?.outflow_statutory, color: "#C08A3E" },
-                        { label: "Net Movement", value: d?.net, color: d?.net >= 0 ? "#2F8577" : "#B14B3F" },
-                        { label: "Closing Cash", value: d?.cash, color: "#3D6A91" },
-                      ].map((item, i) => (
-                        <div key={i} className="flex items-center justify-between gap-4">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: item.color }} />
-                            <span className="text-slate-500">{item.label}</span>
-                          </div>
-                          <span className={`font-semibold tabular-nums ${item.value < 0 ? "text-rose-600" : "text-slate-800"}`}>
-                            {item.value !== 0 ? fmtAxis(item.value) : "—"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              };
-
-              return (
-                <>
-                  <div style={{ height: 320 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
-                        <YAxis tickFormatter={fmtAxis} tick={{ fontSize: 10, fill: "#94a3b8" }} tickLine={false} axisLine={false} width={70} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend wrapperStyle={{ fontSize: 11, paddingTop: 12 }} formatter={(v) => <span style={{ color: "#64748b" }}>{v}</span>} />
-                        <ReferenceLine x="Current" stroke="#3b82f6" strokeDasharray="4 2" strokeWidth={1.5} label={{ value: "NOW", position: "top", fontSize: 9, fill: "#3b82f6", fontWeight: 700 }} />
-
-                        <Line type="monotone" dataKey="cash" name="Cash Balance" stroke="#3D6A91" strokeWidth={2.5}
-                          dot={(props) => {
-                            const { cx, cy, payload } = props;
-                            return <circle key={`c-${payload.label}`} cx={cx} cy={cy} r={payload.isCurrent ? 5 : 3} fill={payload.isCurrent ? "#3D6A91" : "#fff"} stroke="#3D6A91" strokeWidth={2} />;
-                          }} activeDot={{ r: 6, fill: "#3D6A91" }} />
-
-                        <Line type="monotone" dataKey="inflow" name="Expected Inflow" stroke="#2F8577" strokeWidth={2}
-                          dot={(props) => {
-                            const { cx, cy, payload } = props;
-                            if (!payload.inflow) return <g key={`i-${payload.label}`} />;
-                            return <circle key={`i-${payload.label}`} cx={cx} cy={cy} r={5} fill="#2F8577" stroke="#fff" strokeWidth={2} />;
-                          }} activeDot={{ r: 6, fill: "#2F8577" }} />
-
-                        <Line type="monotone" dataKey="outflow_os" name="OS Outflow" stroke="#B14B3F" strokeWidth={2}
-                          dot={(props) => {
-                            const { cx, cy, payload } = props;
-                            if (!payload.outflow_os) return <g key={`o-${payload.label}`} />;
-                            return <circle key={`o-${payload.label}`} cx={cx} cy={cy} r={5} fill="#B14B3F" stroke="#fff" strokeWidth={2} />;
-                          }} activeDot={{ r: 6, fill: "#B14B3F" }} />
-
-                        <Line type="monotone" dataKey="outflow_statutory" name="Statutory" stroke="#C08A3E" strokeWidth={2}
-                          dot={(props) => {
-                            const { cx, cy, payload } = props;
-                            if (!payload.outflow_statutory) return <g key={`s-${payload.label}`} />;
-                            return <circle key={`s-${payload.label}`} cx={cx} cy={cy} r={5} fill="#C08A3E" stroke="#fff" strokeWidth={2} />;
-                          }} activeDot={{ r: 6, fill: "#C08A3E" }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  <div className="overflow-auto mt-4 border-t border-slate-100 pt-4">
-                    <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-white border-b border-slate-100">
-                        <tr>
-                          {["Week","Period","Opening","Inflow","OS Outflow","Statutory","Net","Closing"].map((h, i) => (
-                            <th key={i} className={`py-2 pr-3 text-slate-400 font-semibold ${i > 1 ? "text-right" : "text-left"}`}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {wcForecast.map((w, i) => {
-                          const isCurrent = w.week_offset === 0;
-                          const isPast = w.week_offset < 0;
-                          return (
-                            <tr key={i} className={`transition-colors ${isCurrent ? "bg-blue-50/60" : "hover:bg-slate-50/50"}`}>
-                              <td className="py-2 pr-3">
-                                <span className={`font-bold ${isCurrent ? "text-blue-600" : isPast ? "text-slate-400" : "text-slate-700"}`}>
-                                  {w.week_label}
-                                </span>
-                                {isCurrent && <span className="ml-1 text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-bold">NOW</span>}
-                              </td>
-                              <td className="py-2 pr-3 text-slate-400">{fmtDate(w.week_start)} – {fmtDate(w.week_end)}</td>
-                              <td className="py-2 pr-3 text-right tabular-nums text-slate-600">{fmt(w.opening_cash)}</td>
-                              <td className="py-2 pr-3 text-right tabular-nums">
-                                {(() => {
-                                  const totalIn = Number(w.actual_inflow || 0) + Number(w.forecast_inflow || 0);
-                                  const isActual = w.week_offset < 0;
-                                  return totalIn > 0
-                                    ? <span className="text-emerald-600 font-semibold">
-                                        +{fmt(totalIn)}
-                                        {isActual && <span className="ml-1 text-[9px] bg-slate-100 text-slate-500 px-1 rounded">actual</span>}
-                                      </span>
-                                    : <span className="text-slate-300">—</span>;
-                                })()}
-                              </td>
-                              <td className="py-2 pr-3 text-right tabular-nums">
-                                <span className={Number(w.expected_outflow_os) > 0 ? "text-rose-500 font-semibold" : "text-slate-300"}>
-                                  {Number(w.expected_outflow_os) > 0 ? `-${fmt(w.expected_outflow_os)}` : "—"}
-                                </span>
-                              </td>
-                              <td className="py-2 pr-3 text-right tabular-nums">
-                                <span className={Number(w.expected_outflow_statutory) > 0 ? "text-amber-600 font-semibold" : "text-slate-300"}>
-                                  {Number(w.expected_outflow_statutory) > 0 ? `-${fmt(w.expected_outflow_statutory)}` : "—"}
-                                </span>
-                              </td>
-                              <td className="py-2 pr-3 text-right tabular-nums">
-                                <span className={Number(w.net_movement) >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
-                                  {Number(w.net_movement) >= 0 ? `+${fmt(w.net_movement)}` : fmt(w.net_movement)}
-                                </span>
-                              </td>
-                              <td className="py-2 pr-3 text-right tabular-nums font-bold text-slate-800">{fmt(w.closing_cash)}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              );
-            })()}
-          </ChartCard>
-
-          {/* Outstanding Collections (PRESERVED) */}
           <SH icon={TrendingUp} title="Outstanding Collections" color={P.teal} />
           {wcCollections.filter(c => c.is_overdue).length > 0 && (
             <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl p-3 flex items-center gap-3">
@@ -3162,7 +2998,171 @@ const DeptReports = () => {
             {/* ════════════════════════════════════════════════════════════
           SECTION M — Exception Reporting (NEW)
           ════════════════════════════════════════════════════════════ */}
-      <SH icon={Flag} title="Exception Reporting" color={P.brick} />
+      <SH icon={TrendingUp} title="Weekly Cash Forecast" color={P.teal} />
+
+          <ChartCard title="Working Capital Forecast" subtitle="Blue = Cash Balance · Green = Inflow · Red = OS Outflow · Orange = Statutory">
+            {wcForecast.length === 0 ? <Empty msg="No forecast data" /> : (() => {
+              const chartData = wcForecast.filter(w => w.week_offset >= 0 || w.week_offset < -5).map(w => ({
+                label: w.week_label,
+                offset: w.week_offset,
+                cash: Number(w.closing_cash || 0),
+                inflow: Number(w.actual_inflow || 0) + Number(w.forecast_inflow || 0),
+                actual_inflow: Number(w.actual_inflow || 0),
+                forecast_inflow: Number(w.forecast_inflow || 0),
+                outflow_os: Number(w.expected_outflow_os || 0),
+                outflow_statutory: Number(w.expected_outflow_statutory || 0),
+                actual_outflow: Number(w.actual_outflow || 0),
+                opening: Number(w.opening_cash || 0),
+                net: Number(w.net_movement || 0),
+                period: `${fmtDate(w.week_start)} – ${fmtDate(w.week_end)}`,
+                isCurrent: w.week_offset === 0,
+                isPast: w.week_offset < 0,
+              }));
+
+              const fmtAxis = (v) => {
+                if (Math.abs(v) >= 1e7) return `₹${(v/1e7).toFixed(1)}Cr`;
+                if (Math.abs(v) >= 1e5) return `₹${(v/1e5).toFixed(1)}L`;
+                if (Math.abs(v) >= 1e3) return `₹${(v/1e3).toFixed(0)}K`;
+                return `₹${v}`;
+              };
+
+              const CustomTooltip = ({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                const d = payload[0]?.payload;
+                return (
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-xs min-w-[220px]">
+                    <p className="font-bold text-slate-800 mb-1">{label}</p>
+                    <p className="text-[10px] text-slate-400 mb-2">{d?.period}</p>
+                    <div className="space-y-1 border-t border-slate-100 pt-2">
+                      {[
+                        { label: "Opening Cash", value: d?.opening, color: "#94a3b8" },
+                        { label: "Inflow", value: d?.inflow, color: "#2F8577" },
+                        { label: "OS Outflow", value: d?.outflow_os, color: "#B14B3F" },
+                        { label: "Statutory", value: d?.outflow_statutory, color: "#C08A3E" },
+                        { label: "Net Movement", value: d?.net, color: d?.net >= 0 ? "#2F8577" : "#B14B3F" },
+                        { label: "Closing Cash", value: d?.cash, color: "#3D6A91" },
+                      ].map((item, i) => (
+                        <div key={i} className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: item.color }} />
+                            <span className="text-slate-500">{item.label}</span>
+                          </div>
+                          <span className={`font-semibold tabular-nums ${item.value < 0 ? "text-rose-600" : "text-slate-800"}`}>
+                            {item.value !== 0 ? fmtAxis(item.value) : "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+                <>
+                  <div style={{ height: 320 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
+                        <YAxis tickFormatter={fmtAxis} tick={{ fontSize: 10, fill: "#94a3b8" }} tickLine={false} axisLine={false} width={70} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend wrapperStyle={{ fontSize: 11, paddingTop: 12 }} formatter={(v) => <span style={{ color: "#64748b" }}>{v}</span>} />
+                        <ReferenceLine x="Current" stroke="#3b82f6" strokeDasharray="4 2" strokeWidth={1.5} label={{ value: "NOW", position: "top", fontSize: 9, fill: "#3b82f6", fontWeight: 700 }} />
+
+                        <Line type="monotone" dataKey="cash" name="Cash Balance" stroke="#3D6A91" strokeWidth={2.5}
+                          dot={(props) => {
+                            const { cx, cy, payload } = props;
+                            return <circle key={`c-${payload.label}`} cx={cx} cy={cy} r={payload.isCurrent ? 5 : 3} fill={payload.isCurrent ? "#3D6A91" : "#fff"} stroke="#3D6A91" strokeWidth={2} />;
+                          }} activeDot={{ r: 6, fill: "#3D6A91" }} />
+
+                        <Line type="monotone" dataKey="inflow" name="Expected Inflow" stroke="#2F8577" strokeWidth={2}
+                          dot={(props) => {
+                            const { cx, cy, payload } = props;
+                            if (!payload.inflow) return <g key={`i-${payload.label}`} />;
+                            return <circle key={`i-${payload.label}`} cx={cx} cy={cy} r={5} fill="#2F8577" stroke="#fff" strokeWidth={2} />;
+                          }} activeDot={{ r: 6, fill: "#2F8577" }} />
+
+                        <Line type="monotone" dataKey="outflow_os" name="OS Outflow" stroke="#B14B3F" strokeWidth={2}
+                          dot={(props) => {
+                            const { cx, cy, payload } = props;
+                            if (!payload.outflow_os) return <g key={`o-${payload.label}`} />;
+                            return <circle key={`o-${payload.label}`} cx={cx} cy={cy} r={5} fill="#B14B3F" stroke="#fff" strokeWidth={2} />;
+                          }} activeDot={{ r: 6, fill: "#B14B3F" }} />
+
+                        <Line type="monotone" dataKey="outflow_statutory" name="Statutory" stroke="#C08A3E" strokeWidth={2}
+                          dot={(props) => {
+                            const { cx, cy, payload } = props;
+                            if (!payload.outflow_statutory) return <g key={`s-${payload.label}`} />;
+                            return <circle key={`s-${payload.label}`} cx={cx} cy={cy} r={5} fill="#C08A3E" stroke="#fff" strokeWidth={2} />;
+                          }} activeDot={{ r: 6, fill: "#C08A3E" }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="overflow-auto mt-4 border-t border-slate-100 pt-4">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-white border-b border-slate-100">
+                        <tr>
+                          {["Week","Period","Opening","Inflow","OS Outflow","Statutory","Net","Closing"].map((h, i) => (
+                            <th key={i} className={`py-2 pr-3 text-slate-400 font-semibold ${i > 1 ? "text-right" : "text-left"}`}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {wcForecast.filter(w => w.week_offset >= 0 || w.week_offset < -5).map((w, i) => {
+                          const isCurrent = w.week_offset === 0;
+                          const isPast = w.week_offset < 0;
+                          return (
+                            <tr key={i} className={`transition-colors ${isCurrent ? "bg-blue-50/60" : "hover:bg-slate-50/50"}`}>
+                              <td className="py-2 pr-3">
+                                <span className={`font-bold ${isCurrent ? "text-blue-600" : isPast ? "text-slate-400" : "text-slate-700"}`}>
+                                  {w.week_label}
+                                </span>
+                                {isCurrent && <span className="ml-1 text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-bold">NOW</span>}
+                              </td>
+                              <td className="py-2 pr-3 text-slate-400">{fmtDate(w.week_start)} – {fmtDate(w.week_end)}</td>
+                              <td className="py-2 pr-3 text-right tabular-nums text-slate-600">{fmt(w.opening_cash)}</td>
+                              <td className="py-2 pr-3 text-right tabular-nums">
+                                {(() => {
+                                  const totalIn = Number(w.actual_inflow || 0) + Number(w.forecast_inflow || 0);
+                                  const isActual = w.week_offset < 0;
+                                  return totalIn > 0
+                                    ? <span className="text-emerald-600 font-semibold">
+                                        +{fmt(totalIn)}
+                                        {isActual && <span className="ml-1 text-[9px] bg-slate-100 text-slate-500 px-1 rounded">actual</span>}
+                                      </span>
+                                    : <span className="text-slate-300">—</span>;
+                                })()}
+                              </td>
+                              <td className="py-2 pr-3 text-right tabular-nums">
+                                <span className={Number(w.expected_outflow_os) > 0 ? "text-rose-500 font-semibold" : "text-slate-300"}>
+                                  {Number(w.expected_outflow_os) > 0 ? `-${fmt(w.expected_outflow_os)}` : "—"}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-3 text-right tabular-nums">
+                                <span className={Number(w.expected_outflow_statutory) > 0 ? "text-amber-600 font-semibold" : "text-slate-300"}>
+                                  {Number(w.expected_outflow_statutory) > 0 ? `-${fmt(w.expected_outflow_statutory)}` : "—"}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-3 text-right tabular-nums">
+                                <span className={Number(w.net_movement) >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
+                                  {Number(w.net_movement) >= 0 ? `+${fmt(w.net_movement)}` : fmt(w.net_movement)}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-3 text-right tabular-nums font-bold text-slate-800">{fmt(w.closing_cash)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
+          </ChartCard>
+
+          {/* Outstanding Collections (PRESERVED) */}
+          <SH icon={Flag} title="Exception Reporting" color={P.brick} />
 
       {/* Highest Cost Departments (All Depts only) */}
       {!deptId && exceptionReports.deptCosts.length > 0 && (

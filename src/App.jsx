@@ -552,17 +552,21 @@ useEffect(() => {
 }, [user?.email]);
 
   // ── CHAT UNREAD COUNT ─────────────────────────────────────────────
+  // Counts only messages where is_read is false — NOT total inbox size.
+  // Listens on "*" (not just INSERT) so that marking a message read
+  // (an UPDATE) also refreshes the badge in real time.
   useEffect(() => {
     if (!user?.email) return;
     const loadChatCount = async () => {
       const { data } = await supabase.rpc("get_my_inbox");
-      setChatUnreadCount((data || []).length);
+      const unread = (data || []).filter((m) => !m.is_read).length;
+      setChatUnreadCount(unread);
     };
     loadChatCount();
 
     const ch = supabase.channel("chat-badge")
       .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "employee_messages",
+        event: "*", schema: "public", table: "employee_messages",
       }, loadChatCount)
       .subscribe();
     return () => supabase.removeChannel(ch);
@@ -1455,9 +1459,7 @@ useEffect(() => {
           {showChatPanel && (
             <EmployeeChat
               onClose={() => setShowChatPanel(false)}
-              onUnreadChange={(count) => setChatUnreadCount(
-                typeof count === "function" ? count(chatUnreadCount) : count
-              )}
+              onUnreadChange={(count) => setChatUnreadCount(count)}
             />
           )}
         </AnimatePresence>
