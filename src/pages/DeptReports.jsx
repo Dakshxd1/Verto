@@ -239,6 +239,8 @@ const DeptReports = () => {
   const [userDeptId, setUserDeptId] = useState(null);
   const [userDeptName, setUserDeptName] = useState(null);
   const [userRole, setUserRole] = useState('employee');
+  const [authResolved, setAuthResolved] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const [allDepts, setAllDepts] = useState([]);
   const [deptId, setDeptId] = useState(null);
@@ -295,7 +297,17 @@ const DeptReports = () => {
       setIsAdmin(resolvedIsAdmin);
       setUserDeptName(resolvedDeptName || "(unknown)");
       setUserDeptId(resolvedDeptId);
-      setUserRole(userInfo?.role ?? 'employee');
+      const resolvedRole = userInfo?.role ?? 'employee';
+setUserRole(resolvedRole);
+setAuthResolved(true);
+
+// Block employees and interns — set denied and stop
+if (resolvedRole === 'employee' || resolvedRole === 'intern') {
+  setAccessDenied(true);
+  setLoading(false);
+  return;
+}
+setAccessDenied(false);
 
       if (resolvedIsAdmin) {
         const { data: depts } = await supabase
@@ -1208,6 +1220,25 @@ const DeptReports = () => {
   // ── Existing Section 1 Table ──────────────────────────────────────────────
   const totalPages = Math.ceil(section1Table.length / ITEMS);
   const revDepts = ['Operations', 'Recruitment', 'Temporary', 'Projects'];
+
+  if (authResolved && accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-4 bg-gray-50/60">
+        <div className="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center">
+          <AlertTriangle className="w-8 h-8 text-rose-400" />
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-gray-800">Access Restricted</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            This page is only available to{" "}
+            <span className="font-semibold text-gray-700">Admins</span> and{" "}
+            <span className="font-semibold text-gray-700">Managers</span>.
+          </p>
+          <p className="text-xs text-gray-400 mt-1">Contact your administrator to request access.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
