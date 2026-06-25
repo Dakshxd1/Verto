@@ -14,6 +14,7 @@ import MyAccountPage from "./components/Myaccountpage";
 import supabase from "./lib/supabaseClient";
 import CommandPalette from "./components/CommandPalette";
 import ShortcutsHelp from "./components/ShortcutsHelp";
+import TodoPanel, { TodoBadgeButton } from "./components/TodoPanel";
 import {
   LayoutDashboard,
   TrendingUp,
@@ -486,6 +487,8 @@ function App() {
   const [loggedInEmployee, setLoggedInEmployee] = useState(null);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showPaymentCenter, setShowPaymentCenter] = useState(false);
+  const [showTodoPanel, setShowTodoPanel] = useState(false);
+  const [todoUnreadCount, setTodoUnreadCount] = useState(0);
 
   const clients = [
     "Acme Corp",
@@ -504,6 +507,7 @@ function App() {
     const { data } = await supabase.from("bank_master").select("*");
     setBanks(data || []);
   };
+
   useEffect(() => {
     window.setActiveTab = setActiveTab;
   }, []);
@@ -522,13 +526,26 @@ function App() {
   ];
 
   const {
-    user,
-    role,
-    loading,
-    showLivePopup,
-    setShowLivePopup,
-    sessionKicked,
+    user, role, loading, showLivePopup, setShowLivePopup, sessionKicked,
   } = useAuth();
+  
+  // ── TODO BADGE COUNT ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.email) return;
+    const loadCount = async () => {
+      const { data } = await supabase.rpc("get_todo_counters");
+      setTodoUnreadCount(Number(data?.[0]?.unread_count || 0));
+    };
+    loadCount();
+  
+    const ch = supabase.channel("todo-badge")
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "employee_todos",
+        filter: `assigned_to_email=eq.${user.email}`,
+      }, loadCount)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [user?.email]);
 
   const permissions = usePermissions();
   const { isIntern } = permissions;
@@ -999,131 +1016,140 @@ function App() {
               </div>
             </div>
 
-            <div className="relative">
-              <button
-                onClick={() => setShowProfileMenu(!showProfileMenu)}
-                className="flex items-center space-x-3 pl-3 pr-2 py-1.5 rounded-2xl hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-all duration-200"
-              >
-                <div className="text-right hidden sm:block">
-                  <p className="text-sm font-semibold text-gray-900 leading-tight">
-                    {loggedInEmployee?.name || "User"}
-                  </p>
-                  <p className="text-[10px] text-gray-400 leading-tight">
-                    {loggedInEmployee?.designation || role}
-                  </p>
-                </div>
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/25 flex-shrink-0">
-                  <span className="text-white text-sm font-bold">
-                    {(loggedInEmployee?.name ||
-                      user?.email ||
-                      "U")[0].toUpperCase()}
-                  </span>
-                </div>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${
-                    showProfileMenu ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
+            <div className="flex items-center gap-2">
+              {/* ── TODO BADGE BUTTON ── */}
+              <TodoBadgeButton
+                userEmail={user?.email}
+                onClick={() => setShowTodoPanel(v => !v)}
+                unreadCount={todoUnreadCount}
+              />
 
-              <AnimatePresence>
-                {showProfileMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -8, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                    className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-100 rounded-2xl shadow-2xl py-2 z-50 overflow-hidden"
-                    style={{
-                      boxShadow:
-                        "0 20px 60px -12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.04)",
-                    }}
-                  >
-                    <div className="px-4 py-3 border-b border-gray-50 bg-gradient-to-r from-blue-50/60 to-indigo-50/60">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                          <span className="text-white text-sm font-bold">
-                            {(loggedInEmployee?.name ||
-                              user?.email ||
-                              "U")[0].toUpperCase()}
+              <div className="relative">
+                <button
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                  className="flex items-center space-x-3 pl-3 pr-2 py-1.5 rounded-2xl hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-all duration-200"
+                >
+                  <div className="text-right hidden sm:block">
+                    <p className="text-sm font-semibold text-gray-900 leading-tight">
+                      {loggedInEmployee?.name || "User"}
+                    </p>
+                    <p className="text-[10px] text-gray-400 leading-tight">
+                      {loggedInEmployee?.designation || role}
+                    </p>
+                  </div>
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/25 flex-shrink-0">
+                    <span className="text-white text-sm font-bold">
+                      {(loggedInEmployee?.name ||
+                        user?.email ||
+                        "U")[0].toUpperCase()}
+                    </span>
+                  </div>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${
+                      showProfileMenu ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                <AnimatePresence>
+                  {showProfileMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                      className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-100 rounded-2xl shadow-2xl py-2 z-50 overflow-hidden"
+                      style={{
+                        boxShadow:
+                          "0 20px 60px -12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.04)",
+                      }}
+                    >
+                      <div className="px-4 py-3 border-b border-gray-50 bg-gradient-to-r from-blue-50/60 to-indigo-50/60">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                            <span className="text-white text-sm font-bold">
+                              {(loggedInEmployee?.name ||
+                                user?.email ||
+                                "U")[0].toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="overflow-hidden">
+                            <p className="text-sm font-semibold text-gray-900 truncate">
+                              {loggedInEmployee?.name || "User"}
+                            </p>
+                            <p className="text-[10px] text-gray-500 truncate">
+                              {user?.email}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-2">
+                          <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded-full uppercase tracking-wide">
+                            {loggedInEmployee?.designation || role}
                           </span>
                         </div>
-                        <div className="overflow-hidden">
-                          <p className="text-sm font-semibold text-gray-900 truncate">
-                            {loggedInEmployee?.name || "User"}
-                          </p>
-                          <p className="text-[10px] text-gray-500 truncate">
-                            {user?.email}
-                          </p>
-                        </div>
                       </div>
-                      <div className="mt-2">
-                        <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded-full uppercase tracking-wide">
-                          {loggedInEmployee?.designation || role}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="py-1">
-                      <button
-                        onClick={() => {
-                          setShowAccountModal(true);
-                          setShowProfileMenu(false);
-                        }}
-                        className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                      >
-                        <Settings className="w-4 h-4 text-gray-400" />
-                        <span>Account Settings</span>
-                      </button>
-                      {role === "admin" && (
+                      <div className="py-1">
                         <button
                           onClick={() => {
-                            setShowUserManagement(true);
+                            setShowAccountModal(true);
+                            setShowProfileMenu(false);
+                          }}
+                          className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          <Settings className="w-4 h-4 text-gray-400" />
+                          <span>Account Settings</span>
+                        </button>
+                        {role === "admin" && (
+                          <button
+                            onClick={() => {
+                              setShowUserManagement(true);
+                              setShowProfileMenu(false);
+                            }}
+                            className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                          >
+                            <Users className="w-4 h-4 text-gray-400" />
+                            <span>Manage Team</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setShowPaymentCenter(true);
                             setShowProfileMenu(false);
                           }}
                           className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
                         >
-                          <Users className="w-4 h-4 text-gray-400" />
-                          <span>Manage Team</span>
+                          <Activity className="w-4 h-4 text-gray-400" />
+                          <span>Payment Center</span>
                         </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          setShowPaymentCenter(true);
-                          setShowProfileMenu(false);
-                        }}
-                        className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
-                      >
-                        <Activity className="w-4 h-4 text-gray-400" />
-                        <span>Payment Center</span>
-                      </button>
-                    </div>
-                    <div className="border-t border-gray-100 pt-1">
-                      <button
-                        onClick={async () => {
-                          // ── NEW: clear single-session token before signing out
-                          const email =
-                            localStorage.getItem("verto_user_email");
-                          if (email) {
-                            await supabase.rpc("logout_session", {
-                              p_email: email,
-                            });
-                          }
-                          localStorage.removeItem("verto_session_token");
-                          localStorage.removeItem("verto_user_email");
-                          localStorage.removeItem("verto_user_role");
-                          localStorage.removeItem("loginDate");
-                          await supabase.auth.signOut();
-                          window.location.reload();
-                        }}
-                        className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 transition-colors"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        <span className="font-medium">Sign Out</span>
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                      </div>
+                      <div className="border-t border-gray-100 pt-1">
+                        <button
+                          onClick={async () => {
+                            // ── NEW: clear single-session token before signing out
+                            const email =
+                              localStorage.getItem("verto_user_email");
+                            if (email) {
+                              await supabase.rpc("logout_session", {
+                                p_email: email,
+                              });
+                            }
+                            localStorage.removeItem("verto_session_token");
+                            localStorage.removeItem("verto_user_email");
+                            localStorage.removeItem("verto_user_role");
+                            localStorage.removeItem("loginDate");
+                            await supabase.auth.signOut();
+                            window.location.reload();
+                          }}
+                          className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          <span className="font-medium">Sign Out</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </header>
 
@@ -1381,6 +1407,13 @@ function App() {
             </div>
           )}
         </AnimatePresence>
+
+        {/* ── TODO PANEL ── */}
+        <TodoPanel
+          isOpen={showTodoPanel}
+          onClose={() => setShowTodoPanel(false)}
+          userEmail={user?.email}
+        />
 
         {/* ── MODALS ── */}
         <AddPaymentReceivedModal
