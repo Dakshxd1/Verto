@@ -54,6 +54,7 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
 
   // Read message popup
   const [openedMessage, setOpenedMessage] = useState(null);
+  const [readIds, setReadIds] = useState(new Set()); // track locally-read messages
 
   const searchTimeout = useRef(null);
   const messageRef = useRef(null);
@@ -66,13 +67,15 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
       const { data, error: err } = await supabase.rpc("get_my_inbox");
       if (err) throw err;
       setInbox(data || []);
-      onUnreadChange?.((data || []).length);
+      // Update unread count — only count messages NOT in readIds
+      const unreadCount = (data || []).filter((m) => !readIds.has(m.id)).length;
+      onUnreadChange?.(unreadCount);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [onUnreadChange]);
+  }, [onUnreadChange, readIds]);
 
   useEffect(() => {
     fetchInbox();
@@ -155,16 +158,19 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
     }
   };
 
-  // ── Open + delete message ──────────────────────────────────────────────────
+  // ── Open message — mark as read but keep in inbox ──────────────────────────
   const openMessage = async (msg) => {
     setOpenedMessage(msg);
+    // Mark as read in DB (sets read_at + delete_after midnight) but DON'T remove from UI yet
     try {
       await supabase.rpc("read_and_delete_message", { p_message_id: msg.id });
-      const newInbox = inbox.filter((m) => m.id !== msg.id);
-      setInbox(newInbox);
-      onUnreadChange?.(newInbox.length); // ← pass the count directly, not a function
+      // Track it as read locally — shows dimmed in inbox but still visible
+      setReadIds((prev) => new Set([...prev, msg.id]));
+      // Update unread count — only count messages NOT in readIds
+      const unreadCount = inbox.filter((m) => m.id !== msg.id && !readIds.has(m.id)).length;
+      onUnreadChange?.(unreadCount);
     } catch (e) {
-      console.error("Delete error:", e);
+      console.error("Read error:", e);
     }
   };
 
@@ -207,7 +213,13 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
             <div>
               <h2 className="text-sm font-bold text-gray-900">Messages</h2>
               <p className="text-[10px] text-gray-400">
-                {inbox.length > 0 ? `${inbox.length} unread` : "No new messages"}
+                {(() => {
+                  const unread = inbox.filter((m) => !readIds.has(m.id)).length;
+                  const total = inbox.length;
+                  if (total === 0) return "No messages";
+                  if (unread === 0) return `${total} messages — all read`;
+                  return `${unread} unread · ${total} total`;
+                })()}
               </p>
             </div>
           </div>
@@ -248,7 +260,7 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 12 }}
                 transition={{ duration: 0.18 }}
-                className="h-full"
+                className="h-full flex flex-col"
               >
                 {loading ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
@@ -264,38 +276,53 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
                     <p className="text-[11px] text-gray-300">Send a message to a colleague</p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-50">
-                    {inbox.map((msg, i) => (
-                      <motion.button
-                        key={msg.id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.04 }}
-                        onClick={() => openMessage(msg)}
-                        className="w-full flex items-start gap-3 px-5 py-4 hover:bg-blue-50/50 transition-colors text-left group"
-                      >
-                        {/* Avatar */}
-                        <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${avatarColor(msg.sender_name)} flex items-center justify-center flex-shrink-0 shadow-sm`}>
-                          <span className="text-white text-sm font-bold">
-                            {avatar(msg.sender_name, msg.sender_email)}
-                          </span>
-                        </div>
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-0.5">
-                            <p className="text-xs font-bold text-gray-900 truncate">{msg.sender_name}</p>
-                            <span className="text-[10px] text-gray-400 flex-shrink-0 ml-2 flex items-center gap-1">
-                              <Clock className="w-2.5 h-2.5" />
-                              {fmtTime(msg.created_at)}
+                  <div className="divide-y divide-gray-50 overflow-y-auto">
+                    {inbox.map((msg, i) => {
+                      const isRead = readIds.has(msg.id);
+                      return (
+                        <motion.button
+                          key={msg.id}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.04 }}
+                          onClick={() => openMessage(msg)}
+                          className={`w-full flex items-start gap-3 px-5 py-4 transition-colors text-left group ${
+                            isRead ? "bg-gray-50/80 hover:bg-gray-100/80" : "hover:bg-blue-50/50"
+                          }`}
+                        >
+                          {/* Avatar */}
+                          <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${avatarColor(msg.sender_name)} flex items-center justify-center flex-shrink-0 shadow-sm ${isRead ? "opacity-50" : ""}`}>
+                            <span className="text-white text-sm font-bold">
+                              {avatar(msg.sender_name, msg.sender_email)}
                             </span>
                           </div>
-                          <p className="text-[10px] text-gray-400 mb-1">{msg.sender_dept}</p>
-                          <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">{msg.message_content}</p>
-                        </div>
-                        {/* Unread dot */}
-                        <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
-                      </motion.button>
-                    ))}
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-0.5">
+                              <p className={`text-xs font-bold truncate ${isRead ? "text-gray-400" : "text-gray-900"}`}>
+                                {msg.sender_name}
+                              </p>
+                              <span className="text-[10px] text-gray-400 flex-shrink-0 ml-2 flex items-center gap-1">
+                                <Clock className="w-2.5 h-2.5" />
+                                {fmtTime(msg.created_at)}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-gray-400 mb-1">{msg.sender_dept}</p>
+                            <p className={`text-xs line-clamp-2 leading-relaxed ${isRead ? "text-gray-400" : "text-gray-600"}`}>
+                              {msg.message_content}
+                            </p>
+                          </div>
+                          {/* Unread dot OR read badge */}
+                          {isRead ? (
+                            <span className="text-[9px] font-semibold text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded-full flex-shrink-0 mt-1">
+                              Read
+                            </span>
+                          ) : (
+                            <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
+                          )}
+                        </motion.button>
+                      );
+                    })}
                   </div>
                 )}
               </motion.div>
@@ -486,8 +513,8 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
               {/* Footer */}
               <div className="px-5 pb-5 flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
-                  <Trash2 className="w-3 h-3 text-rose-400" />
-                  <span className="text-rose-400">Message permanently deleted after reading</span>
+                  <Trash2 className="w-3 h-3 text-gray-400" />
+                  <span>Auto-deleted at midnight · still visible in inbox</span>
                 </div>
                 <button
                   onClick={closeMessage}
