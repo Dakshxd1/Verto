@@ -54,7 +54,6 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
 
   // Read message popup
   const [openedMessage, setOpenedMessage] = useState(null);
-  const [readIds, setReadIds] = useState(new Set()); // track locally-read messages
 
   const searchTimeout = useRef(null);
   const messageRef = useRef(null);
@@ -67,15 +66,15 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
       const { data, error: err } = await supabase.rpc("get_my_inbox");
       if (err) throw err;
       setInbox(data || []);
-      // Update unread count — only count messages NOT in readIds
-      const unreadCount = (data || []).filter((m) => !readIds.has(m.id)).length;
+      // is_read now comes from DB — unread = messages where is_read is false
+      const unreadCount = (data || []).filter((m) => !m.is_read).length;
       onUnreadChange?.(unreadCount);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [onUnreadChange, readIds]);
+  }, [onUnreadChange]);
 
   useEffect(() => {
     fetchInbox();
@@ -158,16 +157,24 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
     }
   };
 
-  // ── Open message — mark as read but keep in inbox ──────────────────────────
+  // ── Open message — mark as read using new RPC ──────────────────────────────
   const openMessage = async (msg) => {
     setOpenedMessage(msg);
-    // Mark as read in DB (sets read_at + delete_after midnight) but DON'T remove from UI yet
+    if (msg.is_read) return; // already read — no DB call needed
+
     try {
-      await supabase.rpc("read_and_delete_message", { p_message_id: msg.id });
-      // Track it as read locally — shows dimmed in inbox but still visible
-      setReadIds((prev) => new Set([...prev, msg.id]));
-      // Update unread count — only count messages NOT in readIds
-      const unreadCount = inbox.filter((m) => m.id !== msg.id && !readIds.has(m.id)).length;
+      // Mark as read in DB — schedules deletion at midnight
+      // message stays in inbox until delete_after passes
+      await supabase.rpc("mark_message_read", { p_message_id: msg.id });
+
+      // Update inbox locally — mark this message as read without removing it
+      setInbox((prev) =>
+        prev.map((m) =>
+          m.id === msg.id ? { ...m, is_read: true, read_at: new Date().toISOString() } : m
+        )
+      );
+      // Recalculate unread count
+      const unreadCount = inbox.filter((m) => m.id !== msg.id && !m.is_read).length;
       onUnreadChange?.(unreadCount);
     } catch (e) {
       console.error("Read error:", e);
@@ -214,7 +221,7 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
               <h2 className="text-sm font-bold text-gray-900">Messages</h2>
               <p className="text-[10px] text-gray-400">
                 {(() => {
-                  const unread = inbox.filter((m) => !readIds.has(m.id)).length;
+                  const unread = inbox.filter((m) => !m.is_read).length;
                   const total = inbox.length;
                   if (total === 0) return "No messages";
                   if (unread === 0) return `${total} messages — all read`;
@@ -278,7 +285,7 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
                 ) : (
                   <div className="divide-y divide-gray-50 overflow-y-auto">
                     {inbox.map((msg, i) => {
-                      const isRead = readIds.has(msg.id);
+                      const isRead = msg.is_read; // Now using DB field
                       return (
                         <motion.button
                           key={msg.id}
