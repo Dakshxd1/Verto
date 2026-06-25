@@ -1,28 +1,43 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import supabase from "../lib/supabaseClient";
 import {
-  X, Send, Search, MessageSquare, Trash2, ChevronLeft,
-  Clock, CheckCheck, Loader2, AlertCircle, Sparkles, Mail
+  X, Send, Search, MessageSquare, ChevronLeft, CheckCheck,
+  Loader2, Mail, Clock, User, MoreVertical, Phone, Paperclip,
+  Smile, ArrowLeft, Inbox
 } from "lucide-react";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Date Helpers ────────────────────────────────────────────────────────────
 const fmtTime = (ts) => {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+};
+
+const fmtDate = (ts) => {
   if (!ts) return "";
   const d = new Date(ts);
   const now = new Date();
   const isToday = d.toDateString() === now.toDateString();
-  if (isToday) return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) +
-    " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  if (isToday) return "Today";
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
 };
 
-const avatar = (name, email) => {
+const sameDay = (a, b) => {
+  if (!a || !b) return false;
+  return new Date(a).toDateString() === new Date(b).toDateString();
+};
+
+// ── Avatar Helpers ────────────────────────────────────────────────────────
+const avatarLetter = (name, email) => {
   const n = name || email || "?";
   return n[0].toUpperCase();
 };
 
-const avatarColor = (str) => {
+const avatarGradient = (str) => {
   const colors = [
     "from-blue-500 to-indigo-600",
     "from-emerald-500 to-teal-600",
@@ -30,174 +45,94 @@ const avatarColor = (str) => {
     "from-rose-500 to-pink-600",
     "from-amber-500 to-orange-600",
     "from-sky-500 to-cyan-600",
+    "from-lime-500 to-green-600",
+    "from-fuchsia-500 to-purple-600",
   ];
   let hash = 0;
   for (let i = 0; i < (str || "").length; i++) hash += str.charCodeAt(i);
   return colors[hash % colors.length];
 };
 
-// ── Spring presets — tuned once, reused everywhere for cohesion ─────────────
-const springPanel = { type: "spring", stiffness: 380, damping: 32, mass: 0.9 };
-const springSoft = { type: "spring", stiffness: 320, damping: 28 };
-const springSnap = { type: "spring", stiffness: 500, damping: 30 };
-const springBounce = { type: "spring", stiffness: 420, damping: 16, mass: 0.7 };
+// ── Spring Presets ──────────────────────────────────────────────────────────
+const spring = { type: "spring", stiffness: 380, damping: 32 };
+const springSoft = { type: "spring", stiffness: 300, damping: 28 };
 
-// ── Floating ambient particles for the header — tiny drifting data-points ──
-const HeaderParticles = () => {
-  const particles = useMemo(
-    () =>
-      Array.from({ length: 9 }, (_, i) => ({
-        id: i,
-        size: 2 + Math.random() * 3,
-        left: Math.random() * 100,
-        top: 10 + Math.random() * 80,
-        duration: 5 + Math.random() * 5,
-        delay: Math.random() * 4,
-      })),
-    []
-  );
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {particles.map((p) => (
-        <motion.span
-          key={p.id}
-          className="absolute rounded-full bg-white"
-          style={{ width: p.size, height: p.size, left: `${p.left}%`, top: `${p.top}%` }}
-          animate={{
-            y: [0, -14, 0],
-            opacity: [0.15, 0.55, 0.15],
-          }}
-          transition={{
-            duration: p.duration,
-            delay: p.delay,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        />
-      ))}
-    </div>
-  );
-};
-
-// ── Confetti burst — fires once on successful send ──────────────────────────
-const ConfettiBurst = () => {
-  const pieces = useMemo(
-    () =>
-      Array.from({ length: 16 }, (_, i) => ({
-        id: i,
-        angle: (i / 16) * 360 + Math.random() * 18,
-        distance: 50 + Math.random() * 55,
-        size: 4 + Math.random() * 4,
-        color: ["#34d399", "#fbbf24", "#818cf8", "#f472b6", "#60a5fa"][i % 5],
-        rotate: Math.random() * 360,
-      })),
-    []
-  );
-  return (
-    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-      {pieces.map((p) => {
-        const rad = (p.angle * Math.PI) / 180;
-        const x = Math.cos(rad) * p.distance;
-        const y = Math.sin(rad) * p.distance;
-        return (
-          <motion.span
-            key={p.id}
-            className="absolute rounded-sm"
-            style={{ width: p.size, height: p.size, background: p.color }}
-            initial={{ x: 0, y: 0, opacity: 1, rotate: 0, scale: 0.6 }}
-            animate={{ x, y, opacity: 0, rotate: p.rotate, scale: 1 }}
-            transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-          />
-        );
-      })}
-    </div>
-  );
-};
-
-// ── Tilt-on-hover wrapper for inbox rows — subtle 3D follow ─────────────────
-const TiltRow = ({ children, className, onClick }) => {
-  const ref = useRef(null);
-  const rotateX = useMotionValue(0);
-  const rotateY = useMotionValue(0);
-  const springRX = useSpring(rotateX, { stiffness: 300, damping: 22 });
-  const springRY = useSpring(rotateY, { stiffness: 300, damping: 22 });
-
-  const handleMouseMove = (e) => {
-    const rect = ref.current?.getBoundingClientRect();
-    if (!rect) return;
-    const px = (e.clientX - rect.left) / rect.width - 0.5;
-    const py = (e.clientY - rect.top) / rect.height - 0.5;
-    rotateY.set(px * 4);
-    rotateX.set(-py * 4);
-  };
-  const handleLeave = () => {
-    rotateX.set(0);
-    rotateY.set(0);
-  };
-
-  return (
-    <motion.button
-      ref={ref}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleLeave}
-      onClick={onClick}
-      style={{ rotateX: springRX, rotateY: springRY, transformPerspective: 600 }}
-      className={className}
-    >
-      {children}
-    </motion.button>
-  );
-};
-
-// ── Main Component ─────────────────────────────────────────────────────────────
+// ── Main Component ──────────────────────────────────────────────────────────
 const EmployeeChat = ({ onClose, onUnreadChange }) => {
-  const [view, setView] = useState("inbox"); // "inbox" | "compose"
+  // ── Screens: "list" | "conversation" | "compose"
+  const [screen, setScreen] = useState("list");
+  const [activeConversation, setActiveConversation] = useState(null);
+
+  // ── Data
   const [inbox, setInbox] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [conversations, setConversations] = useState([]);
+  const [threadMessages, setThreadMessages] = useState([]);
+  const [loadingInbox, setLoadingInbox] = useState(true);
+  const [loadingThread, setLoadingThread] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
 
-  // Compose
+  // ── Compose
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [selectedRecipients, setSelectedRecipients] = useState([]);
-  const [message, setMessage] = useState("");
+  const [composeMessage, setComposeMessage] = useState("");
   const [sendSuccess, setSendSuccess] = useState(false);
-  const [launching, setLaunching] = useState(false);
 
-  // Read message popup
-  const [openedMessage, setOpenedMessage] = useState(null);
+  // ── Conversation input
+  const [replyMessage, setReplyMessage] = useState("");
+  const replyRef = useRef(null);
 
+  // ── Refs
   const searchTimeout = useRef(null);
-  const messageRef = useRef(null);
+  const threadEndRef = useRef(null);
   const prevUnreadRef = useRef(0);
-  const [badgeBump, setBadgeBump] = useState(false);
 
-  // ── Fetch inbox ────────────────────────────────────────────────────────────
+  // ── Fetch Inbox & Group ─────────────────────────────────────────────────
   const fetchInbox = useCallback(async () => {
-    setLoading(true);
+    setLoadingInbox(true);
     setError(null);
     try {
       const { data, error: err } = await supabase.rpc("get_my_inbox");
       if (err) throw err;
-      // Always sort newest-first client-side — don't rely on the RPC's
-      // own ordering, so a new message always lands at the top of the list.
       const sorted = [...(data || [])].sort(
         (a, b) => new Date(b.created_at) - new Date(a.created_at)
       );
       setInbox(sorted);
-      const unreadCount = sorted.filter((m) => !m.is_read).length;
-      if (unreadCount > prevUnreadRef.current) {
-        setBadgeBump(true);
-        setTimeout(() => setBadgeBump(false), 600);
+
+      // Group by sender
+      const grouped = {};
+      sorted.forEach((msg) => {
+        const key = msg.sender_id || msg.sender_email;
+        if (!grouped[key]) {
+          grouped[key] = { ...msg, unread_count: 0, message_count: 0 };
+        }
+        grouped[key].message_count += 1;
+        if (!msg.is_read) grouped[key].unread_count += 1;
+        // Keep the latest message for preview
+        if (new Date(msg.created_at) > new Date(grouped[key].created_at)) {
+          grouped[key] = { ...msg, unread_count: grouped[key].unread_count, message_count: grouped[key].message_count };
+        }
+      });
+
+      const convList = Object.values(grouped).sort((a, b) => {
+        if (a.unread_count > 0 && b.unread_count === 0) return -1;
+        if (b.unread_count > 0 && a.unread_count === 0) return 1;
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
+
+      setConversations(convList);
+
+      const unreadTotal = sorted.filter((m) => !m.is_read).length;
+      if (unreadTotal !== prevUnreadRef.current) {
+        onUnreadChange?.(unreadTotal);
+        prevUnreadRef.current = unreadTotal;
       }
-      prevUnreadRef.current = unreadCount;
-      onUnreadChange?.(unreadCount);
     } catch (e) {
       setError(e.message);
     } finally {
-      setLoading(false);
+      setLoadingInbox(false);
     }
   }, [onUnreadChange]);
 
@@ -205,7 +140,7 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
     fetchInbox();
   }, [fetchInbox]);
 
-  // ── Realtime subscription ──────────────────────────────────────────────────
+  // ── Realtime ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const channel = supabase
       .channel("employee_messages_realtime")
@@ -215,11 +150,10 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
         () => { fetchInbox(); }
       )
       .subscribe();
-
     return () => supabase.removeChannel(channel);
   }, [fetchInbox]);
 
-  // ── Search users ───────────────────────────────────────────────────────────
+  // ── Search Users ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     if (!searchQuery.trim() || searchQuery.length < 2) {
@@ -243,7 +177,6 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
     }, 300);
   }, [searchQuery, selectedRecipients]);
 
-  // ── Add/remove recipient ───────────────────────────────────────────────────
   const addRecipient = (user) => {
     setSelectedRecipients((prev) => [...prev, user]);
     setSearchQuery("");
@@ -254,64 +187,143 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
     setSelectedRecipients((prev) => prev.filter((r) => r.auth_id !== authId));
   };
 
-  // ── Send message ───────────────────────────────────────────────────────────
-  const handleSend = async () => {
-    if (!message.trim() || selectedRecipients.length === 0) return;
-    setLaunching(true);
+  // ── Open Conversation ───────────────────────────────────────────────────────
+  const openConversation = async (conv) => {
+    const otherId = conv.sender_id || conv.sender_email;
+    setActiveConversation({
+      id: otherId,
+      name: conv.sender_name,
+      email: conv.sender_email,
+      dept: conv.sender_dept,
+    });
+    setScreen("conversation");
+    setLoadingThread(true);
+    setError(null);
+
+    try {
+      // Load thread
+      const { data: threadData, error: threadErr } = await supabase.rpc("get_conversation", {
+        p_other_user_id: otherId,
+      });
+      if (threadErr) throw threadErr;
+      setThreadMessages(threadData || []);
+
+      // Mark conversation read
+      if (conv.unread_count > 0) {
+        await supabase.rpc("mark_conversation_read", { p_other_user_id: otherId });
+        // Optimistically update
+        setInbox((prev) =>
+          prev.map((m) =>
+            (m.sender_id || m.sender_email) === otherId && !m.is_read
+              ? { ...m, is_read: true, read_at: new Date().toISOString() }
+              : m
+          )
+        );
+        setConversations((prev) =>
+          prev.map((c) =>
+            (c.sender_id || c.sender_email) === otherId
+              ? { ...c, unread_count: 0 }
+              : c
+          )
+        );
+        const newUnread = inbox.filter((m) => !m.is_read).length - conv.unread_count;
+        prevUnreadRef.current = Math.max(0, newUnread);
+        onUnreadChange?.(Math.max(0, newUnread));
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoadingThread(false);
+    }
+  };
+
+  // ── Send Reply ─────────────────────────────────────────────────────────────
+  const handleSendReply = async () => {
+    if (!replyMessage.trim() || !activeConversation) return;
+    setSending(true);
+    setError(null);
+    const tempMsg = replyMessage.trim();
+    try {
+      const { error: err } = await supabase.rpc("send_message", {
+        p_recipient_ids: [activeConversation.id],
+        p_message: tempMsg,
+      });
+      if (err) throw err;
+
+      // Optimistically append
+      const now = new Date().toISOString();
+      setThreadMessages((prev) => [
+        ...prev,
+        {
+          id: `temp-${Date.now()}`,
+          message_content: tempMsg,
+          created_at: now,
+          is_mine: true,
+          is_read: false,
+          sender_name: "You",
+        },
+      ]);
+      setReplyMessage("");
+      fetchInbox();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // ── Send New Message (Compose) ───────────────────────────────────────────
+  const handleSendNew = async () => {
+    if (!composeMessage.trim() || selectedRecipients.length === 0) return;
     setSending(true);
     setError(null);
     try {
       const ids = selectedRecipients.map((r) => r.auth_id);
       const { error: err } = await supabase.rpc("send_message", {
         p_recipient_ids: ids,
-        p_message: message.trim(),
+        p_message: composeMessage.trim(),
       });
       if (err) throw err;
-      setTimeout(() => {
-        setSendSuccess(true);
-        setMessage("");
-        setSelectedRecipients([]);
-        setLaunching(false);
-      }, 420);
+      setSendSuccess(true);
+      setComposeMessage("");
+      setSelectedRecipients([]);
       setTimeout(() => {
         setSendSuccess(false);
-        setView("inbox");
+        setScreen("list");
         fetchInbox();
-      }, 2000);
+      }, 1200);
     } catch (e) {
       setError(e.message);
-      setLaunching(false);
     } finally {
       setSending(false);
     }
   };
 
-  // ── Open message — mark as read using new RPC ──────────────────────────────
-  const openMessage = async (msg) => {
-    setOpenedMessage(msg);
-    if (msg.is_read) return;
+  // ── Scroll to bottom on new messages ──────────────────────────────────────
+  useEffect(() => {
+    if (screen === "conversation" && threadEndRef.current) {
+      threadEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [threadMessages, screen]);
 
-    try {
-      await supabase.rpc("mark_message_read", { p_message_id: msg.id });
-      setInbox((prev) => {
-        const updated = prev.map((m) =>
-          m.id === msg.id ? { ...m, is_read: true, read_at: new Date().toISOString() } : m
-        );
-        const unreadCount = updated.filter((m) => !m.is_read).length;
-        prevUnreadRef.current = unreadCount;
-        onUnreadChange?.(unreadCount);
-        return updated;
-      });
-    } catch (e) {
-      console.error("Read error:", e);
+  // ── Keyboard: Enter sends, Shift+Enter newline ───────────────────────────
+  const handleReplyKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendReply();
     }
   };
 
-  const closeMessage = () => setOpenedMessage(null);
+  const handleComposeKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendNew();
+    }
+  };
 
   const unreadTotal = inbox.filter((m) => !m.is_read).length;
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:justify-end p-0 sm:p-6 sm:pr-8">
       {/* Backdrop */}
@@ -326,276 +338,310 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
 
       {/* Panel */}
       <motion.div
-        initial={{ opacity: 0, x: 70, scale: 0.92, rotateY: 6 }}
-        animate={{ opacity: 1, x: 0, scale: 1, rotateY: 0 }}
-        exit={{ opacity: 0, x: 50, scale: 0.94, transition: { duration: 0.2 } }}
-        transition={springPanel}
-        className="relative z-10 w-full sm:w-[580px] bg-white rounded-t-3xl sm:rounded-[28px] flex flex-col overflow-hidden border border-gray-100"
+        initial={{ opacity: 0, x: 60, scale: 0.95 }}
+        animate={{ opacity: 1, x: 0, scale: 1 }}
+        exit={{ opacity: 0, x: 40, scale: 0.96, transition: { duration: 0.2 } }}
+        transition={spring}
+        className="relative z-10 w-full sm:w-[520px] bg-white rounded-t-3xl sm:rounded-[24px] flex flex-col overflow-hidden border border-gray-100"
         style={{
-          height: "min(780px, 90vh)",
-          maxHeight: "90vh",
-          boxShadow:
-            "0 50px 100px -20px rgba(30,64,175,0.28), 0 16px 40px -12px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.04)",
-          perspective: 1000,
+          height: "min(760px, 88vh)",
+          maxHeight: "88vh",
+          boxShadow: "0 40px 80px -20px rgba(30,64,175,0.22), 0 16px 40px -12px rgba(0,0,0,0.12)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ── Header ── */}
+        {/* ═══ HEADER ═══ */}
         <div
-          className="flex-shrink-0 px-6 py-5 relative overflow-hidden"
+          className="flex-shrink-0 px-5 py-4 relative overflow-hidden"
           style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #312e81 55%, #4c1d95 100%)" }}
         >
-          <HeaderParticles />
-          {/* Ambient glow blobs */}
-          <motion.div
-            className="absolute -top-16 -right-10 w-44 h-44 rounded-full pointer-events-none"
-            style={{ background: "radial-gradient(circle, rgba(99,102,241,0.5), transparent 70%)" }}
-            animate={{ scale: [1, 1.15, 1], opacity: [0.6, 0.9, 0.6] }}
-            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-          />
-          <motion.div
-            className="absolute -bottom-10 left-12 w-32 h-32 rounded-full pointer-events-none"
-            style={{ background: "radial-gradient(circle, rgba(244,63,94,0.25), transparent 70%)" }}
-            animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.7, 0.4] }}
-            transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-          />
-
-          <motion.div
-            className="flex items-center justify-between relative"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15, ...springSoft }}
-          >
-            <div className="flex items-center gap-3.5">
-              <motion.div
-                className="w-11 h-11 bg-white/15 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/20 relative"
-                whileHover={{ rotate: -8, scale: 1.08 }}
-                transition={springSnap}
-              >
-                <motion.div
-                  animate={{ rotate: [0, -4, 4, 0] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          <div className="flex items-center justify-between relative z-10">
+            <div className="flex items-center gap-3">
+              {screen !== "list" && (
+                <motion.button
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  onClick={() => {
+                    setScreen("list");
+                    setActiveConversation(null);
+                    setError(null);
+                  }}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl text-white/80 hover:text-white hover:bg-white/15 transition-colors"
                 >
-                  <MessageSquare className="w-5 h-5 text-white" strokeWidth={2.25} />
-                </motion.div>
-                <AnimatePresence>
-                  {unreadTotal > 0 && (
-                    <motion.span
-                      key="ping"
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      exit={{ scale: 0 }}
-                      className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border-2 border-indigo-900"
-                    >
-                      <motion.span
-                        className="absolute inset-0 rounded-full bg-amber-400"
-                        animate={{ scale: [1, 1.8, 1], opacity: [0.8, 0, 0.8] }}
-                        transition={{ duration: 1.6, repeat: Infinity }}
-                      />
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-              <div>
-                <h2 className="text-base font-bold text-white tracking-tight">Messages</h2>
-                <AnimatePresence mode="wait">
-                  <motion.p
-                    key={`${unreadTotal}-${inbox.length}`}
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 4 }}
-                    transition={{ duration: 0.18 }}
-                    className="text-[11px] text-indigo-200/90 font-medium"
-                  >
-                    {inbox.length === 0
-                      ? "No messages"
-                      : unreadTotal === 0
-                      ? `${inbox.length} messages · all caught up`
-                      : `${unreadTotal} unread · ${inbox.length} total`}
-                  </motion.p>
-                </AnimatePresence>
-              </div>
+                  <ArrowLeft className="w-4 h-4" />
+                </motion.button>
+              )}
+
+              {screen === "conversation" && activeConversation ? (
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${avatarGradient(activeConversation.name)} flex items-center justify-center shadow-sm`}>
+                    <span className="text-white text-sm font-bold">{avatarLetter(activeConversation.name, activeConversation.email)}</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-white leading-tight">{activeConversation.name}</h2>
+                    <p className="text-[10px] text-indigo-200/80">{activeConversation.dept}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-white/15 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/20">
+                    <MessageSquare className="w-4 h-4 text-white" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-white tracking-tight">Messages</h2>
+                    <p className="text-[11px] text-indigo-200/80">
+                      {unreadTotal > 0 ? `${unreadTotal} unread` : `${conversations.length} chats`}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
+
             <div className="flex items-center gap-2">
-              <AnimatePresence mode="wait">
-                {view === "inbox" ? (
-                  <motion.button
-                    key="send-btn"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    whileHover={{ scale: 1.05, y: -1, boxShadow: "0 8px 20px -4px rgba(0,0,0,0.3)" }}
-                    whileTap={{ scale: 0.95 }}
-                    transition={springSnap}
-                    onClick={() => setView("compose")}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-white text-indigo-700 rounded-xl text-xs font-bold shadow-lg shadow-black/10"
-                  >
-                    <Send className="w-3.5 h-3.5" /> New
-                  </motion.button>
-                ) : (
-                  <motion.button
-                    key="back-btn"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.95 }}
-                    transition={springSnap}
-                    onClick={() => { setView("inbox"); setSelectedRecipients([]); setMessage(""); setError(null); }}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-white/15 hover:bg-white/25 text-white rounded-xl text-xs font-semibold backdrop-blur-sm border border-white/10 transition-colors"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" /> Back
-                  </motion.button>
-                )}
-              </AnimatePresence>
+              {screen === "list" && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => { setScreen("compose"); setError(null); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-indigo-700 rounded-lg text-xs font-bold shadow-sm"
+                >
+                  <Send className="w-3 h-3" /> New
+                </motion.button>
+              )}
               <motion.button
                 onClick={onClose}
                 whileHover={{ scale: 1.1, rotate: 90 }}
                 whileTap={{ scale: 0.9 }}
-                transition={springSnap}
-                className="w-9 h-9 flex items-center justify-center rounded-xl text-white/70 hover:text-white hover:bg-white/15 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-xl text-white/70 hover:text-white hover:bg-white/15 transition-colors"
               >
-                <X className="w-4.5 h-4.5" />
+                <X className="w-4 h-4" />
               </motion.button>
             </div>
-          </motion.div>
+          </div>
         </div>
 
-        {/* ── Body ── */}
-        <div className="flex-1 overflow-y-auto bg-gradient-to-b from-slate-50/60 to-white">
+        {/* ═══ BODY ═══ */}
+        <div className="flex-1 overflow-hidden bg-slate-50/50 relative">
           <AnimatePresence mode="wait">
 
-            {/* ── INBOX VIEW ── */}
-            {view === "inbox" && (
+            {/* ─── LIST VIEW ─── */}
+            {screen === "list" && (
               <motion.div
-                key="inbox"
-                initial={{ opacity: 0, x: -16 }}
+                key="list"
+                initial={{ opacity: 0, x: -12 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 16 }}
+                exit={{ opacity: 0, x: 12 }}
                 transition={springSoft}
                 className="h-full flex flex-col"
               >
-                {loading ? (
-                  <div className="flex flex-col items-center justify-center py-24 gap-4 text-gray-400">
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                    >
-                      <Loader2 className="w-7 h-7 text-indigo-400" />
-                    </motion.div>
-                    <p className="text-sm">Loading messages…</p>
+                {/* Search bar */}
+                <div className="px-4 py-3 bg-white border-b border-gray-100">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search conversations..."
+                      className="w-full pl-9 pr-3 py-2 bg-gray-100 border border-transparent rounded-xl text-sm focus:outline-none focus:bg-white focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100 transition-all"
+                      onChange={(e) => {
+                        const q = e.target.value.toLowerCase();
+                        if (!q) { fetchInbox(); return; }
+                        setConversations((prev) =>
+                          prev.filter((c) =>
+                            (c.sender_name || "").toLowerCase().includes(q) ||
+                            (c.sender_dept || "").toLowerCase().includes(q)
+                          )
+                        );
+                      }}
+                    />
                   </div>
-                ) : inbox.length === 0 ? (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex flex-col items-center justify-center py-24 gap-3"
-                  >
-                    <motion.div
-                      className="w-16 h-16 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl flex items-center justify-center border border-indigo-100"
-                      animate={{ y: [0, -6, 0], rotate: [0, -3, 3, 0] }}
-                      transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
-                    >
-                      <Mail className="w-7 h-7 text-indigo-300" />
-                    </motion.div>
-                    <p className="text-sm font-semibold text-gray-500">Your inbox is empty</p>
-                    <p className="text-xs text-gray-400">Messages from colleagues will land here</p>
-                  </motion.div>
-                ) : (
-                  <div className="divide-y divide-gray-100/80 overflow-y-auto">
-                    {inbox.map((msg, i) => {
-                      const isRead = msg.is_read;
-                      return (
-                        <motion.div
-                          key={msg.id}
-                          layout
-                          initial={{ opacity: 0, y: 14, scale: 0.98 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          transition={{ delay: Math.min(i * 0.05, 0.45), ...springSoft }}
-                        >
-                          <TiltRow
-                            onClick={() => openMessage(msg)}
-                            className="w-full relative flex items-start gap-4 px-6 py-4.5 text-left group hover:bg-indigo-50/40 transition-colors"
-                          >
-                            {/* Unread rail — the "stamped" signature mark */}
-                            <AnimatePresence>
-                              {!isRead && (
-                                <motion.span
-                                  initial={{ scaleY: 0 }}
-                                  animate={{ scaleY: 1 }}
-                                  exit={{ scaleY: 0 }}
-                                  transition={springSoft}
-                                  className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-gradient-to-b from-amber-400 to-orange-500 origin-top"
-                                />
-                              )}
-                            </AnimatePresence>
+                </div>
 
+                {/* Conversation list */}
+                <div className="flex-1 overflow-y-auto">
+                  {loadingInbox ? (
+                    <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400">
+                      <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+                      <p className="text-sm">Loading conversations…</p>
+                    </div>
+                  ) : conversations.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 gap-3">
+                      <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center border border-indigo-100">
+                        <Inbox className="w-6 h-6 text-indigo-300" />
+                      </div>
+                      <p className="text-sm font-semibold text-gray-500">No conversations yet</p>
+                      <p className="text-xs text-gray-400">Start a new chat to message colleagues</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-100/60">
+                      {conversations.map((conv, i) => {
+                        const hasUnread = conv.unread_count > 0;
+                        return (
+                          <motion.button
+                            key={conv.sender_id || conv.sender_email}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: Math.min(i * 0.04, 0.4), ...springSoft }}
+                            onClick={() => openConversation(conv)}
+                            className={`w-full flex items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-indigo-50/40 ${hasUnread ? "bg-white" : "bg-white/60"}`}
+                          >
                             {/* Avatar */}
-                            <motion.div
-                              className={`w-10.5 h-10.5 rounded-xl bg-gradient-to-br ${avatarColor(msg.sender_name)} flex items-center justify-center flex-shrink-0 shadow-sm ${isRead ? "opacity-45 saturate-50" : ""}`}
-                              whileHover={{ scale: 1.1, rotate: -4 }}
-                              transition={springSnap}
-                            >
-                              <span className="text-white text-sm font-bold">
-                                {avatar(msg.sender_name, msg.sender_email)}
-                              </span>
-                            </motion.div>
+                            <div className="relative flex-shrink-0">
+                              <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${avatarGradient(conv.sender_name)} flex items-center justify-center shadow-sm`}>
+                                <span className="text-white text-sm font-bold">{avatarLetter(conv.sender_name, conv.sender_email)}</span>
+                              </div>
+                              {hasUnread && (
+                                <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-amber-400 rounded-full border-2 border-white" />
+                              )}
+                            </div>
 
                             {/* Content */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between mb-0.5">
-                                <p className={`text-sm font-bold truncate ${isRead ? "text-gray-400" : "text-gray-900"}`}>
-                                  {msg.sender_name}
+                                <p className={`text-sm font-semibold truncate ${hasUnread ? "text-gray-900" : "text-gray-500"}`}>
+                                  {conv.sender_name}
                                 </p>
-                                <span className="text-[10px] text-gray-400 flex-shrink-0 ml-2 flex items-center gap-1 font-mono tabular-nums">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  {fmtTime(msg.created_at)}
+                                <span className="text-[10px] text-gray-400 flex-shrink-0 ml-2">
+                                  {fmtTime(conv.created_at)}
                                 </span>
                               </div>
-                              <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">{msg.sender_dept}</p>
-                              <p className={`text-[13px] line-clamp-2 leading-relaxed ${isRead ? "text-gray-400" : "text-gray-600"}`}>
-                                {msg.message_content}
-                              </p>
+                              <div className="flex items-center justify-between">
+                                <p className={`text-[13px] truncate ${hasUnread ? "text-gray-700 font-medium" : "text-gray-400"}`}>
+                                  {conv.message_content}
+                                </p>
+                                {hasUnread && (
+                                  <span className="ml-2 flex-shrink-0 min-w-[20px] h-5 bg-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1.5">
+                                    {conv.unread_count}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-gray-400 mt-0.5">{conv.sender_dept}</p>
                             </div>
-
-                            {/* Unread pulse OR read badge */}
-                            {isRead ? (
-                              <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0 mt-1 tracking-wide">
-                                READ
-                              </span>
-                            ) : (
-                              <span className="relative flex-shrink-0 mt-1.5 w-2.5 h-2.5">
-                                <motion.span
-                                  className="absolute inset-0 rounded-full bg-amber-400"
-                                  animate={{ scale: [1, 2.4, 1], opacity: [0.7, 0, 0.7] }}
-                                  transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
-                                />
-                                <span className="relative block w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm shadow-amber-500/50" />
-                              </span>
-                            )}
-                          </TiltRow>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                )}
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </motion.div>
             )}
 
-            {/* ── COMPOSE VIEW ── */}
-            {view === "compose" && (
+            {/* ─── CONVERSATION VIEW ─── */}
+            {screen === "conversation" && activeConversation && (
+              <motion.div
+                key="conversation"
+                initial={{ opacity: 0, x: 16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -16 }}
+                transition={springSoft}
+                className="h-full flex flex-col"
+              >
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+                  {loadingThread ? (
+                    <div className="flex items-center justify-center py-20">
+                      <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+                    </div>
+                  ) : threadMessages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-2 text-gray-400">
+                      <Mail className="w-8 h-8 text-gray-300" />
+                      <p className="text-sm">No messages yet</p>
+                    </div>
+                  ) : (
+                    <>
+                      {threadMessages.map((msg, idx) => {
+                        const showDate = idx === 0 || !sameDay(msg.created_at, threadMessages[idx - 1].created_at);
+                        const isMine = msg.is_mine;
+                        return (
+                          <React.Fragment key={msg.id || idx}>
+                            {showDate && (
+                              <div className="flex items-center justify-center my-4">
+                                <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+                                  {fmtDate(msg.created_at)}
+                                </span>
+                              </div>
+                            )}
+                            <motion.div
+                              initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              transition={{ delay: 0.02, ...springSoft }}
+                              className={`flex ${isMine ? "justify-end" : "justify-start"} mb-1`}
+                            >
+                              <div
+                                className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                                  isMine
+                                    ? "bg-indigo-600 text-white rounded-br-md"
+                                    : "bg-white text-gray-800 border border-gray-100 rounded-bl-md shadow-sm"
+                                }`}
+                              >
+                                <p>{msg.message_content}</p>
+                                <div className={`flex items-center justify-end gap-1 mt-1 ${isMine ? "text-indigo-200" : "text-gray-400"}`}>
+                                  <span className="text-[10px]">{fmtTime(msg.created_at)}</span>
+                                  {isMine && (
+                                    <CheckCheck className={`w-3 h-3 ${msg.is_read ? "text-emerald-300" : ""}`} />
+                                  )}
+                                </div>
+                              </div>
+                            </motion.div>
+                          </React.Fragment>
+                        );
+                      })}
+                      <div ref={threadEndRef} />
+                    </>
+                  )}
+                </div>
+
+                {/* Input */}
+                <div className="flex-shrink-0 px-4 py-3 bg-white border-t border-gray-100">
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-2 text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2"
+                    >
+                      {error}
+                    </motion.div>
+                  )}
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1 relative">
+                      <textarea
+                        ref={replyRef}
+                        value={replyMessage}
+                        onChange={(e) => setReplyMessage(e.target.value)}
+                        onKeyDown={handleReplyKeyDown}
+                        placeholder="Type a message…"
+                        rows={1}
+                        className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 focus:bg-white transition-all resize-none max-h-32"
+                        style={{ minHeight: "40px" }}
+                      />
+                    </div>
+                    <motion.button
+                      onClick={handleSendReply}
+                      disabled={sending || !replyMessage.trim()}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.92 }}
+                      className="w-10 h-10 flex items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0"
+                    >
+                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    </motion.button>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1.5 text-center">Press Enter to send · Shift+Enter for new line</p>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ─── COMPOSE VIEW ─── */}
+            {screen === "compose" && (
               <motion.div
                 key="compose"
                 initial={{ opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -16 }}
                 transition={springSoft}
-                className="p-6 space-y-5"
+                className="h-full overflow-y-auto p-5 space-y-5"
               >
                 {/* To field */}
                 <div>
                   <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">To</label>
-
                   {selectedRecipients.length > 0 && (
                     <motion.div layout className="flex flex-wrap gap-2 mb-3">
                       <AnimatePresence>
@@ -603,18 +649,17 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
                           <motion.span
                             key={r.auth_id}
                             layout
-                            initial={{ opacity: 0, scale: 0.6, y: -10 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.5, rotate: 8 }}
-                            transition={springBounce}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-xs font-semibold"
+                            initial={{ opacity: 0, scale: 0.6 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.5 }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-xs font-semibold"
                           >
-                            <span className={`w-5 h-5 rounded-full bg-gradient-to-br ${avatarColor(r.name)} flex items-center justify-center`}>
-                              <span className="text-white text-[9px] font-bold">{avatar(r.name, r.email)}</span>
+                            <span className={`w-4 h-4 rounded-full bg-gradient-to-br ${avatarGradient(r.name)} flex items-center justify-center`}>
+                              <span className="text-white text-[8px] font-bold">{avatarLetter(r.name, r.email)}</span>
                             </span>
                             {r.name}
-                            <button onClick={() => removeRecipient(r.auth_id)} className="hover:text-indigo-900 transition-colors">
-                              <X className="w-3.5 h-3.5" />
+                            <button onClick={() => removeRecipient(r.auth_id)} className="hover:text-indigo-900">
+                              <X className="w-3 h-3" />
                             </button>
                           </motion.span>
                         ))}
@@ -623,47 +668,38 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
                   )}
 
                   <div className="relative">
-                    <Search className="absolute left-3.5 top-3 w-4 h-4 text-gray-400 pointer-events-none" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Search by name or email…"
-                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 focus:bg-white transition-all"
+                      className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 focus:bg-white transition-all"
                     />
                     {searching && (
-                      <motion.div
-                        className="absolute right-3.5 top-3"
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
-                      >
-                        <Loader2 className="w-4 h-4 text-indigo-400" />
-                      </motion.div>
+                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-400 animate-spin" />
                     )}
                   </div>
 
                   <AnimatePresence>
                     {searchResults.length > 0 && (
                       <motion.div
-                        initial={{ opacity: 0, y: -6, scaleY: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scaleY: 1 }}
-                        exit={{ opacity: 0, y: -6, scaleY: 0.96 }}
-                        transition={springSoft}
-                        style={{ originY: 0 }}
-                        className="mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-10 max-h-60 overflow-y-auto"
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className="mt-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto"
                       >
                         {searchResults.map((u, idx) => (
                           <motion.button
                             key={u.auth_id}
-                            initial={{ opacity: 0, x: -8 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: idx * 0.03 }}
-                            whileHover={{ backgroundColor: "rgba(238,242,255,0.8)" }}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: idx * 0.02 }}
                             onClick={() => addRecipient(u)}
-                            className="w-full flex items-center gap-3 px-4 py-3.5 transition-colors text-left border-b border-gray-50 last:border-0"
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-50/60 transition-colors text-left border-b border-gray-50 last:border-0"
                           >
-                            <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${avatarColor(u.name)} flex items-center justify-center flex-shrink-0`}>
-                              <span className="text-white text-sm font-bold">{avatar(u.name, u.email)}</span>
+                            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${avatarGradient(u.name)} flex items-center justify-center`}>
+                              <span className="text-white text-xs font-bold">{avatarLetter(u.name, u.email)}</span>
                             </div>
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-gray-800 truncate">{u.name}</p>
@@ -674,223 +710,56 @@ const EmployeeChat = ({ onClose, onUnreadChange }) => {
                       </motion.div>
                     )}
                     {searchQuery.length >= 2 && !searching && searchResults.length === 0 && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="mt-2 px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-400 text-center"
-                      >
+                      <div className="mt-2 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-400 text-center">
                         No users found
-                      </motion.div>
+                      </div>
                     )}
                   </AnimatePresence>
                 </div>
 
-                {/* Message field */}
+                {/* Message */}
                 <div>
                   <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Message</label>
                   <textarea
-                    ref={messageRef}
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    placeholder="Please share updated manpower report by EOD…"
-                    rows={8}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3.5 text-sm text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 focus:bg-white transition-all resize-none leading-relaxed"
+                    value={composeMessage}
+                    onChange={(e) => setComposeMessage(e.target.value)}
+                    onKeyDown={handleComposeKeyDown}
+                    placeholder="Write your message…"
+                    rows={6}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 focus:bg-white transition-all resize-none leading-relaxed"
                   />
                 </div>
 
-                <AnimatePresence>
-                  {error && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -6, height: 0 }}
-                      animate={{ opacity: 1, y: 0, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3.5 text-sm text-rose-700"
-                    >
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      {error}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                {sendSuccess && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-700 font-semibold"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    Message sent successfully!
+                  </motion.div>
+                )}
 
-                <AnimatePresence>
-                  {sendSuccess && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.9, y: 8 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={springSnap}
-                      className="relative flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3.5 text-sm text-emerald-700 font-semibold overflow-visible"
-                    >
-                      <ConfettiBurst />
-                      <motion.span
-                        initial={{ scale: 0, rotate: -45 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                        transition={{ ...springBounce, delay: 0.05 }}
-                      >
-                        <CheckCheck className="w-4.5 h-4.5" />
-                      </motion.span>
-                      Message sent successfully!
-                      <motion.span
-                        className="ml-auto"
-                        animate={{ rotate: [0, 15, -15, 0], scale: [1, 1.2, 1] }}
-                        transition={{ duration: 0.6, delay: 0.3 }}
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                      </motion.span>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Send button — paper-plane launch micro-interaction */}
                 <motion.button
-                  onClick={handleSend}
-                  disabled={sending || !message.trim() || selectedRecipients.length === 0 || sendSuccess}
-                  whileHover={!sending && message.trim() && selectedRecipients.length > 0 ? { scale: 1.02, y: -2, boxShadow: "0 12px 28px -6px rgba(79,70,229,0.5)" } : {}}
-                  whileTap={!sending && message.trim() && selectedRecipients.length > 0 ? { scale: 0.97 } : {}}
-                  transition={springSnap}
-                  className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-600 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
+                  onClick={handleSendNew}
+                  disabled={sending || !composeMessage.trim() || selectedRecipients.length === 0 || sendSuccess}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
-                  {sending ? (
-                    <motion.span
-                      key="sending"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="flex items-center gap-2"
-                    >
-                      <motion.div
-                        animate={launching ? { x: 140, y: -30, opacity: 0, rotate: 35 } : { rotate: 360 }}
-                        transition={launching ? { duration: 0.4, ease: "easeIn" } : { duration: 0.8, repeat: Infinity, ease: "linear" }}
-                      >
-                        {launching ? <Send className="w-4.5 h-4.5" /> : <Loader2 className="w-4.5 h-4.5" />}
-                      </motion.div>
-                      {launching ? "" : "Sending…"}
-                    </motion.span>
-                  ) : (
-                    <motion.span key="idle" className="flex items-center gap-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                      <Send className="w-4.5 h-4.5" /> Send Message
-                    </motion.span>
-                  )}
+                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {sending ? "Sending…" : "Send Message"}
                 </motion.button>
 
-                <AnimatePresence>
-                  {selectedRecipients.length > 1 && (
-                    <motion.p
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="text-[11px] text-gray-400 text-center"
-                    >
-                      Sending to {selectedRecipients.length} recipients
-                    </motion.p>
-                  )}
-                </AnimatePresence>
+                {selectedRecipients.length > 1 && (
+                  <p className="text-[11px] text-gray-400 text-center">Sending to {selectedRecipients.length} recipients</p>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </motion.div>
-
-      {/* ── OPENED MESSAGE POPUP — envelope-opening reveal ── */}
-      <AnimatePresence>
-        {openedMessage && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-20 flex items-center justify-center p-6"
-            style={{ background: "rgba(15,23,42,0.4)", backdropFilter: "blur(5px)" }}
-            onClick={closeMessage}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.7, y: 36, rotateX: -25 }}
-              animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }}
-              exit={{ opacity: 0, scale: 0.85, y: 20, transition: { duration: 0.15 } }}
-              transition={springBounce}
-              style={{ transformPerspective: 800 }}
-              className="bg-white rounded-3xl w-full max-w-md border border-gray-100 overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <motion.div
-                animate={{
-                  boxShadow: [
-                    "0 32px 70px -12px rgba(0,0,0,0.25)",
-                    "0 32px 90px -12px rgba(16,185,129,0.18)",
-                    "0 32px 70px -12px rgba(0,0,0,0.25)",
-                  ],
-                }}
-                transition={{ duration: 2.5, repeat: 1 }}
-              >
-                {/* Header */}
-                <div
-                  className="px-6 py-5 flex items-center gap-3.5 relative overflow-hidden"
-                  style={{ background: "linear-gradient(135deg, #059669 0%, #0d9488 100%)" }}
-                >
-                  <motion.div
-                    className="absolute -top-10 -right-10 w-32 h-32 rounded-full"
-                    style={{ background: "radial-gradient(circle, rgba(255,255,255,0.2), transparent 70%)" }}
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ duration: 4, repeat: Infinity }}
-                  />
-                  <motion.div
-                    initial={{ scale: 0, rotate: -20 }}
-                    animate={{ scale: 1, rotate: 0 }}
-                    transition={{ ...springBounce, delay: 0.1 }}
-                    className={`w-11 h-11 rounded-xl bg-gradient-to-br ${avatarColor(openedMessage.sender_name)} flex items-center justify-center shadow-md ring-2 ring-white/40 relative`}
-                  >
-                    <span className="text-white text-base font-bold">{avatar(openedMessage.sender_name, openedMessage.sender_email)}</span>
-                  </motion.div>
-                  <motion.div
-                    className="flex-1 min-w-0 relative"
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.16 }}
-                  >
-                    <p className="text-sm font-bold text-white">{openedMessage.sender_name}</p>
-                    <p className="text-[11px] text-emerald-100">{openedMessage.sender_dept} · {fmtTime(openedMessage.created_at)}</p>
-                  </motion.div>
-                  <motion.button
-                    onClick={closeMessage}
-                    whileHover={{ scale: 1.1, rotate: 90 }}
-                    whileTap={{ scale: 0.9 }}
-                    transition={springSnap}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/15 transition-colors relative"
-                  >
-                    <X className="w-4 h-4" />
-                  </motion.button>
-                </div>
-
-                {/* Message */}
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2, ...springSoft }}
-                  className="px-6 py-6 max-h-[50vh] overflow-y-auto"
-                >
-                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{openedMessage.message_content}</p>
-                </motion.div>
-
-                {/* Footer */}
-                <div className="px-6 pb-6 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
-                    <Trash2 className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                    <span>Auto-deleted at midnight · still visible in inbox</span>
-                  </div>
-                  <motion.button
-                    onClick={closeMessage}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    transition={springSnap}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition-colors flex-shrink-0"
-                  >
-                    Close
-                  </motion.button>
-                </div>
-              </motion.div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
