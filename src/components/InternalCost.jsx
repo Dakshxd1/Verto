@@ -437,8 +437,15 @@ const InternalCost = () => {
       const fromDate = monthDates.length
         ? monthDates.reduce((a, b) => (a < b ? a : b))
         : null;
-      const toDate = monthDates.length
+      const maxMonthDate = monthDates.length
         ? monthDates.reduce((a, b) => (a > b ? a : b))
+        : null;
+      const toDate = maxMonthDate
+        ? (() => {
+            const [year, month] = maxMonthDate.slice(0, 7).split("-").map(Number);
+            const lastDay = new Date(year, month, 0).getDate();
+            return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+          })()
         : null;
 
       // Fetch employee_expense_payouts for the same period
