@@ -40,6 +40,7 @@ import {
   BarChart2,
   Building2,
   MessageSquare,
+  Receipt,        // ← ADDED (Payment Center icon)
 } from "lucide-react";
 
 // Import Components
@@ -489,6 +490,7 @@ function App() {
   const [banks, setBanks] = useState([]);
   const [loggedInEmployee, setLoggedInEmployee] = useState(null);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  // Payment Center modal state (kept — profile-menu shortcut still opens modal)
   const [showPaymentCenter, setShowPaymentCenter] = useState(false);
   const [showTodoPanel, setShowTodoPanel] = useState(false);
   const [todoUnreadCount, setTodoUnreadCount] = useState(0);
@@ -535,71 +537,71 @@ function App() {
   } = useAuth();
 
   useEffect(() => {
-  const unlock = () => {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (AudioContext) new AudioContext().resume();
-    document.removeEventListener("click", unlock);
-    document.removeEventListener("keydown", unlock);
-  };
-  document.addEventListener("click", unlock);
-  document.addEventListener("keydown", unlock);
-  return () => {
-    document.removeEventListener("click", unlock);
-    document.removeEventListener("keydown", unlock);
-  };
-}, []);
-  
-// ── TODO BADGE COUNT ─────────────────────────────────────────────
-useEffect(() => {
-  if (!user?.email) return;
-  const loadCount = async () => {
-    const { data } = await supabase.rpc("get_todo_counters");
-    setTodoUnreadCount(Number(data?.[0]?.unread_count || 0));
-  };
-  loadCount();
+    const unlock = () => {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) new AudioContext().resume();
+      document.removeEventListener("click", unlock);
+      document.removeEventListener("keydown", unlock);
+    };
+    document.addEventListener("click", unlock);
+    document.addEventListener("keydown", unlock);
+    return () => {
+      document.removeEventListener("click", unlock);
+      document.removeEventListener("keydown", unlock);
+    };
+  }, []);
 
-// AFTER — plays sound only on new task INSERT
-const ch = supabase.channel("todo-badge")
-  .on("postgres_changes", {
-    event: "INSERT", schema: "public", table: "employee_todos",
-  }, () => {
-    playTaskSound();   // ← play sound on new task
+  // ── TODO BADGE COUNT ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.email) return;
+    const loadCount = async () => {
+      const { data } = await supabase.rpc("get_todo_counters");
+      setTodoUnreadCount(Number(data?.[0]?.unread_count || 0));
+    };
     loadCount();
-  })
-  .on("postgres_changes", {
-    event: "UPDATE", schema: "public", table: "employee_todos",
-  }, loadCount)       // ← update count but no sound on update
-  .subscribe();
-  return () => supabase.removeChannel(ch);
-}, [user?.email]);
+
+    // AFTER — plays sound only on new task INSERT
+    const ch = supabase.channel("todo-badge")
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "employee_todos",
+      }, () => {
+        playTaskSound();   // ← play sound on new task
+        loadCount();
+      })
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "employee_todos",
+      }, loadCount)       // ← update count but no sound on update
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [user?.email]);
 
   // ── CHAT UNREAD COUNT ─────────────────────────────────────────────
   // Counts only messages where is_read is false — NOT total inbox size.
   // Listens on "*" (not just INSERT) so that marking a message read
   // (an UPDATE) also refreshes the badge in real time.
-// AFTER — plays sound only on new INSERT (new message received)
-useEffect(() => {
-  if (!user?.email) return;
-  const loadChatCount = async () => {
-    const { data } = await supabase.rpc("get_my_inbox");
-    const unread = (data || []).filter((m) => !m.is_read).length;
-    setChatUnreadCount(unread);
-  };
-  loadChatCount();
+  // AFTER — plays sound only on new INSERT (new message received)
+  useEffect(() => {
+    if (!user?.email) return;
+    const loadChatCount = async () => {
+      const { data } = await supabase.rpc("get_my_inbox");
+      const unread = (data || []).filter((m) => !m.is_read).length;
+      setChatUnreadCount(unread);
+    };
+    loadChatCount();
 
-  const ch = supabase.channel("chat-badge")
-    .on("postgres_changes", {
-      event: "INSERT", schema: "public", table: "employee_messages",
-    }, () => {
-      playChatSound();   // ← play sound on new message
-      loadChatCount();
-    })
-    .on("postgres_changes", {
-      event: "UPDATE", schema: "public", table: "employee_messages",
-    }, loadChatCount)   // ← update count but no sound on read
-    .subscribe();
-  return () => supabase.removeChannel(ch);
-}, [user?.email]);
+    const ch = supabase.channel("chat-badge")
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "employee_messages",
+      }, () => {
+        playChatSound();   // ← play sound on new message
+        loadChatCount();
+      })
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "employee_messages",
+      }, loadChatCount)   // ← update count but no sound on read
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [user?.email]);
 
   const permissions = usePermissions();
   const { isIntern } = permissions;
@@ -674,7 +676,8 @@ useEffect(() => {
       "verto:shortcut:client-advance-nav": () =>
         setActiveTab("advance-credit-locker"),
       "verto:shortcut:settings": () => setActiveTab("settings"),
-      "verto:shortcut:payment-center": () => setShowPaymentCenter(true), // ← ADD THIS LINE
+      // ← CHANGED: shortcut now opens the Payment Center *page*, not the modal
+      "verto:shortcut:payment-center": () => setActiveTab("payment-center"),
       // Special
       "verto:shortcut:command-palette": () => setShowCommandPalette(true),
       "verto:shortcut:global-search": () => setShowCommandPalette(true),
@@ -726,7 +729,6 @@ useEffect(() => {
   if (!user) return <Login />;
 
   const navItems = [
-
     {
       id: "dashboard",
       label: "Dashboard",
@@ -751,7 +753,7 @@ useEffect(() => {
       icon: Building2,
       desc: "Cost centre & department analytics",
     },
-    { 
+    {
       id: "internal-cost",
       label: "Internal Team Cost",
       icon: CreditCard,
@@ -780,6 +782,13 @@ useEffect(() => {
       label: "Petty Cash",
       icon: Wallet,
       desc: "Petty cash ledger & history",
+    },
+    // ← ADDED: Payment Center as a main module
+    {
+      id: "payment-center",
+      label: "Payment Center",
+      icon: Receipt,
+      desc: "All transactions across the system",
     },
     {
       id: "settings",
@@ -896,7 +905,7 @@ useEffect(() => {
             <div className="space-y-1">
               {navItems.map((item) => {
                 if (role === "manager" && item.id === "bank-reco") return null;
-                  if (role === "employee" && item.id !== "dept-reports") return null;
+                if (role === "employee" && item.id !== "dept-reports") return null;
 
                 if (item.id === "settings") return null; // accessed via footer button
                 const isActive = activeTab === item.id;
@@ -1179,6 +1188,7 @@ useEffect(() => {
                             <span>Manage Team</span>
                           </button>
                         )}
+                        {/* Profile-menu Payment Center: opens the MODAL (kept as-is) */}
                         <button
                           onClick={() => {
                             setShowPaymentCenter(true);
@@ -1186,7 +1196,7 @@ useEffect(() => {
                           }}
                           className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
                         >
-                          <Activity className="w-4 h-4 text-gray-400" />
+                          <Receipt className="w-4 h-4 text-gray-400" />
                           <span>Payment Center</span>
                         </button>
                       </div>
@@ -1261,6 +1271,8 @@ useEffect(() => {
                       {!(role === "manager" && activeTab === "bank-reco") &&
                         activeTab === "bank-reco" && <BankReco />}
                       {activeTab === "petty-cash" && <PettyCashPage />}
+                      {/* ← ADDED: Payment Center as a full page */}
+                      {activeTab === "payment-center" && <FinanceRegisterPage />}
                       {activeTab === "advance-credit-locker" && (
                         <AdvanceCreditCardLockerPage />
                       )}
@@ -1297,11 +1309,8 @@ useEffect(() => {
                 { id: "pl-center", icon: TrendingUp, label: "P&L" },
                 { id: "bank-reco", icon: DollarSign, label: "Bank" },
                 { id: "petty-cash", icon: Wallet, label: "Cash" },
-                {
-                  id: "advance-credit-locker",
-                  icon: CreditCard,
-                  label: "Advance",
-                },
+                // ← ADDED: Payment Center (mobile)
+                { id: "payment-center", icon: Receipt, label: "Payments" },
               ].map((item) => {
                 if (role === "manager" && item.id === "bank-reco") return null;
                 const isActive = activeTab === item.id;
@@ -1410,7 +1419,7 @@ useEffect(() => {
             </div>
           )}
         </AnimatePresence>
-        {/* ── PAYMENT CENTER MODAL ── */}
+        {/* ── PAYMENT CENTER MODAL (still reachable from profile menu) ── */}
         <AnimatePresence>
           {showPaymentCenter && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
@@ -1437,7 +1446,7 @@ useEffect(() => {
                   <div className="flex items-center justify-between relative">
                     <div className="flex items-center space-x-4">
                       <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-                        <Activity className="w-5 h-5 text-white" />
+                        <Receipt className="w-5 h-5 text-white" />
                       </div>
                       <div>
                         <h2 className="text-lg font-bold text-gray-900 tracking-tight">

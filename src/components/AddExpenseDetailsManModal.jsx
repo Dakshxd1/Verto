@@ -638,7 +638,6 @@ const MismatchConfirmModal = ({ matched, mismatches, onProceed, onCancel }) => (
   </div>
 );
 // ─── CONFIRM MODAL (replaces window.confirm) ──────────────────────────────────
-// ─── CONFIRM MODAL (replaces window.confirm) ──────────────────────────────────
 const ConfirmModal = ({ modal, onConfirm, onCancel }) => {
   if (!modal) return null;
   return (
@@ -646,7 +645,7 @@ const ConfirmModal = ({ modal, onConfirm, onCancel }) => {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
         <div
           className={`px-5 py-4 flex items-center gap-3 ${
-            modal.type === "os"
+            modal.type === "os" || modal.type === "duplicate"
               ? "bg-gradient-to-r from-amber-500 to-orange-500"
               : "bg-gradient-to-r from-rose-500 to-red-600"
           }`}
@@ -656,7 +655,9 @@ const ConfirmModal = ({ modal, onConfirm, onCancel }) => {
           </div>
           <div>
             <h4 className="text-white font-bold text-sm">
-              {modal.type === "os"
+              {modal.type === "duplicate"
+                ? "Possible Duplicate Payout"
+                : modal.type === "os"
                 ? "OS Amount Exceeded"
                 : "Bank Balance Insufficient"}
             </h4>
@@ -705,17 +706,71 @@ const ConfirmModal = ({ modal, onConfirm, onCancel }) => {
           <button
             onClick={onConfirm}
             className={`flex-1 py-2.5 rounded-xl text-white text-sm font-bold transition ${
-              modal.type === "os"
+              modal.type === "os" || modal.type === "duplicate"
                 ? "bg-amber-500 hover:bg-amber-600"
                 : "bg-rose-600 hover:bg-rose-700"
             }`}
           >
-            Proceed Anyway
+            {modal.confirmLabel || "Proceed Anyway"}
           </button>
         </div>
       </div>
     </div>
   );
+};
+
+// ─── OS PAYOUT DUPLICATE DETECTION ────────────────────────────────────────────
+const osDupKey = (r) =>
+  [
+    r.invoice_id ? `inv:${r.invoice_id}` : `cli:${r.client_id || ""}`,
+    r.bank_id || "",
+    r.payment_date || "",
+    (Number(r.amount_paid) || 0).toFixed(2),
+  ].join("|");
+
+// rows: [{ invoice_id, client_id, bank_id, payment_date, amount_paid }]
+// returns: { [osDupKey]: [{ payout_ref_no, entry_type, created_at }] }
+const findExistingOsDuplicates = async (rows) => {
+  const found = {};
+  try {
+    const dates = [...new Set(rows.map((r) => r.payment_date).filter(Boolean))];
+    if (!dates.length) return found;
+    const invIds = [...new Set(rows.map((r) => r.invoice_id).filter(Boolean))];
+    const hasNoInvoice = rows.some((r) => !r.invoice_id);
+    const sel =
+      "payout_ref_no, invoice_id, client_id, bank_id, payment_date, amount_paid, entry_type, created_at";
+    const results = [];
+
+    if (invIds.length) {
+      const { data, error } = await supabase
+        .from("os_payouts")
+        .select(sel)
+        .in("invoice_id", invIds)
+        .in("payment_date", dates);
+      if (error) throw error;
+      results.push(...(data || []));
+    }
+    if (hasNoInvoice) {
+      const { data, error } = await supabase
+        .from("os_payouts")
+        .select(sel)
+        .is("invoice_id", null)
+        .in("payment_date", dates);
+      if (error) throw error;
+      results.push(...(data || []));
+    }
+    results.forEach((e) => {
+      const k = osDupKey(e);
+      (found[k] = found[k] || []).push({
+        payout_ref_no: e.payout_ref_no,
+        entry_type: e.entry_type,
+        created_at: e.created_at,
+      });
+    });
+  } catch (err) {
+    console.warn("OS duplicate check failed (continuing):", err.message || err);
+  }
+  return found;
 };
 
 // ─── DEPT / PAY HEAD OPTIONS ──────────────────────────────────────────────────
@@ -750,6 +805,7 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
   const [selectedOption, setSelectedOption] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savedRef, setSavedRef] = useState(null);   // ← ADDED (Step 1)
   const [errors, setErrors] = useState({});
 
   const [showViewPage, setShowViewPage] = useState(false);
@@ -935,6 +991,7 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
     if (!isOpen) {
       setSelectedOption(null);
       setSaved(false);
+      setSavedRef(null);        // ← ADDED (Step 2)
       setErrors({});
       setBulkMismatch(null);
       setBulkResult(null);
@@ -1590,7 +1647,7 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
   // ══════════════════════════════════════════════════════════════
   // OS BULK UPLOAD
   // ══════════════════════════════════════════════════════════════
-  const executeOsUpload = async (validRows, fileName) => {
+  const executeOsUpload = async (validRows, fileName, skippedDetails = []) => {
     let added = 0;
     const failedDetails = [];
     const now = new Date();
@@ -1667,9 +1724,9 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
 
     setOsBulkResult({
       added,
-      skipped: 0,
+      skipped: skippedDetails.length,
       failed: failedDetails.length,
-      skippedDetails: [],
+      skippedDetails,
       failedDetails,
     });
 
@@ -1806,6 +1863,124 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
         if (!proceed) {
           setOsBulkLoading(false);
           return;
+        }
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // DUPLICATE CHECK FOR OS BULK UPLOAD (vs database + within the file)
+      // ══════════════════════════════════════════════════════════════
+      const osSkippedDetails = [];
+      {
+        const keyRows = validRows.map((r) => ({
+          invoice_id: r._invoice?.id || null,
+          client_id: r._invoice?.client_id || null,
+          bank_id: r._bankId || null,
+          payment_date: excelDateToString(r.date_paid),
+          amount_paid: parseFloat(r.amount_paid) || 0,
+        }));
+        const dbDups = await findExistingOsDuplicates(keyRows);
+        const seenInFile = {};
+        const skipIdx = new Set();
+
+        validRows.forEach((r, i) => {
+          const k = osDupKey(keyRows[i]);
+          const dbHit = dbDups[k];
+          if (dbHit?.length) {
+            skipIdx.add(i);
+            osSkippedDetails.push({
+              emp_code: r.invoice_number,
+              employee_name: r.payment_details || "",
+              rowNum: r._rowNum,
+              reason: `Duplicate of existing payout ${dbHit
+                .map((h) => h.payout_ref_no)
+                .join(", ")}`,
+              payment_amount: keyRows[i].amount_paid,
+            });
+          } else if (seenInFile[k] !== undefined) {
+            skipIdx.add(i);
+            osSkippedDetails.push({
+              emp_code: r.invoice_number,
+              employee_name: r.payment_details || "",
+              rowNum: r._rowNum,
+              reason: `Duplicate of row ${seenInFile[k]} in this file`,
+              payment_amount: keyRows[i].amount_paid,
+            });
+          } else {
+            seenInFile[k] = r._rowNum;
+          }
+        });
+
+        if (skipIdx.size > 0) {
+          try {
+            await new Promise((resolve, reject) => {
+              setConfirmModal({
+                type: "duplicate",
+                confirmLabel:
+                  skipIdx.size === validRows.length
+                    ? "OK — Nothing To Upload"
+                    : "Skip Duplicates & Continue",
+                rows: [
+                  {
+                    label: "Rows in file",
+                    value: String(validRows.length),
+                    color: "text-gray-800",
+                  },
+                  {
+                    label: "Duplicate rows",
+                    value: String(skipIdx.size),
+                    color: "text-rose-600",
+                    highlight: true,
+                  },
+                  { divider: true },
+                  ...osSkippedDetails.slice(0, 6).map((d) => ({
+                    label: `Row ${d.rowNum} · ₹${Number(
+                      d.payment_amount
+                    ).toLocaleString("en-IN")}`,
+                    value: d.reason.replace("Duplicate of ", ""),
+                    color: "text-rose-600",
+                  })),
+                  ...(osSkippedDetails.length > 6
+                    ? [
+                        {
+                          label: `+ ${osSkippedDetails.length - 6} more`,
+                          value: "see result",
+                          color: "text-gray-500",
+                        },
+                      ]
+                    : []),
+                ],
+                note: "These rows match an existing payout (same invoice, bank, date and amount) and will be SKIPPED. Remaining rows will be uploaded. To save a genuinely separate identical payment, add it manually.",
+                onConfirm: () => {
+                  setConfirmModal(null);
+                  resolve(true);
+                },
+                onCancel: () => {
+                  setConfirmModal(null);
+                  reject("user_cancelled");
+                },
+              });
+            });
+          } catch (e) {
+            if (e === "user_cancelled") {
+              setOsBulkLoading(false);
+              return;
+            }
+            throw e;
+          }
+          for (let i = validRows.length - 1; i >= 0; i--) {
+            if (skipIdx.has(i)) validRows.splice(i, 1);
+          }
+          if (validRows.length === 0) {
+            setOsBulkResult({
+              added: 0,
+              skipped: osSkippedDetails.length,
+              failed: 0,
+              skippedDetails: osSkippedDetails,
+              failedDetails: [],
+            });
+            setOsBulkLoading(false);
+            return;
+          }
         }
       }
 
@@ -1950,7 +2125,7 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
         }
       }
 
-      await executeOsUpload(validRows, file.name);
+      await executeOsUpload(validRows, file.name, osSkippedDetails);
     } catch (err) {
       alert("❌ Failed to process OS Excel: " + err.message);
     } finally {
@@ -2242,6 +2417,56 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
         };
       }
 
+      // ── Duplicate check: same invoice + bank + date + amount already saved? ──
+      {
+        const dupMap = await findExistingOsDuplicates([payload]);
+        const dupHits = dupMap[osDupKey(payload)] || [];
+        if (dupHits.length > 0) {
+          setLoading(false);
+          try {
+            await new Promise((resolve, reject) => {
+              setConfirmModal({
+                type: "duplicate",
+                confirmLabel: "Save Anyway",
+                rows: [
+                  {
+                    label: "Amount",
+                    value: `₹${Number(payload.amount_paid).toLocaleString("en-IN")}`,
+                    color: "text-gray-800",
+                  },
+                  {
+                    label: "Payment Date",
+                    value: payload.payment_date,
+                    color: "text-gray-800",
+                  },
+                  { divider: true },
+                  ...dupHits.slice(0, 5).map((h) => ({
+                    label: `Existing (${h.entry_type || "single"})`,
+                    value: h.payout_ref_no,
+                    color: "text-rose-600",
+                    highlight: true,
+                  })),
+                ],
+                note: "A payout with the same invoice, bank, date and amount already exists. If this is the same payment, cancel. Save only if this is a genuinely separate payment.",
+                onConfirm: () => {
+                  setConfirmModal(null);
+                  resolve(true);
+                },
+                onCancel: () => {
+                  setConfirmModal(null);
+                  reject("user_cancelled");
+                },
+              });
+            });
+          } catch (e) {
+            if (e === "user_cancelled") return;
+            throw e;
+          }
+          setLoading(true);
+          payload.duplicate_override = true; // user knowingly confirmed
+        }
+      }
+
       // Non-blocking bank balance warning for OS payout
       try {
         const bankIdForOs = payload.bank_id;
@@ -2347,11 +2572,16 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
         ]);
       }
 
+      // ← CHANGED (Step 3): keep modal open for "No invoice" payouts so the ref can be copied
       setSaved(true);
-      setTimeout(() => {
-        onSaved?.();
-        onClose();
-      }, 1200);
+      if (osForm.invoiceAvailable === "No") {
+        setSavedRef(savedPayout.payout_ref_no); // keep modal open so the ref can be copied
+      } else {
+        setTimeout(() => {
+          onSaved?.();
+          onClose();
+        }, 1200);
+      }
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
@@ -2765,6 +2995,28 @@ const AddExpenseDetailsManModal = ({ isOpen, onClose, onSaved }) => {
     const withInvoice = osForm.invoiceAvailable === "Yes";
     return (
       <div className="p-6 space-y-5 overflow-y-auto max-h-[calc(90vh-140px)]">
+        {/* ← ADDED (Step 4): green ref card shown after a "No invoice" OS payout is saved */}
+        {savedRef && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">
+                Payout saved — use this ref on the invoice
+              </p>
+              <p className="font-mono text-lg font-black text-emerald-800 mt-1">{savedRef}</p>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => navigator.clipboard.writeText(savedRef)}
+                className="px-3 py-2 rounded-lg bg-white border border-emerald-200 text-emerald-700 text-xs font-bold">
+                Copy
+              </button>
+              <button type="button" onClick={() => { onSaved?.(); onClose(); }}
+                className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
           <FieldLabel>Invoice Number Available?</FieldLabel>
           <div className="flex gap-3 mt-1">

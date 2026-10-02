@@ -882,8 +882,7 @@ const StatutoryInvoiceBreakdownPanel = ({ onClose }) => {
                   LWF
                 </th>
                 <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-orange-300">
-                  PT
-                </th>
+                  PT                </th>
                 <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest text-gray-300">
                   Emp
                 </th>
@@ -2067,6 +2066,38 @@ const AddStatutoryPayoutModal = ({
   const { canSave, isIntern } = usePerms();
   const [monthlyTotalDue, setMonthlyTotalDue] = useState(0);
 
+  // ✅ Monthly payment breakdown — payments already made for selected entity+month
+  const [monthPayments, setMonthPayments] = useState([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+
+  const fetchMonthPayments = async (entity, month) => {
+    if (!entity || !month) {
+      setMonthPayments([]);
+      return;
+    }
+    setLoadingPayments(true);
+    try {
+      const start = `${month}-01`;
+      const endDate = new Date(start);
+      endDate.setMonth(endDate.getMonth() + 1);
+      const end = endDate.toISOString().slice(0, 10);
+      const { data } = await supabase
+        .from("statutory_payments")
+        .select("id, payment_date, total_paid, type, remarks")
+        .eq("entity", entity)
+        .gte("month", start)
+        .lt("month", end)
+        .order("payment_date", { ascending: true });
+      setMonthPayments(data || []);
+    } catch (err) {
+      console.error("Month payments fetch error:", err);
+      setMonthPayments([]);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
+
   useEffect(() => {
     const fetchMasters = async () => {
       const [banksRes, entitiesRes] = await Promise.all([
@@ -2215,6 +2246,11 @@ const AddStatutoryPayoutModal = ({
     fetchMonthlyTotalCompliance(formData.entity, formData.forTheMonth);
   }, [formData.entity, formData.forTheMonth]);
 
+  // ✅ Refresh payment breakdown when entity / month changes
+  useEffect(() => {
+    fetchMonthPayments(formData.entity, formData.forTheMonth);
+  }, [formData.entity, formData.forTheMonth]);
+
   useEffect(() => {
     if (
       formData.entity &&
@@ -2235,30 +2271,38 @@ const AddStatutoryPayoutModal = ({
     formData.rpc_type,
   ]);
 
+  // ✅ Selected entity + month + type: due, already paid, remaining
+  const selectedTypeStored =
+    formData.statutoryPayoutType === "TDS Receivable"
+      ? "TDS"
+      : formData.statutoryPayoutType;
+  const typeDue = parseFloat(formData.totalDue) || 0;
+  const typePayments = monthPayments.filter(
+    (p) => (p.type || "") === selectedTypeStored
+  );
+  const typePaidTotal = typePayments.reduce(
+    (s, p) => s + Number(p.total_paid || 0),
+    0
+  );
+  const typeRemaining = Math.max(typeDue - typePaidTotal, 0);
+  const pendingNow = Math.max(
+    typeRemaining - (parseFloat(formData.totalPaid) || 0),
+    0
+  );
+
   const handleChange = (field, value) => {
     setFormData((prev) => {
       let updated = { ...prev, [field]: value };
       if (field === "totalPaid") {
-        const remaining = parseFloat(prev.totalDue) || 0;
         const entered = parseFloat(value) || 0;
-        if (entered > remaining)
-          return { ...prev, totalPaid: remaining.toString() };
+        if (entered > typeRemaining)
+          return { ...prev, totalPaid: typeRemaining.toString() };
         updated.totalPaid = value;
       }
       return updated;
     });
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: "" }));
   };
-
-  useEffect(() => {
-    const due = parseFloat(formData.totalDue) || 0;
-    const paid = parseFloat(formData.totalPaid) || 0;
-    const pending = due - paid;
-    setFormData((prev) => ({
-      ...prev,
-      pendingDue: pending >= 0 ? pending.toFixed(2) : "0.00",
-    }));
-  }, [formData.totalDue, formData.totalPaid]);
 
   const calculateTotalPercentage = () =>
     ["OS", "temp", "recruitment", "projects", "others"].reduce(
@@ -2292,8 +2336,7 @@ const AddStatutoryPayoutModal = ({
     setShowErrors(true);
     if (!validateForm()) return;
     const paying = Number(formData.totalPaid || 0);
-    const remaining = Number(formData.totalDue || 0);
-    if (paying > remaining) {
+    if (paying > typeRemaining) {
       alert("Cannot pay more than remaining due");
       return;
     }
@@ -2313,12 +2356,12 @@ const AddStatutoryPayoutModal = ({
           tds_direction: formData.tds_direction,
           total_due: Number(formData.totalDue),
           total_paid: Number(formData.totalPaid),
-          pending_due: Number(formData.pendingDue),
+          pending_due: pendingNow,
           penalty: formData.anyInterestPenalties === "Yes",
           penalty_amount: Number(formData.penaltyAmount || 0),
           remarks: formData.remarks,
           projection_status: "actual",
-          payment_status: Number(formData.pendingDue) <= 0 ? "paid" : "partial",
+          payment_status: pendingNow <= 0 ? "paid" : "partial",
           ops_percentage: Number(formData.ops || 0),
           temp_percentage: Number(formData.temp || 0),
           recruitment_percentage: Number(formData.recruitment || 0),
@@ -2371,8 +2414,22 @@ const AddStatutoryPayoutModal = ({
     resetForm();
     onClose();
   };
+  // ✅ Monthly payment breakdown totals
+  const monthPaidTotal = monthPayments.reduce(
+    (s, p) => s + Number(p.total_paid || 0),
+    0
+  );
+  const monthRemaining = Math.max(monthlyTotalDue - monthPaidTotal, 0);
+
+  const monthLabelLong = formData.forTheMonth
+    ? new Date(`${formData.forTheMonth}-01`).toLocaleDateString("en-IN", {
+        month: "long",
+        year: "numeric",
+      })
+    : "";
+
   const totalPercentage = calculateTotalPercentage();
-  const hasPending = Number(formData.pendingDue) > 0;
+  const hasPending = pendingNow > 0;
 
   return (
     <AnimatePresence>
@@ -2621,6 +2678,141 @@ const AddStatutoryPayoutModal = ({
                   </Section>
                 )}
 
+                {/* ✅ NEW — Payment Breakdown for selected month */}
+                {formData.entity && formData.forTheMonth && (
+                  <Section
+                    icon={FileCheck}
+                    title={`Payment Breakdown — ${formData.statutoryPayoutType} · ${monthLabelLong}`}
+                    color="violet"
+                  >
+                    {loadingPayments ? (
+                      <div className="flex items-center justify-center py-8 text-gray-300">
+                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                        <span className="text-sm font-medium">Loading…</span>
+                      </div>
+                    ) : monthPayments.length === 0 ? (
+                      <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-gray-50 border-2 border-gray-100 text-[11px] font-bold text-gray-400">
+                        <Info className="w-3.5 h-3.5" />
+                        No {formData.statutoryPayoutType} payments recorded
+                        for {formData.entity} in {monthLabelLong} yet.
+                      </div>
+                    ) : (
+                      <div className="border-2 border-violet-100 rounded-xl overflow-hidden">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-violet-600 text-white">
+                              <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest w-8">
+                                #
+                              </th>
+                              <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest">
+                                Payment Date
+                              </th>
+                              <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest">
+                                Type
+                              </th>
+                              <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest">
+                                Remarks
+                              </th>
+                              <th className="px-3 py-2 text-right text-[10px] font-bold uppercase tracking-widest">
+                                Paid Amount
+                              </th>
+                              <th className="px-3 py-2 text-right text-[10px] font-bold uppercase tracking-widest">
+                                Balance After
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {(() => {
+                              let running = typeDue;
+                              return typePayments.map((p, i) => {
+                                running -= Number(p.total_paid || 0);
+                                return (
+                                  <tr
+                                    key={p.id}
+                                    className={
+                                      i % 2 === 1
+                                        ? "bg-violet-50/30"
+                                        : "bg-white"
+                                    }
+                                  >
+                                    <td className="px-3 py-2.5 text-gray-400 font-bold">
+                                      {i + 1}
+                                    </td>
+                                    <td className="px-3 py-2.5 whitespace-nowrap font-semibold text-gray-700">
+                                      {p.payment_date
+                                        ? new Date(
+                                            p.payment_date
+                                          ).toLocaleDateString("en-IN", {
+                                            day: "2-digit",
+                                            month: "short",
+                                            year: "numeric",
+                                          })
+                                        : "—"}
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">
+                                        {p.type || "—"}
+                                      </span>
+                                    </td>
+                                    <td
+                                      className="px-3 py-2.5 text-gray-400 max-w-[160px] truncate"
+                                      title={p.remarks}
+                                    >
+                                      {p.remarks || "—"}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">
+                                      ₹{inr(p.total_paid)}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right font-mono font-bold text-gray-500 whitespace-nowrap">
+                                      ₹{inr(Math.max(running, 0))}
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                          <tfoot>
+                            {/* Total paid row */}
+                            <tr className="bg-violet-100/70">
+                              <td
+                                colSpan={4}
+                                className="px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-violet-700"
+                              >
+                                Total {formData.statutoryPayoutType} Paid ({typePayments.length} payments)
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-black font-mono text-violet-800 text-sm whitespace-nowrap">
+                                ₹{inr(typePaidTotal)}
+                              </td>
+                              <td className="px-3 py-2.5" />
+                            </tr>
+                            {/* ✅ Conclusion row — amount left */}
+                            <tr className="bg-slate-900 text-white">
+                              <td
+                                colSpan={4}
+                                className="px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-300"
+                              >
+                                {formData.statutoryPayoutType} Amount Left (₹
+                                {inr(typeDue)} − ₹{inr(typePaidTotal)})
+                              </td>
+                              <td
+                                colSpan={2}
+                                className={`px-3 py-3 text-right font-black font-mono text-base whitespace-nowrap ${
+                                  typeRemaining > 0
+                                    ? "text-rose-300"
+                                    : "text-emerald-300"
+                                }`}
+                              >
+                                ₹{inr(typeRemaining)}
+                                {typeRemaining <= 0 && " ✓ Fully Paid"}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </Section>
+                )}
+
                 <Section
                   icon={IndianRupee}
                   title="Payment Information"
@@ -2632,7 +2824,7 @@ const AddStatutoryPayoutModal = ({
                       required
                       error={errors.totalDue}
                       showErrors={showErrors}
-                      hint="Auto Collate"
+                      hint={`Remaining this month: ₹${inr(typeRemaining)}`}
                     >
                       <input
                         type="text"
@@ -2680,7 +2872,7 @@ const AddStatutoryPayoutModal = ({
                             : "bg-gray-50 border-gray-100 text-gray-400"
                         }`}
                       >
-                        ₹ {inr(formData.pendingDue)}
+                        ₹ {inr(pendingNow)}
                       </div>
                     </Field>
                   </div>
@@ -2699,7 +2891,7 @@ const AddStatutoryPayoutModal = ({
                         {hasPending ? (
                           <>
                             <AlertTriangle className="w-3.5 h-3.5" /> Partial
-                            Payment — ₹{inr(formData.pendingDue)} still pending
+                            Payment — ₹{inr(pendingNow)} still pending
                           </>
                         ) : (
                           <>

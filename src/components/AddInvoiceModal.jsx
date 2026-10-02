@@ -214,54 +214,42 @@ const AddInvoiceModal = ({
     if (!entitiesRes.error) setEntitiesList(entitiesRes.data || []);
   };
 
-  // Fetch available refs
+  // ── STEP 5: fetchAvailableRefs now also pulls linkable OS payouts via RPC ──
   const fetchAvailableRefs = async () => {
-    const [catRes, apRes] = await Promise.all([
-      // CA- refs: client advance — money given TO client (red — outflow)
-      // Show only Pending or Partially Paid (not Closed = fully recovered)
+    const [catRes, apRes, poRes] = await Promise.all([
       supabase
         .from("client_advance_tracker")
         .select("ref_no, client_name, amount, date, status, paid_back, pending_due")
         .not("status", "eq", "Closed")
         .order("date", { ascending: false }),
-      // PR- refs from advance_payments: client paid advance before invoice (green — inflow)
-      // Show only not yet adjusted
       supabase
         .from("advance_payments")
         .select("payment_ref, client_name, amount, payment_date, is_adjusted")
         .eq("is_adjusted", false)
         .order("payment_date", { ascending: false }),
+      supabase.rpc("get_linkable_os_payouts"),
     ]);
 
-    // CA- refs — red (outflow: advance GIVEN to client, needs to be recovered)
     const caRefs = (catRes.data || []).map((r) => ({
-      ref: r.ref_no,
-      client_name: r.client_name,
-      amount: r.amount,
-      date: r.date,
-      flow: "out",                  // red — money went out
-      type: "Client Advance",
-      label: "CA",
-      status: r.status,
-      pending_due: r.pending_due,
-      paid_back: r.paid_back,
+      ref: r.ref_no, client_name: r.client_name, amount: r.amount, date: r.date,
+      flow: "out", badge: "⬆ CA", type: "Client Advance", label: "CA",
+      status: r.status, pending_due: r.pending_due, paid_back: r.paid_back,
     }));
 
-    // PR- refs from advance_payments — green (inflow: client paid advance)
     const prRefs = (apRes.data || []).map((r) => ({
-      ref: r.payment_ref,
-      client_name: r.client_name,
-      amount: r.amount,
-      date: r.payment_date,
-      flow: "in",                   // green — money came in
-      type: "Payment Advance",
-      label: "PR",
-      status: "Available",
-      pending_due: r.amount,
-      paid_back: 0,
+      ref: r.payment_ref, client_name: r.client_name, amount: r.amount, date: r.payment_date,
+      flow: "in", badge: "⬇ PR", type: "Payment Advance", label: "PR",
+      status: "Available", pending_due: r.amount, paid_back: 0,
     }));
 
-    setAvailableRefs([...caRefs, ...prRefs]);
+    const poRefs = (poRes.data || []).map((r) => ({
+      ref: r.payout_ref_no, client_name: r.client_name || "", amount: r.amount_paid,
+      net: Number(r.net_amount || 0), date: r.payment_date,
+      flow: "out", badge: "⬆ PO", type: "OS Payout (no invoice)", label: "PO",
+      status: "Unlinked", pending_due: 0, paid_back: 0,
+    }));
+
+    setAvailableRefs([...caRefs, ...prRefs, ...poRefs]);
   };
 
   useEffect(() => {
@@ -306,16 +294,11 @@ const AddInvoiceModal = ({
   }, [formData.client, clientsList]);
 
   // Populate form on edit — wait for banks to load
-// Populate form on edit — wait for banks to load
-useEffect(() => {
-  if (!selectedInvoice || banks.length === 0) return;
-  // Treat values already saved in the DB as manually locked, so the
-  // auto-calc effect below does NOT overwrite them the instant the
-  // form loads. They'll only auto-recalculate again if the user
-  // actively edits Pay / Verto Fee / TDS% / Gross Value afterward.
-  setIsManualTds(true);
-  setIsManualGst(true);
-  setIsManualReceivable(true);
+  useEffect(() => {
+    if (!selectedInvoice || banks.length === 0) return;
+    setIsManualTds(true);
+    setIsManualGst(true);
+    setIsManualReceivable(true);
 
     const selectedBank =
       banks.find((b) => b.id === selectedInvoice.bank_id) ||
@@ -357,7 +340,6 @@ useEffect(() => {
         selectedInvoice?.advance_ref_nos?.length > 0
           ? selectedInvoice.advance_ref_nos
           : [""],
-      // Populate OS outflow fields on edit
       monthOfPayout: selectedInvoice?.month_of_payout ?? "",
       statutoryPayoutDate: selectedInvoice?.statutory_payout_date ?? "",
       vertoFeePayoutDate: selectedInvoice?.verto_fee_payout_date ?? "",
@@ -439,7 +421,7 @@ useEffect(() => {
     
       setFormData((prev) => ({
         ...prev,
-        gst: isManualGst ? prev.gst : gstCalc.toFixed(2),   // ← respect manual
+        gst: isManualGst ? prev.gst : gstCalc.toFixed(2),
         tds: isManualTds ? prev.tds : tdsCalc.toFixed(2),
         invoiceValue: customRound(invoiceValue),
         receivableRs: customRound(receivable),
@@ -614,6 +596,12 @@ useEffect(() => {
         ? [formData.refNoPaymentMade].filter((r) => r.trim())
         : [];
 
+      // ── STEP 9: guard — PO refs only for OS invoices ──
+      if (refs.some((r) => r.startsWith("PO-")) && formData.department !== "OS") {
+        alert("❌ PO refs can only be linked to OS department invoices");
+        return;
+      }
+
       const { data: existingClient } = await supabase
         .from("clients_master")
         .select("id")
@@ -704,9 +692,6 @@ useEffect(() => {
         return;
       }
 
-      // ═══════════════════════════════════════════════════════════════
-      // ✅ FIXED PAYLOAD — includes all OS outflow fields
-      // ═══════════════════════════════════════════════════════════════
       const payload = {
         invoice_number: formData.invoiceNo,
         employee_name: formData.employeeName || null,
@@ -735,7 +720,6 @@ useEffect(() => {
         ctc: Number(formData.ctc) || 0,
         advance_ref_nos: refs.length > 0 ? refs : [],
 
-        // ─── MISSING FIELDS NOW INCLUDED ───
         month_of_payout: formData.monthOfPayout || null,
         statutory_payout_date: formData.statutoryPayoutDate || null,
         verto_fee_payout_date: formData.vertoFeePayoutDate || null,
@@ -750,7 +734,6 @@ useEffect(() => {
       let insertedInvoice = null;
 
       if (selectedInvoice) {
-        // Support either .dbId or .id depending on how the parent built this object
         const targetId = selectedInvoice.dbId ?? selectedInvoice.id;
 
         if (!targetId) {
@@ -758,13 +741,12 @@ useEffect(() => {
           return;
         }
 
-        // For edit: remove receivable_amount if you want to keep that restriction
         const { receivable_amount, ...editableFields } = payload;
         const res = await supabase
           .from("invoices")
           .update(editableFields)
           .eq("id", targetId)
-          .select(); // forces Supabase to return updated rows so we can verify
+          .select();
 
         error = res.error;
 
@@ -775,7 +757,7 @@ useEffect(() => {
         }
 
         // Link NEW advance_payments (PI- refs) on edit
-        // CA- refs are handled by DB trigger automatically
+        // CA- and PO- refs are handled by DB trigger automatically
         if (!error && refs.length > 0) {
           const oldRefs = Array.isArray(selectedInvoice?.advance_ref_nos)
             ? selectedInvoice.advance_ref_nos
@@ -783,24 +765,22 @@ useEffect(() => {
           const newRefs = refs.filter((r) => r.trim() && !oldRefs.includes(r));
 
           for (const ref of newRefs) {
-            // Fetch advance payment — including already-adjusted ones
             const { data: advancePayment } = await supabase
               .from("advance_payments")
               .select("*")
               .eq("payment_ref", ref)
               .maybeSingle();
 
-              if (!advancePayment) {
-                if (ref.startsWith("CA-")) {
-                  // CA- refs are handled by DB trigger via client_advance_tracker
-                  // No JS action needed here
-                  continue;
-                }
-                alert(`⚠️ Ref "${ref}" not found in advance payments`);
+            // ── STEP 10: also skip PO- refs (DB trigger handles them) ──
+            if (!advancePayment) {
+              if (ref.startsWith("CA-") || ref.startsWith("PO-")) {
+                // CA- / PO- refs are handled by DB triggers
                 continue;
               }
+              alert(`⚠️ Ref "${ref}" not found in advance payments`);
+              continue;
+            }
 
-            // Block only if linked to a DIFFERENT invoice
             if (
               advancePayment.linked_invoice_id &&
               advancePayment.linked_invoice_id !== targetId
@@ -809,7 +789,6 @@ useEffect(() => {
               continue;
             }
 
-            // Check if payments_received row already exists for this invoice + ref
             const { data: existingPR } = await supabase
               .from("payments_received")
               .select("id")
@@ -818,7 +797,6 @@ useEffect(() => {
               .maybeSingle();
 
             if (existingPR) {
-              // Already linked — just make sure advance_payments is marked correctly
               await supabase
                 .from("advance_payments")
                 .update({
@@ -830,7 +808,6 @@ useEffect(() => {
               continue;
             }
 
-            // Insert into payments_received
             const { error: prErr } = await supabase
               .from("payments_received")
               .insert([
@@ -854,7 +831,6 @@ useEffect(() => {
                 .eq("id", advancePayment.id);
               alert(`✅ Advance payment "${ref}" linked successfully`);
             }
-            // CA- refs: handled automatically by DB trigger — no action needed here
           }
         }
       } else {
@@ -866,7 +842,7 @@ useEffect(() => {
         error = res.error;
         insertedInvoice = res.data;
 
-        // Link advance payment if ref provided (keep this existing logic)
+        // Link advance payment if ref provided (PR- refs only; CA-/PO- via DB trigger)
         if (refs.length > 0 && insertedInvoice) {
           for (const ref of refs) {
             const { data: advancePayment, error: advanceError } = await supabase
@@ -907,11 +883,7 @@ useEffect(() => {
             }
           }
         }
-
-        // ══════════════════════════════════════════════════════════════
-        // LINK CLIENT ADVANCE TRACKER REF → OS PAYOUTS
-        // THIS BLOCK HAS BEEN DELETED - DB TRIGGER HANDLES IT NOW
-        // ══════════════════════════════════════════════════════════════
+        // CA- and PO- refs: handled automatically by DB triggers — no action needed here
       }
 
       if (error) {
@@ -1344,7 +1316,7 @@ useEffect(() => {
                         value={formData.gst || ""}
                         onChange={(e) => {
                           handleChange("gst", e.target.value);
-                          setIsManualGst(true);   // ← always, not just OS
+                          setIsManualGst(true);
                         }}
                         className={
                           gstMismatch
@@ -1634,6 +1606,15 @@ useEffect(() => {
                                         // Hide already selected refs
                                         if (alreadySelected.includes(r.ref))
                                           return false;
+                                        // ── STEP 7: PO refs — only for OS invoices and only the selected client's payouts ──
+                                        if (r.badge === "⬆ PO") {
+                                          if (formData.department !== "OS") return false;
+                                          if (
+                                            formData.client &&
+                                            r.client_name.toLowerCase() !== formData.client.toLowerCase()
+                                          )
+                                            return false;
+                                        }
                                         // Filter by query
                                         if (!q) return true;
                                         return (
@@ -1681,17 +1662,15 @@ useEffect(() => {
                                           {/* Left — type badge + ref + client + date */}
                                           <div className="min-w-0 flex-1">
                                             <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                                              {/* CA = red (outflow), PR = green (inflow) */}
+                                              {/* ── STEP 6a: use r.badge ── */}
                                               <span
                                                 className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
                                                   r.flow === "out"
-                                                    ? "bg-red-50 text-red-600 border-red-200" // CA — red — money went OUT
-                                                    : "bg-emerald-50 text-emerald-700 border-emerald-200" // PR — green — money came IN
+                                                    ? "bg-red-50 text-red-600 border-red-200"
+                                                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
                                                 }`}
                                               >
-                                                {r.flow === "out"
-                                                  ? "⬆ CA"
-                                                  : "⬇ PR"}
+                                                {r.badge}
                                               </span>
                                               <span className="font-mono text-xs font-semibold text-gray-700">
                                                 {r.ref}
@@ -1703,6 +1682,8 @@ useEffect(() => {
                                                     : r.status ===
                                                       "Partially Paid"
                                                     ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                                                    : r.status === "Unlinked"
+                                                    ? "bg-slate-100 text-slate-600 border border-slate-200"
                                                     : "bg-emerald-50 text-emerald-600 border border-emerald-200"
                                                 }`}
                                               >
@@ -1790,7 +1771,8 @@ useEffect(() => {
                                           : "bg-emerald-100 text-emerald-700"
                                       }`}
                                     >
-                                      {linked.flow === "out" ? "⬆ CA" : "⬇ PR"}
+                                      {/* ── STEP 6b: use linked.badge ── */}
+                                      {linked.badge}
                                     </span>
                                     <div className="min-w-0">
                                       <p
@@ -1835,6 +1817,28 @@ useEffect(() => {
                           </div>
                         ))}
                       </div>
+
+                      {/* ── STEP 8: PO-link preview (net impact on OS Amt Difference) ── */}
+                      {(() => {
+                        const picked = availableRefs.filter(
+                          (r) => r.badge === "⬆ PO" && formData.refNoPaymentMade.includes(r.ref)
+                        );
+                        if (!picked.length) return null;
+                        const total = picked.reduce((s, r) => s + r.net, 0);
+                        const after = Number(formData.netInHand || 0) - total;
+                        return (
+                          <div className="mt-2 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                            <p className="font-bold text-red-700">
+                              {picked.length} OS payout(s) will be linked: −₹{total.toLocaleString("en-IN")}
+                            </p>
+                            <p className="text-gray-600">
+                              OS Amt Difference after save: ₹{Math.max(after, 0).toLocaleString("en-IN")}
+                              {after < 0 && " (overpaid)"}
+                            </p>
+                          </div>
+                        );
+                      })()}
+
                       <p className="text-xs text-amber-500 mt-1.5">
                         💡 Search by client name, ref no or amount — only
                         open/unlinked advances shown
@@ -2020,7 +2024,8 @@ useEffect(() => {
                         <label className={lbl}>
                           Verto Fee Payout Date by Client
                         </label>
-                        <input                          type="date"
+                        <input
+                          type="date"
                           value={formData.vertoFeePayoutDate}
                           onChange={(e) =>
                             handleChange("vertoFeePayoutDate", e.target.value)

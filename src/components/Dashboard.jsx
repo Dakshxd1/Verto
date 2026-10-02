@@ -604,6 +604,11 @@ const Dashboard = ({
         { event: "*", schema: "public", table: "credit_note_bad_debt" },
         debouncedFetch
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "os_payouts" },
+        debouncedFetch
+      )
       .subscribe();
 
     return () => {
