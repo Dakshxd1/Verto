@@ -12,8 +12,10 @@ import {
   ChevronLeft,
   CheckCircle2,
   Lock,
+  Download,
 } from "lucide-react";
 import { usePerms } from "../context/PermissionsContext";
+import * as XLSX from "xlsx";
 
 const isLocked = (issueDate) => {
   if (!issueDate) return false;
@@ -31,6 +33,9 @@ const BounceBackRecordsPanel = ({ onClose }) => {
   const [deletingId, setDeletingId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [toast, setToast] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+  // ── Date range filter for list + excel export ──
+  const [dateRange, setDateRange] = useState({ from: "", to: "" });
   const { isAdmin } = usePerms();
 
   const showToast = (msg, type = "success") => {
@@ -66,6 +71,92 @@ const BounceBackRecordsPanel = ({ onClose }) => {
     fetchRecords();
   }, []);
 
+  // ── Records filtered by selected date range ──
+  const filteredRecords = records.filter((r) => {
+    if (!dateRange.from && !dateRange.to) return true;
+    if (!r.bounce_date) return false;
+    const d = new Date(r.bounce_date);
+    d.setHours(0, 0, 0, 0);
+    if (dateRange.from) {
+      const from = new Date(dateRange.from);
+      from.setHours(0, 0, 0, 0);
+      if (d < from) return false;
+    }
+    if (dateRange.to) {
+      const to = new Date(dateRange.to);
+      to.setHours(23, 59, 59, 999);
+      if (d > to) return false;
+    }
+    return true;
+  });
+
+  // ── Export filtered records to Excel ──
+  const handleDownloadExcel = () => {
+    if (filteredRecords.length === 0) {
+      showToast("No records in the selected date range", "error");
+      return;
+    }
+    setDownloading(true);
+    try {
+      const rows = filteredRecords.map((r, idx) => ({
+        "S.No": idx + 1,
+        "Payment Ref": r.payment_ref || "—",
+        "Invoice No.": r.invoices?.invoice_number || "—",
+        "Amount (₹)": Number(r.amount || 0),
+        "Bounce Date": r.bounce_date
+          ? new Date(r.bounce_date).toLocaleDateString("en-IN", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            })
+          : "—",
+        "Bank Details": r.bank_details || "—",
+        Remarks: r.remarks || "—",
+      }));
+
+      // Total row
+      const total = filteredRecords.reduce(
+        (s, r) => s + Number(r.amount || 0),
+        0
+      );
+      rows.push({
+        "S.No": "",
+        "Payment Ref": "",
+        "Invoice No.": "TOTAL",
+        "Amount (₹)": total,
+        "Bounce Date": "",
+        "Bank Details": "",
+        Remarks: "",
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      worksheet["!cols"] = [
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 24 },
+        { wch: 30 },
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Bounce Back Records");
+
+      const fromTxt = dateRange.from || "all";
+      const toTxt = dateRange.to || "all";
+      XLSX.writeFile(
+        workbook,
+        `BounceBack_Records_${fromTxt}_to_${toTxt}.xlsx`
+      );
+      showToast("Excel downloaded");
+    } catch (err) {
+      showToast("Download failed: " + err.message, "error");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const handleDelete = async (id) => {
     setConfirmId(null);
     setDeletingId(id);
@@ -84,7 +175,10 @@ const BounceBackRecordsPanel = ({ onClose }) => {
     }
   };
 
-  const totalAmount = records.reduce((s, r) => s + Number(r.amount || 0), 0);
+  const totalAmount = filteredRecords.reduce(
+    (s, r) => s + Number(r.amount || 0),
+    0
+  );
 
   return (
     <motion.div
@@ -108,13 +202,61 @@ const BounceBackRecordsPanel = ({ onClose }) => {
           <div>
             <h3 className="text-sm font-bold">Bounce Back Records</h3>
             <p className="text-rose-200 text-xs">
-              {records.length} total · ₹ {totalAmount.toLocaleString("en-IN")}
+              {filteredRecords.length} total · ₹ {totalAmount.toLocaleString("en-IN")}
             </p>
           </div>
         </div>
-        <button onClick={onClose} className="text-rose-100 hover:text-white">
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* ── Download Excel (left of X) ── */}
+          <button
+            onClick={handleDownloadExcel}
+            disabled={downloading}
+            title="Download Excel"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/15 hover:bg-white/25 disabled:opacity-60 text-white rounded-lg text-xs font-semibold border border-white/30 transition-colors"
+          >
+            {downloading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
+            Excel
+          </button>
+          <button onClick={onClose} className="text-rose-100 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Date Range Filter ── */}
+      <div className="px-4 py-2.5 bg-rose-50 border-b border-rose-100 flex items-center gap-2 flex-shrink-0">
+        <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider whitespace-nowrap">
+          Date Range
+        </span>
+        <input
+          type="date"
+          value={dateRange.from}
+          onChange={(e) =>
+            setDateRange((prev) => ({ ...prev, from: e.target.value }))
+          }
+          className="flex-1 min-w-0 bg-white border border-rose-200 text-gray-900 text-xs px-2.5 py-1.5 rounded-lg focus:outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-400/20"
+        />
+        <span className="text-[10px] text-rose-400 font-semibold">to</span>
+        <input
+          type="date"
+          value={dateRange.to}
+          onChange={(e) =>
+            setDateRange((prev) => ({ ...prev, to: e.target.value }))
+          }
+          className="flex-1 min-w-0 bg-white border border-rose-200 text-gray-900 text-xs px-2.5 py-1.5 rounded-lg focus:outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-400/20"
+        />
+        {(dateRange.from || dateRange.to) && (
+          <button
+            onClick={() => setDateRange({ from: "", to: "" })}
+            className="text-[10px] font-semibold text-rose-500 hover:text-rose-700 whitespace-nowrap underline"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {/* Records List */}
@@ -124,13 +266,17 @@ const BounceBackRecordsPanel = ({ onClose }) => {
             <Loader2 className="w-5 h-5 animate-spin mr-2" />
             Loading...
           </div>
-        ) : records.length === 0 ? (
+        ) : filteredRecords.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
             <RefreshCcw className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">No bounce back records yet</p>
+            <p className="text-sm">
+              {records.length === 0
+                ? "No bounce back records yet"
+                : "No records in selected date range"}
+            </p>
           </div>
         ) : (
-          records.map((row) => (
+          filteredRecords.map((row) => (
             <div
               key={row.id}
               className={`bg-white border border-gray-100 rounded-xl p-3.5 shadow-sm transition-opacity ${
