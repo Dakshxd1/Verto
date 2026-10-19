@@ -442,31 +442,34 @@ const Dashboard = ({
       return;
     }
     lastFetchRef.current = now;
-    
+
     console.log("🔥 FETCH RUNNING...");
     const nowDate = new Date();
-    const fy = nowDate.getMonth() >= 3 ? nowDate.getFullYear() : nowDate.getFullYear() - 1;
+    const fy =
+      nowDate.getMonth() >= 3
+        ? nowDate.getFullYear()
+        : nowDate.getFullYear() - 1;
     const fyFromDate = `${fy}-04-01`;
     const fyToDate = `${fy + 1}-03-31`;
-  
+
     const { data: rows, error } = await supabase.rpc("get_dashboard_invoices", {
       p_date_from: fyFromDate,
       p_date_to: fyToDate,
       p_limit: 1000,
       p_offset: 0,
     });
-  
+
     if (error) {
       console.error("Fetch error:", error);
       return;
     }
-  
+
     const formatted = rows.map((row) => {
       const outstanding = Number(row.outstanding ?? 0);
       const receivableAmount = Number(
         row.receivable_amount ?? row.invoice_value ?? 0
       );
-  
+
       return {
         dbId: row.id,
         id: row.invoice_number,
@@ -501,7 +504,11 @@ const Dashboard = ({
         dept: row.dept_name,
         client: row.client_name,
         entity: row.entity_name,
-        invValue: Number(row.invoice_value ?? 0),
+        invValue: Number(row.invoice_value ?? 0),  
+        netInvValue: Math.max(
+          Number(row.invoice_value ?? 0) - Number(row.cn_amount ?? 0),
+          0
+        ),
         vertoFee: Number(row.net_verto_fee ?? row.verto_fee ?? 0),
         notRecvd: outstanding,
         excessPayment: Number(row.excess_payment ?? 0),
@@ -528,7 +535,7 @@ const Dashboard = ({
             : "fresh",
       };
     });
-  
+
     setDbData(formatted);
   }, []);
 
@@ -563,7 +570,7 @@ const Dashboard = ({
   // ─── Realtime subscriptions with debounce ────────────────────────────────
   React.useEffect(() => {
     const channel = supabase
-    .channel(`realtime-dashboard-${Date.now()}`)
+      .channel(`realtime-dashboard-${Date.now()}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "payments_received" },
@@ -756,6 +763,7 @@ const Dashboard = ({
       filteredData.reduce(
         (acc, row) => ({
           invValue: acc.invValue + row.invValue,
+          netInvValue: acc.netInvValue + row.netInvValue,
           vertoFee: acc.vertoFee + row.vertoFee,
           notRecvd: acc.notRecvd + row.notRecvd,
           tds: acc.tds + (row.tds || 0),
@@ -765,6 +773,7 @@ const Dashboard = ({
         }),
         {
           invValue: 0,
+          netInvValue: 0,
           vertoFee: 0,
           notRecvd: 0,
           cnBadDebt: 0,
@@ -876,10 +885,15 @@ const Dashboard = ({
           <div className="stat-icon" style={{ background: "#d1fae5" }}>
             <FileText size={18} color="#059669" />
           </div>
-          <div className="stat-label">Total Invoiced</div>
-          <div className="stat-value">₹{formatCurrency(totals.invValue)}</div>
+          <div className="stat-label">Total Invoiced (Net of CN)</div>
+          <div className="stat-value">
+            ₹{formatCurrency(totals.netInvValue)}
+          </div>
           <div className="stat-meta" style={{ color: "#6b7280" }}>
-            <span>{filteredData.length} invoices</span>
+            <span>
+              {filteredData.length} invoices · CN ₹
+              {formatCurrency(totals.cnBadDebt)}
+            </span>
           </div>
         </motion.div>
 
@@ -898,10 +912,10 @@ const Dashboard = ({
           </div>
           <div className="stat-meta" style={{ color: "#6b7280" }}>
             <span>
-              {totals.invValue
-                ? ((totals.vertoFee / totals.invValue) * 100).toFixed(2)
+              {totals.netInvValue
+                ? ((totals.vertoFee / totals.netInvValue) * 100).toFixed(2)
                 : "0.00"}
-              % of invoice value
+              % of net invoice value
             </span>
           </div>
         </motion.div>
@@ -922,10 +936,10 @@ const Dashboard = ({
           <div className="stat-meta" style={{ color: "#e11d48" }}>
             <ArrowDownLeft size={13} />
             <span>
-              {totals.invValue
-                ? ((totals.notRecvd / totals.invValue) * 100).toFixed(2)
+              {totals.netInvValue
+                ? ((totals.notRecvd / totals.netInvValue) * 100).toFixed(2)
                 : "0.00"}
-              % of invoiced
+              % of net invoiced
             </span>
           </div>
         </motion.div>

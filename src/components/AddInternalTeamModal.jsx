@@ -430,6 +430,15 @@ const AddInternalTeamModal = ({
     0
   );
 
+  // ── Current period start (for "Current" history row) ────────────────────────
+  const nextMonth = (m, y) => (m === 12 ? { m: 1, y: y + 1 } : { m: m + 1, y });
+  const latest = costHistory[0];
+  const curStart = latest?.end_month
+    ? nextMonth(latest.end_month, latest.end_year)
+    : formData.doj
+    ? { m: new Date(formData.doj).getMonth() + 1, y: new Date(formData.doj).getFullYear() }
+    : null;
+
   // ── Validate ──────────────────────────────────────────────────────────────────
   const validate = () => {
     const e = {};
@@ -521,7 +530,7 @@ const AddInternalTeamModal = ({
     }
   };
 
-  // ── Save Cost Shift ───────────────────────────────────────────────────────────
+  // ── Save Cost Shift (calls DB function: archive old + update current) ───────
   const handleSaveCostShift = async () => {
     const e = {};
     if (!formData.cost_shift.effective_month) e.shift_month = "Required";
@@ -539,49 +548,58 @@ const AddInternalTeamModal = ({
 
     setShiftSaving(true);
     setShiftSuccess(false);
-    const { error } = await supabase.from("internal_team_cost_history").upsert(
-      {
-        employee_id: editingEmployee.id,
-        effective_month: parseInt(formData.cost_shift.effective_month),
-        effective_year: parseInt(formData.cost_shift.effective_year),
-        cost_head_breakup: {
-          ops: parseInt(formData.cost_shift.cost_head_breakup.ops) || 0,
-          temp: parseInt(formData.cost_shift.cost_head_breakup.temp) || 0,
-          rec: parseInt(formData.cost_shift.cost_head_breakup.rec) || 0,
-          projects:
-            parseInt(formData.cost_shift.cost_head_breakup.projects) || 0,
-        },
-        ctc: parseFloat(formData.cost_shift.ctc) || null,
-        variable: parseFloat(formData.cost_shift.variable) || null,
-        pf: parseFloat(formData.cost_shift.pf) || null,
-        esi: parseFloat(formData.cost_shift.esi) || null,
-        bonus: parseFloat(formData.cost_shift.bonus) || null,
-        reimbursement: parseFloat(formData.cost_shift.reimbursement) || null,
-        other_component:
-          parseFloat(formData.cost_shift.other_component) || null,
-        client_focus: (formData.cost_shift.client_focus || []).filter((c) =>
-          c.clientName?.trim()
-        ),
+    setSaveError("");
+    const s = formData.cost_shift;
+
+    const { error } = await supabase.rpc("shift_internal_team_cost", {
+      p_employee_id: editingEmployee.id,
+      p_month: parseInt(s.effective_month),
+      p_year: parseInt(s.effective_year),
+      p_ctc: parseFloat(s.ctc) || 0,
+      p_pf: parseFloat(s.pf) || 0,
+      p_esi: parseFloat(s.esi) || 0,
+      p_bonus: parseFloat(s.bonus) || 0,
+      p_variable: parseFloat(s.variable) || 0,
+      p_other: parseFloat(s.other_component) || 0,
+      p_reimb: parseFloat(s.reimbursement) || 0,
+      p_cost_head: {
+        ops: parseInt(s.cost_head_breakup.ops) || 0,
+        temp: parseInt(s.cost_head_breakup.temp) || 0,
+        rec: parseInt(s.cost_head_breakup.rec) || 0,
+        projects: parseInt(s.cost_head_breakup.projects) || 0,
       },
-      { onConflict: "employee_id,effective_month,effective_year" }
-    );
+      p_client_focus: (s.client_focus || []).filter((c) => c.clientName?.trim()),
+    });
+
     if (error) {
       setSaveError(error.message);
     } else {
+      // main form now shows the NEW current values
+      const gross =
+        (parseFloat(s.ctc) || 0) + (parseFloat(s.pf) || 0) +
+        (parseFloat(s.esi) || 0) + (parseFloat(s.bonus) || 0) +
+        (parseFloat(s.other_component) || 0) + (parseFloat(s.reimbursement) || 0);
+      setGrossManuallyEdited(false);
       setFormData((p) => ({
         ...p,
+        ctc: String(s.ctc || ""),
+        pf: String(s.pf || ""),
+        esi: String(s.esi || ""),
+        bonus: String(s.bonus || ""),
+        variable: String(s.variable || ""),
+        other_component: String(s.other_component || ""),
+        reimbursement: String(s.reimbursement || ""),
+        gross_value: String(gross),
+        cost_head_breakup: { ...s.cost_head_breakup },
+        client_focus: (s.client_focus || []).length
+          ? s.client_focus
+          : [{ clientName: "", percentage: "" }],
         show_cost_shift: false,
         cost_shift: { ...EMPTY_COST_SHIFT },
       }));
-      setErrors((p) => {
-        const n = { ...p };
-        delete n.shift_month;
-        delete n.shift_year;
-        delete n.shift_breakup;
-        return n;
-      });
       setShiftSuccess(true);
       await fetchCostHistory(editingEmployee.id);
+      onSaved?.(); // refresh parent table
       setTimeout(() => setShiftSuccess(false), 3000);
     }
     setShiftSaving(false);
@@ -633,47 +651,35 @@ const AddInternalTeamModal = ({
     "Mgmt",
   ];
 
-  // Change 1: Add DEPT_ALIAS_MAP + normalizeDept()
   const DEPT_ALIAS_MAP = {
-    // OS / Operations
     os: "OS",
     ops: "OS",
     operation: "OS",
     operations: "OS",
-    // Temp
     temp: "Temp",
     temporary: "Temp",
     "temporary staffing": "Temp",
-    // Rec / Recruitment
     rec: "Rec",
     recruitment: "Rec",
     recruit: "Rec",
-    // BD / Business Development
     bd: "BD",
     "business development": "BD",
     "business dev": "BD",
     bizdev: "BD",
-    // Accts / Accounts
     accts: "Accts",
     accounts: "Accts",
     account: "Accts",
     finance: "Accts",
-    // HR
     hr: "HR",
     "human resources": "HR",
-    // Admin
     admin: "Admin",
     administration: "Admin",
-    // IT
     it: "IT",
     "information technology": "IT",
-    // Projects
     projects: "Projects",
     project: "Projects",
-    // Common
     common: "Common",
     general: "Common",
-    // Others
     others: "Others",
     other: "Others",
     misc: "Others",
@@ -686,12 +692,9 @@ const AddInternalTeamModal = ({
   const normalizeDept = (raw) => {
     if (!raw) return "";
     const lower = String(raw).trim().toLowerCase();
-    // First check alias map
     if (DEPT_ALIAS_MAP[lower]) return DEPT_ALIAS_MAP[lower];
-    // Then check if it already matches canonical (case-insensitive)
     const canonical = DEPT_OPTIONS.find((d) => d.toLowerCase() === lower);
     if (canonical) return canonical;
-    // Return original trimmed (will fail validation and show error)
     return String(raw).trim();
   };
 
@@ -725,7 +728,6 @@ const AddInternalTeamModal = ({
       const rowErrors = [];
       const str = (k) => String(raw[k] || "").trim();
 
-      // Change 3: Add deptNorm and entityNorm variables
       const deptNorm = normalizeDept(str("department"));
       const entityNorm = str("entity");
 
@@ -744,7 +746,6 @@ const AddInternalTeamModal = ({
       if (str("doj") && !parseExcelDate(raw.doj))
         rowErrors.push(`Invalid "doj" date: "${str("doj")}"`);
 
-      // Change 4: Use normalized values for validation
       if (
         str("entity") &&
         entityOptions.length > 0 &&
@@ -777,7 +778,6 @@ const AddInternalTeamModal = ({
         emp_code: str("emp_code"),
         name: str("name"),
         father_name: str("father_name") || null,
-        // Change 5: Use normalized values in the row object
         entity:
           entityOptions.find(
             (e) => e.trim().toLowerCase() === entityNorm.trim().toLowerCase()
@@ -1408,7 +1408,7 @@ const AddInternalTeamModal = ({
             <Section
               icon={<History className="w-4 h-4" />}
               title="Cost Head Shift History"
-              subtitle="Record a cost allocation change effective from a specific month & year."
+              subtitle="Enter the NEW values and the month they start. The previous values move to history automatically."
               action={
                 editingEmployee?.id ? (
                   <button
@@ -1422,44 +1422,21 @@ const AddInternalTeamModal = ({
                           cost_shift: {
                             effective_month: String(now.getMonth() + 1),
                             effective_year: String(now.getFullYear()),
-                            ctc: String(editingEmployee?.ctc || p.ctc || ""),
-                            variable: String(
-                              editingEmployee?.variable || p.variable || ""
-                            ),
-                            pf: String(editingEmployee?.pf || p.pf || ""),
-                            esi: String(editingEmployee?.esi || p.esi || ""),
-                            bonus: String(
-                              editingEmployee?.bonus || p.bonus || ""
-                            ),
-                            reimbursement: String(
-                              editingEmployee?.reimbursement ||
-                                p.reimbursement ||
-                                ""
-                            ),
-                            other_component: String(
-                              editingEmployee?.other_component ||
-                                p.other_component ||
-                                ""
-                            ),
-                            cost_head_breakup: {
-                              ops:
-                                editingEmployee?.cost_head_breakup?.ops ??
-                                p.cost_head_breakup.ops,
-                              temp:
-                                editingEmployee?.cost_head_breakup?.temp ??
-                                p.cost_head_breakup.temp,
-                              rec:
-                                editingEmployee?.cost_head_breakup?.rec ??
-                                p.cost_head_breakup.rec,
-                              projects:
-                                editingEmployee?.cost_head_breakup?.projects ??
-                                p.cost_head_breakup.projects,
-                            },
-                            client_focus: editingEmployee?.client_focus?.length
-                              ? editingEmployee.client_focus
-                              : p.client_focus?.filter((c) =>
+                            ctc: String(p.ctc || ""),
+                            variable: String(p.variable || ""),
+                            pf: String(p.pf || ""),
+                            esi: String(p.esi || ""),
+                            bonus: String(p.bonus || ""),
+                            reimbursement: String(p.reimbursement || ""),
+                            other_component: String(p.other_component || ""),
+                            cost_head_breakup: { ...p.cost_head_breakup },
+                            client_focus: p.client_focus.some((c) =>
+                              c.clientName?.trim()
+                            )
+                              ? p.client_focus.filter((c) =>
                                   c.clientName?.trim()
-                                ) || [{ clientName: "", percentage: "" }],
+                                )
+                              : [{ clientName: "", percentage: "" }],
                           },
                         }));
                       } else {
@@ -1783,13 +1760,7 @@ const AddInternalTeamModal = ({
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Loading history…</span>
                 </div>
-              ) : costHistory.length === 0 ? (
-                <p className="text-sm text-gray-400 italic py-1">
-                  {editingEmployee?.id
-                    ? "No cost shifts yet."
-                    : "Save employee first."}
-                </p>
-              ) : (
+              ) : editingEmployee?.id ? (
                 <div className="overflow-x-auto rounded-lg border border-gray-200">
                   <table className="w-full text-xs border-collapse">
                     <thead>
@@ -1814,6 +1785,39 @@ const AddInternalTeamModal = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
+                      {/* Current row */}
+                      <tr className="bg-emerald-50">
+                        <td className="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">
+                          {curStart
+                            ? `${MONTH_NAMES[curStart.m - 1]} ${curStart.y}`
+                            : ""}{" "}
+                          – Present
+                          <span className="ml-2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">
+                            Current
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-right font-mono font-bold text-emerald-700">
+                          ₹{Number(formData.ctc || 0).toLocaleString("en-IN")}
+                        </td>
+                        {COST_HEADS.map((h) => {
+                          const v = formData.cost_head_breakup[h.key] || 0;
+                          return (
+                            <td
+                              key={h.key}
+                              className={`px-2 py-2 text-center font-mono font-bold ${
+                                v > 0 ? "text-indigo-700" : "text-gray-300"
+                              }`}
+                            >
+                              {v > 0 ? `${v}%` : "—"}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-2 text-center font-mono font-bold text-emerald-700">
+                          {costTotal}%
+                        </td>
+                      </tr>
+
+                      {/* History rows */}
                       {costHistory.map((row, idx) => {
                         const norm = normaliseCostHead(row.cost_head_breakup);
                         const total = COST_HEADS.reduce(
@@ -1830,6 +1834,11 @@ const AddInternalTeamModal = ({
                             <td className="px-3 py-2 font-semibold text-gray-900">
                               {MONTH_NAMES[row.effective_month - 1]}{" "}
                               {row.effective_year}
+                              {row.end_month
+                                ? ` – ${
+                                    MONTH_NAMES[row.end_month - 1]
+                                  } ${row.end_year}`
+                                : ""}
                             </td>
                             <td className="px-2 py-2 text-right font-mono font-bold text-emerald-700">
                               {row.ctc
@@ -1864,6 +1873,10 @@ const AddInternalTeamModal = ({
                     </tbody>
                   </table>
                 </div>
+              ) : (
+                <p className="text-sm text-gray-400 italic py-1">
+                  Save employee first.
+                </p>
               )}
             </Section>
 

@@ -64,6 +64,10 @@ const SEGMENT_COLORS = [
   "bg-purple-500",
 ];
 
+// ── A1: Period helpers ──────────────────────────────────────────────────────
+const fmtPeriod = (m, y) => `${MONTH_NAMES[m - 1]} ${y}`;
+const nextMonth = (m, y) => (m === 12 ? { m: 1, y: y + 1 } : { m: m + 1, y });
+
 /* ─────────────────────────────────────────────
    Excel Export
 ───────────────────────────────────────────── */
@@ -133,8 +137,8 @@ const exportToExcel = (mergedData, formatDate) => {
     `Internal_Team_${new Date().toISOString().slice(0, 10)}.xlsx`
   );
   logExport({
-    action:      EXPORT_ACTIONS.EXCEL,
-    category:    "Internal Cost",
+    action: EXPORT_ACTIONS.EXCEL,
+    category: "Internal Cost",
     description: "Downloaded Internal Team Excel",
   });
 };
@@ -297,11 +301,11 @@ const InternalTeamDetails = () => {
 
   const formatCurrency = (val) => {
     const num = Number(val || 0);
-  
+
     if (num >= 100000) {
       return `₹ ${(num / 1000).toFixed(0)}K`;
     }
-  
+
     return `₹ ${(num / 1000).toFixed(1)}K`;
   };
   const formatCurrencyFull = (val) => `₹ ${(val || 0).toLocaleString("en-IN")}`;
@@ -326,6 +330,17 @@ const InternalTeamDetails = () => {
       (Number(row.reimbursement) || 0)
     );
   };
+
+  // ── A2: Compute current period start ──────────────────────────────────────
+  const latestHist = costHistory[0]; // already sorted newest-first
+  const currentStart = latestHist?.end_month
+    ? nextMonth(latestHist.end_month, latestHist.end_year)
+    : selectedEmployee?.doj
+    ? {
+        m: new Date(selectedEmployee.doj).getMonth() + 1,
+        y: new Date(selectedEmployee.doj).getFullYear(),
+      }
+    : null;
 
   const handleEdit = (employee) => {
     setEditingEmployee(employee);
@@ -853,9 +868,12 @@ const InternalTeamDetails = () => {
 
                   {/* Cost Head Breakup — 4 keys */}
                   <ViewSection title="Current Cost Head Break Up">
+                    {/* A4: Fixed subtitle */}
                     <p className="text-xs text-gray-500 -mt-2 mb-3">
-                      Default allocation effective from DOJ (
-                      {formatDate(selectedEmployee.doj)})
+                      Effective from{" "}
+                      {currentStart
+                        ? fmtPeriod(currentStart.m, currentStart.y)
+                        : formatDate(selectedEmployee.doj)}
                     </p>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       {COST_HEAD_KEYS.map(({ key, label, desc }) => {
@@ -890,10 +908,10 @@ const InternalTeamDetails = () => {
                     <CostBar breakup={selectedEmployee.cost_head_breakup} />
                   </ViewSection>
 
-                  {/* Cost Shift History */}
+                  {/* A3: Salary & Cost Head Shift History */}
                   <ViewSection
                     icon={<History className="w-4 h-4" />}
-                    title="Cost Head Shift History"
+                    title="Salary & Cost Head Shift History"
                     badge={
                       costHistory.length > 0 && (
                         <span className="text-xs font-semibold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
@@ -908,10 +926,6 @@ const InternalTeamDetails = () => {
                         <Loader2 className="w-4 h-4 animate-spin" />
                         <span>Loading…</span>
                       </div>
-                    ) : costHistory.length === 0 ? (
-                      <p className="text-sm text-gray-400 italic py-2">
-                        No cost shift history. Use Edit to add shifts.
-                      </p>
                     ) : (
                       <div className="overflow-x-auto rounded-lg border border-gray-200">
                         <table className="w-full text-xs border-collapse">
@@ -919,6 +933,9 @@ const InternalTeamDetails = () => {
                             <tr className="bg-gray-100 text-gray-600 font-semibold uppercase tracking-wider">
                               <th className="px-3 py-2.5 text-left border-b border-gray-200 sticky left-0 bg-gray-100 z-10">
                                 Period
+                              </th>
+                              <th className="px-3 py-2.5 text-right border-b border-gray-200">
+                                CTC
                               </th>
                               {COST_HEAD_KEYS.map((h) => (
                                 <th
@@ -937,6 +954,61 @@ const InternalTeamDetails = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
+                            {/* Current row */}
+                            <tr className="bg-emerald-50">
+                              <td className="px-3 py-2.5 font-semibold text-gray-900 sticky left-0 z-10 bg-emerald-50 whitespace-nowrap">
+                                <div className="flex items-center space-x-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                                  <span>
+                                    {currentStart
+                                      ? fmtPeriod(currentStart.m, currentStart.y)
+                                      : formatDate(selectedEmployee.doj)}{" "}
+                                    – Present
+                                  </span>
+                                  <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">
+                                    Current
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-700">
+                                {selectedEmployee.ctc
+                                  ? `₹${Number(
+                                      selectedEmployee.ctc
+                                    ).toLocaleString("en-IN")}`
+                                  : "—"}
+                              </td>
+                              {COST_HEAD_KEYS.map((h) => {
+                                const norm = normCostHead(
+                                  selectedEmployee.cost_head_breakup
+                                );
+                                const v = norm[h.key] || 0;
+                                return (
+                                  <td
+                                    key={h.key}
+                                    className={`px-3 py-2.5 text-center font-mono font-bold ${
+                                      v > 0
+                                        ? "text-indigo-700"
+                                        : "text-gray-300"
+                                    }`}
+                                  >
+                                    {v > 0 ? `${v}%` : "—"}
+                                  </td>
+                                );
+                              })}
+                              <td className="px-3 py-2.5 text-center font-mono font-bold text-emerald-700">
+                                {COST_HEAD_KEYS.reduce(
+                                  (s, h) =>
+                                    s +
+                                    (normCostHead(
+                                      selectedEmployee.cost_head_breakup
+                                    )[h.key] || 0),
+                                  0
+                                )}
+                                %
+                              </td>
+                            </tr>
+
+                            {/* History rows */}
                             {costHistory.map((row, idx) => {
                               const norm = normCostHead(row.cost_head_breakup);
                               const total = COST_HEAD_KEYS.reduce(
@@ -960,8 +1032,20 @@ const InternalTeamDetails = () => {
                                       <span>
                                         {MONTH_NAMES[row.effective_month - 1]}{" "}
                                         {row.effective_year}
+                                        {row.end_month
+                                          ? ` – ${
+                                              MONTH_NAMES[row.end_month - 1]
+                                            } ${row.end_year}`
+                                          : ""}
                                       </span>
                                     </div>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-700">
+                                    {row.ctc
+                                      ? `₹${Number(row.ctc).toLocaleString(
+                                          "en-IN"
+                                        )}`
+                                      : "—"}
                                   </td>
                                   {COST_HEAD_KEYS.map((h) => {
                                     const v = norm[h.key] || 0;
