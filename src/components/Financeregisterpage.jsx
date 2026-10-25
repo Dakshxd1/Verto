@@ -363,6 +363,7 @@ export default function FinanceRegisterPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -524,54 +525,78 @@ export default function FinanceRegisterPage() {
     "Bounce Back",
   ]);
 
-  const handleExport = () => {
-    if (!rows.length) return;
-    const headers = [
-      "Date",
-      "Type",
-      "Client/Employee",
-      "Emp Code",
-      "Employee Email",
-      "Invoice/Ref",
-      "Department",
-      "Entity",
-      "Payout Month",
-      "Head Count",
-      "Pay Head",
-      "Bank",
-      "Remarks",
-      "Status",
-      "Created By",
-      "Amount",
-    ];
-    const csvRows = rows.map((r) => [
-      formatDate(r.payment_date),
-      r.transaction_type,
-      r.client_name || r.employee_name || "",
-      r.emp_code || "",
-      r.employee_email || "",
-      r.invoice_number || r.reference_no || "",
-      r.department || "",
-      r.entity || "",
-      formatMonth(r.payout_month),
-      r.head_count ?? "",
-      r.pay_head || "",
-      r.bank_name || "",
-      `"${(r.remarks || "").replace(/"/g, '""')}"`,
-      r.status || "",
-      r.created_by_email || "",
-      r.amount ?? "",
-    ]);
-    const csv = [headers.join(","), ...csvRows.map((r) => r.join(","))].join(
-      "\n"
-    );
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `outgoing-register-${formatDateInput(new Date())}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      // Fetch ALL rows matching current filters — ignore pagination.
+      // Batched in chunks of 1000 (Supabase default max per request).
+      const allData = [];
+      const BATCH = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await buildQuery()
+          .order("payment_date", { ascending: false, nullsFirst: false })
+          .range(from, from + BATCH - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData.push(...data);
+        if (data.length < BATCH) break;
+        from += BATCH;
+      }
+
+      if (!allData.length) return;
+
+      const headers = [
+        "Date",
+        "Type",
+        "Client/Employee",
+        "Emp Code",
+        "Employee Email",
+        "Invoice/Ref",
+        "Department",
+        "Entity",
+        "Payout Month",
+        "Head Count",
+        "Pay Head",
+        "Bank",
+        "Remarks",
+        "Status",
+        "Created By",
+        "Amount",
+      ];
+      const csvRows = allData.map((r) => [
+        formatDate(r.payment_date),
+        r.transaction_type,
+        r.client_name || r.employee_name || "",
+        r.emp_code || "",
+        r.employee_email || "",
+        r.invoice_number || r.reference_no || "",
+        r.department || "",
+        r.entity || "",
+        formatMonth(r.payout_month),
+        r.head_count ?? "",
+        r.pay_head || "",
+        r.bank_name || "",
+        `"${(r.remarks || "").replace(/"/g, '""')}"`,
+        r.status || "",
+        r.created_by_email || "",
+        r.amount ?? "",
+      ]);
+      const csv = [headers.join(","), ...csvRows.map((r) => r.join(","))].join(
+        "\n"
+      );
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `outgoing-register-${formatDateInput(new Date())}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setErrorMsg(err.message || "Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -607,11 +632,13 @@ export default function FinanceRegisterPage() {
           </button>
           <button
             onClick={handleExport}
-            disabled={!rows.length}
+            disabled={!rows.length || exporting}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-600 hover:border-gray-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Download className="w-3.5 h-3.5" />
-            Export
+            <Download
+              className={`w-3.5 h-3.5 ${exporting ? "animate-pulse" : ""}`}
+            />
+            {exporting ? "Exporting..." : "Export"}
           </button>
         </div>
       </div>

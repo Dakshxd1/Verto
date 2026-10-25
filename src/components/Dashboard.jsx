@@ -658,7 +658,11 @@ const Dashboard = ({
   ${aliases}
 `.toLowerCase();
 
-      const matchesSearch = searchableText.includes(search);
+      // ✅ FIX #2 — Multi-word search: every token must appear somewhere, any order
+      const searchTokens = search.split(/\s+/).filter(Boolean);
+      const matchesSearch =
+        searchTokens.length === 0 ||
+        searchTokens.every((tok) => searchableText.includes(tok));
 
       const from = dateFrom ? new Date(dateFrom + "T00:00:00") : null;
       const to = dateTo ? new Date(dateTo + "T23:59:59") : null;
@@ -1043,7 +1047,8 @@ const Dashboard = ({
                 className="search-input"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by Client, Dept, or Invoice ID..."
+                // ✅ FIX #1 — Placeholder now mentions ledger
+                placeholder="Search by Client, Ledger, Dept, or Invoice ID..."
               />
             </div>
 
@@ -1530,7 +1535,23 @@ const Dashboard = ({
                         {row.dept}
                       </span>
                     </td>
-                    <td style={{ fontWeight: 500 }}>{row.client}</td>
+                    {/* ✅ FIX #3 — Show ledger name in small grey text when it differs from client */}
+                    <td style={{ fontWeight: 500 }}>
+                      {row.client}
+                      {row.ledger_name &&
+                        row.ledger_name.trim().toLowerCase() !==
+                          (row.client || "").trim().toLowerCase() && (
+                          <div
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 400,
+                              color: "#9ca3af",
+                            }}
+                          >
+                            {row.ledger_name}
+                          </div>
+                        )}
+                    </td>
                     <td className="mono">
                       ₹{formatCurrency(row.invValue ?? 0)}
                     </td>
