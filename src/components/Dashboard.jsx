@@ -891,12 +891,12 @@ const Dashboard = ({
           </div>
           <div className="stat-label">Total Invoiced (Net of CN)</div>
           <div className="stat-value">
-            ₹{formatCurrency(totals.netInvValue)}
+            ₹{formatCurrency(Math.round(totals.netInvValue))}
           </div>
           <div className="stat-meta" style={{ color: "#6b7280" }}>
             <span>
               {filteredData.length} invoices · CN ₹
-              {formatCurrency(totals.cnBadDebt)}
+              {formatCurrency(Math.round(totals.cnBadDebt))}
             </span>
           </div>
         </motion.div>
@@ -912,13 +912,13 @@ const Dashboard = ({
           </div>
           <div className="stat-label">Verto Fees</div>
           <div className="stat-value" style={{ color: "#059669" }}>
-            ₹{formatCurrency(totals.vertoFee)}
+            ₹{formatCurrency(Math.round(totals.vertoFee))}
           </div>
           <div className="stat-meta" style={{ color: "#6b7280" }}>
             <span>
               {totals.netInvValue
-                ? ((totals.vertoFee / totals.netInvValue) * 100).toFixed(2)
-                : "0.00"}
+                ? Math.round((totals.vertoFee / totals.netInvValue) * 100)
+                : 0}
               % of net invoice value
             </span>
           </div>
@@ -935,14 +935,14 @@ const Dashboard = ({
           </div>
           <div className="stat-label">Outstanding</div>
           <div className="stat-value" style={{ color: "#e11d48" }}>
-            ₹{formatCurrency(totals.notRecvd)}
+            ₹{formatCurrency(Math.round(totals.notRecvd))}
           </div>
           <div className="stat-meta" style={{ color: "#e11d48" }}>
             <ArrowDownLeft size={13} />
             <span>
               {totals.netInvValue
-                ? ((totals.notRecvd / totals.netInvValue) * 100).toFixed(2)
-                : "0.00"}
+                ? Math.round((totals.notRecvd / totals.netInvValue) * 100)
+                : 0}
               % of net invoiced
             </span>
           </div>
@@ -959,7 +959,7 @@ const Dashboard = ({
           </div>
           <div className="stat-label">Total TDS</div>
           <div className="stat-value" style={{ color: "#d97706" }}>
-            ₹{formatCurrency(totals.tds)}
+            ₹{formatCurrency(Math.round(totals.tds))}
           </div>
           <div className="stat-meta" style={{ color: "#6b7280" }}>
             <span>
@@ -1622,7 +1622,7 @@ const Dashboard = ({
                             fontFamily: "'Space Grotesk', sans-serif",
                           }}
                         >
-                          ₹ {row.gst ?? 0}
+                          ₹ {formatCurrency(row.gst ?? 0)}
                         </span>
                       )}
                     </td>
@@ -1646,7 +1646,7 @@ const Dashboard = ({
                             fontFamily: "'Space Grotesk', sans-serif",
                           }}
                         >
-                          ₹ {row.tds ?? 0}
+                          ₹ {formatCurrency(row.tds ?? 0)}
                         </span>
                       )}
                     </td>
