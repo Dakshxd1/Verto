@@ -10,6 +10,7 @@ import {
   Search,
   Plus,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -18,6 +19,9 @@ const customRound = (num) => {
   return decimal >= 0.75 ? Math.ceil(num) : Math.floor(num);
 };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const ClientSearchInput = ({
   value,
   onChange,
@@ -25,23 +29,39 @@ const ClientSearchInput = ({
   role,
   className,
   error,
+  onDelete,
 }) => {
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState(value || "");
+  const [confirmId, setConfirmId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleteError, setDeleteError] = useState({});
   const wrapRef = useRef(null);
+
+  const canDelete = role === "admin" && typeof onDelete === "function";
 
   useEffect(() => {
     setInputVal(value || "");
   }, [value]);
 
+  // ── FIX: use composedPath() so the mousedown that swaps the trash button
+  //    for the confirm bar does not count as an outside click (React removes
+  //    the clicked node during the same event, so contains(e.target) fails).
   useEffect(() => {
     const handler = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target))
-        setOpen(false);
+      if (!wrapRef.current) return;
+      const path = e.composedPath ? e.composedPath() : [];
+      const inside =
+        path.includes(wrapRef.current) || wrapRef.current.contains(e.target);
+      if (!inside) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    if (!open) setConfirmId(null);
+  }, [open]);
 
   const filtered = clients.filter((c) =>
     c.client_name.toLowerCase().includes(inputVal.toLowerCase())
@@ -56,6 +76,19 @@ const ClientSearchInput = ({
     setInputVal(name);
     onChange(name);
     setOpen(false);
+  };
+
+  const runDelete = async (c) => {
+    setDeletingId(c.id);
+    const res = await onDelete(c);
+    setDeletingId(null);
+    setConfirmId(null);
+    if (!res?.ok) {
+      setDeleteError((p) => ({
+        ...p,
+        [c.id]: res?.message || "Could not delete this client.",
+      }));
+    }
   };
 
   return (
@@ -79,20 +112,79 @@ const ClientSearchInput = ({
       </div>
       {open && (filtered.length > 0 || showCreate) && (
         <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-56 overflow-y-auto">
-          {filtered.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                pick(c.client_name);
-              }}
-              className="w-full text-left px-4 py-2.5 hover:bg-blue-50 text-sm text-gray-800 border-b border-gray-100 last:border-0 flex items-center gap-2"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
-              {c.client_name}
-            </button>
-          ))}
+          {filtered.map((c) => {
+            const deletable = canDelete && UUID_RE.test(String(c.id));
+            const confirming = confirmId === c.id;
+            return (
+              <div key={c.id} className="border-b border-gray-100 last:border-0">
+                <div className="flex items-center hover:bg-blue-50">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      pick(c.client_name);
+                    }}
+                    className="flex-1 min-w-0 text-left px-4 py-2.5 text-sm text-gray-800 flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                    <span className="truncate">{c.client_name}</span>
+                  </button>
+                  {deletable && !confirming && (
+                    <button
+                      type="button"
+                      title="Delete client (admin)"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setDeleteError((p) => ({ ...p, [c.id]: "" }));
+                        setConfirmId(c.id);
+                      }}
+                      className="p-1.5 mr-2 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors flex-shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {confirming && (
+                  <div className="px-4 py-2 bg-rose-50 border-t border-rose-100 flex items-center justify-between gap-2">
+                    <span className="text-xs text-rose-700 font-medium">
+                      Delete &ldquo;{c.client_name}&rdquo; permanently?
+                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setConfirmId(null);
+                        }}
+                        className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingId === c.id}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          runDelete(c);
+                        }}
+                        className="px-2.5 py-1 text-xs font-semibold text-white bg-rose-600 rounded-md hover:bg-rose-700 disabled:opacity-60"
+                      >
+                        {deletingId === c.id ? "Deleting…" : "Yes, delete"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {deleteError[c.id] && (
+                  <p className="px-4 py-1.5 text-xs text-rose-600 bg-rose-50 border-t border-rose-100 flex items-start gap-1">
+                    <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                    {deleteError[c.id]}
+                  </p>
+                )}
+              </div>
+            );
+          })}
           {showCreate && (
             <button
               type="button"
@@ -132,12 +224,16 @@ const AddInvoiceModal = ({
   const { role } = useAuth();
   const [entitiesList, setEntitiesList] = useState([]);
   const { canSave, isIntern } = usePerms();
-  
+
   // State for ref dropdown
   const [availableRefs, setAvailableRefs] = useState([]);
   const [refSearchQuery, setRefSearchQuery] = useState("");
   const [showRefDropdown, setShowRefDropdown] = useState(false);
   const refDropdownRef = useRef(null);
+
+  // ── BUG 1 FIX (A): track names deleted this session so the parent's
+  //    `clients` prop (which may still hold the stale name) can't resurrect them.
+  const [deletedClientNames, setDeletedClientNames] = useState([]);
 
   const [formData, setFormData] = useState({
     invoiceEntity: "",
@@ -214,6 +310,54 @@ const AddInvoiceModal = ({
     if (!entitiesRes.error) setEntitiesList(entitiesRes.data || []);
   };
 
+  // ── Delete client handler (admin-only, guarded by RPC + DB policy) ──
+  const handleDeleteClient = async (client) => {
+    const { data, error } = await supabase.rpc("delete_client_master", {
+      p_client_id: client.id,
+    });
+
+    if (error) {
+      return { ok: false, message: error.message };
+    }
+
+    if (!data?.ok) {
+      if (data?.reason === "in_use") {
+        const parts = [
+          ["invoice", data.invoices],
+          ["cost allocation", data.cost_allocations],
+          ["OS payout", data.os_payouts],
+          ["bounceback", data.bouncebacks],
+          ["client advance", data.advances],
+        ]
+          .filter(([, n]) => n > 0)
+          .map(([label, n]) => `${n} ${label}${n > 1 ? "s" : ""}`);
+        return {
+          ok: false,
+          message: parts.length
+            ? `Cannot delete — linked to ${parts.join(", ")}.`
+            : "Cannot delete — this client has linked records.",
+        };
+      }
+      await fetchMasters(); // not_found: list was stale
+      return { ok: false, message: "Client no longer exists." };
+    }
+
+    // success: refresh list, clear the form if this client was selected
+    await fetchMasters();
+    if (
+      formData.client &&
+      formData.client.toLowerCase() === client.client_name.toLowerCase()
+    ) {
+      setFormData((prev) => ({ ...prev, client: "", ledgerName: "" }));
+    }
+    if (window.refreshClients) window.refreshClients();
+
+    // ── BUG 1 FIX (B): remember the deleted name so mergedClients filters it out ──
+    setDeletedClientNames((p) => [...p, client.client_name.toLowerCase()]);
+
+    return { ok: true };
+  };
+
   // ── STEP 5: fetchAvailableRefs now also pulls linkable OS payouts via RPC ──
   const fetchAvailableRefs = async () => {
     const [catRes, apRes, poRes] = await Promise.all([
@@ -270,17 +414,21 @@ const AddInvoiceModal = ({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // ── BUG 1 FIX (C): filter out names deleted this session before merging ──
   const mergedClients = React.useMemo(() => {
     const map = new Map();
     clients.forEach((name) => {
-      if (typeof name === "string")
+      if (
+        typeof name === "string" &&
+        !deletedClientNames.includes(name.toLowerCase())
+      )
         map.set(name.toLowerCase(), { id: name, client_name: name });
     });
     clientsList.forEach((c) => map.set(c.client_name.toLowerCase(), c));
     return Array.from(map.values()).sort((a, b) =>
       a.client_name.localeCompare(b.client_name)
     );
-  }, [clients, clientsList]);
+  }, [clients, clientsList, deletedClientNames]);
 
   // Auto-fetch ledger when client changes
   useEffect(() => {
@@ -418,7 +566,7 @@ const AddInvoiceModal = ({
       const finalGstNonOS = isManualGst ? Number(formData.gst) || 0 : gstCalc;
       const invoiceValue  = baseAmount + finalGstNonOS;
       const receivable    = invoiceValue - finalTds;
-    
+
       setFormData((prev) => ({
         ...prev,
         gst: isManualGst ? prev.gst : gstCalc.toFixed(2),
@@ -1159,6 +1307,7 @@ const AddInvoiceModal = ({
                         role={role}
                         className={fi("client")}
                         error={showErrors && errors.client}
+                        onDelete={handleDeleteClient}
                       />
                       <ErrorMessage error={errors.client} />
                     </div>
