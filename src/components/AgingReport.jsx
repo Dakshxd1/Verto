@@ -60,7 +60,8 @@ const AgingReport = () => {
     fetchAging();
   }, []);
 
-  const formatCurrency = (val) => `₹ ${val.toLocaleString("en-IN")}`;
+  const formatCurrency = (val) =>
+    `₹ ${Math.round(Number(val) || 0).toLocaleString("en-IN")}`;
 
   return (
     <Card className="bg-white border-gray-200">
