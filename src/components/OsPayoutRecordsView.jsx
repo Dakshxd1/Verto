@@ -26,6 +26,13 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { logExport, EXPORT_ACTIONS } from "../utils/Auditlog.js";
+import DateRangeFilter, {
+  applyRange,
+  fetchAllRows,
+  rangeTag,
+  rangeText,
+  writeXlsx,
+} from "./DateRangeFilter";
 
 const OsPayoutRecordsView = ({ onClose, onChanged }) => {
   const { canEdit, canDelete, canExport, isIntern, role } = usePerms();
@@ -44,6 +51,9 @@ const OsPayoutRecordsView = ({ onClose, onChanged }) => {
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
   const [banks, setBanks] = useState([]);
+
+  // ── DATE RANGE ──
+  const [range, setRange] = useState({ from: "", to: "" });
 
   // BB states
   const [bbRow, setBbRow] = useState(null);
@@ -99,95 +109,131 @@ const OsPayoutRecordsView = ({ onClose, onChanged }) => {
         .order("bank_name");
       setBanks(banksData || []);
 
-      const { data: bulkData } = await supabase
-        .from("os_payouts")
-        .select(
-          "bulk_batch_id, bulk_batch_code, bulk_file_name, bulk_upload_date, amount_paid, income_tax_deducted"
-        )
-        .eq("entry_type", "bulk")
-        .not("bulk_batch_id", "is", null)
-        .order("bulk_upload_date", { ascending: false });
-
-      if (bulkData) {
-        const grouped = {};
-        bulkData.forEach((row) => {
-          const key = row.bulk_batch_id;
-          if (!grouped[key]) {
-            grouped[key] = {
-              batchId: key,
-              batchCode: row.bulk_batch_code || `BATCH_${key}`,
-              fileName: row.bulk_file_name || "Unknown File",
-              uploadDate: row.bulk_upload_date,
-              count: 0,
-              totalAmount: 0,
-              totalTax: 0,
-              totalNet: 0,
-            };
-          }
-          grouped[key].count++;
-          const net = (parseFloat(row.amount_paid) || 0) - (parseFloat(row.income_tax_deducted) || 0);
-          grouped[key].totalAmount += parseFloat(row.amount_paid) || 0;
-          grouped[key].totalTax += parseFloat(row.income_tax_deducted) || 0;
-          grouped[key].totalNet += net;
-        });
-        setBulkFolders(
-          Object.values(grouped).sort(
-            (a, b) => new Date(b.uploadDate || 0) - new Date(a.uploadDate || 0)
-          )
-        );
+      if (range.from && range.to && range.from > range.to) {
+        setBulkFolders([]);
+        setSingleRecords([]);
+        setBbMap({});
+        return;
       }
+      const hasRange = !!(range.from || range.to);
 
-      const { data: singleData } = await supabase
-        .from("os_payouts")
-        .select(
-          "*, clients_master(client_name), entity_master(entity_name), departments_master(dept_name), bank_master(bank_name), invoices(invoice_number)"
+      // ── Bulk rows (paged, filtered by Date Paid) ──
+      const bulkData = await fetchAllRows(() =>
+        applyRange(
+          supabase
+            .from("os_payouts")
+            .select(
+              "bulk_batch_id, bulk_batch_code, bulk_file_name, bulk_upload_date, amount_paid, income_tax_deducted"
+            )
+            .eq("entry_type", "bulk")
+            .not("bulk_batch_id", "is", null),
+          "payment_date",
+          range
         )
-        .eq("entry_type", "single")
-        .order("created_at", { ascending: false })
-        .limit(100);
+          .order("bulk_upload_date", { ascending: false })
+          .order("id")
+      );
 
-      setSingleRecords(singleData || []);
+      const grouped = {};
+      bulkData.forEach((row) => {
+        const key = row.bulk_batch_id;
+        if (!grouped[key]) {
+          grouped[key] = {
+            batchId: key,
+            batchCode: row.bulk_batch_code || `BATCH_${key}`,
+            fileName: row.bulk_file_name || "Unknown File",
+            uploadDate: row.bulk_upload_date,
+            count: 0,
+            totalAmount: 0,
+            totalTax: 0,
+            totalNet: 0,
+          };
+        }
+        grouped[key].count++;
+        const net =
+          (parseFloat(row.amount_paid) || 0) -
+          (parseFloat(row.income_tax_deducted) || 0);
+        grouped[key].totalAmount += parseFloat(row.amount_paid) || 0;
+        grouped[key].totalTax += parseFloat(row.income_tax_deducted) || 0;
+        grouped[key].totalNet += net;
+      });
+      setBulkFolders(
+        Object.values(grouped).sort(
+          (a, b) => new Date(b.uploadDate || 0) - new Date(a.uploadDate || 0)
+        )
+      );
 
-      const allIds = [
-        ...(singleData || []).map((r) => r.id),
-        ...(bulkData || []).map((r) => r.id),
-      ].filter(Boolean);
-      if (allIds.length) {
+      // ── Manual rows: all rows in range, or latest 100 when no range ──
+      const singleBase = () =>
+        applyRange(
+          supabase
+            .from("os_payouts")
+            .select(
+              "*, clients_master(client_name), entity_master(entity_name), departments_master(dept_name), bank_master(bank_name), invoices(invoice_number)"
+            )
+            .eq("entry_type", "single"),
+          "payment_date",
+          range
+        );
+
+      let singleData;
+      if (hasRange) {
+        singleData = await fetchAllRows(() =>
+          singleBase().order("created_at", { ascending: false }).order("id")
+        );
+      } else {
+        const { data, error } = await singleBase()
+          .order("created_at", { ascending: false })
+          .limit(100);
+        if (error) throw error;
+        singleData = data || [];
+      }
+      setSingleRecords(singleData);
+
+      // ── Bounce-back totals, in chunks to keep the URL short ──
+      const allIds = singleData.map((r) => r.id).filter(Boolean);
+      const map = {};
+      for (let i = 0; i < allIds.length; i += 100) {
         const { data: bbData } = await supabase
           .from("os_payout_bouncebacks")
           .select("os_payout_id, bb_amount, bb_emp_count")
-          .in("os_payout_id", allIds);
-        const map = {};
+          .in("os_payout_id", allIds.slice(i, i + 100));
         (bbData || []).forEach((b) => {
-          if (!map[b.os_payout_id]) map[b.os_payout_id] = { total_bb: 0, total_bb_emp: 0, count: 0 };
+          if (!map[b.os_payout_id])
+            map[b.os_payout_id] = { total_bb: 0, total_bb_emp: 0, count: 0 };
           map[b.os_payout_id].total_bb += parseFloat(b.bb_amount) || 0;
           map[b.os_payout_id].total_bb_emp += parseInt(b.bb_emp_count) || 0;
           map[b.os_payout_id].count += 1;
         });
-        setBbMap(map);
       }
+      setBbMap(map);
     } catch (err) {
       console.error(err);
+      showToast("Failed to load records: " + err.message, "error");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    collapseBatch();
     fetchRecords();
-  }, []);
+  }, [range.from, range.to]);
 
   // ── BATCH ──
   const loadBatch = async (batchId) => {
     setExpandingId(batchId);
     try {
-      const { data } = await supabase
-        .from("os_payouts")
-        .select(
-          "*, clients_master(client_name), invoices(invoice_number), bank_master(bank_name)"
-        )
-        .eq("bulk_batch_id", batchId)
-        .order("created_at", { ascending: true });
+      const { data } = await applyRange(
+        supabase
+          .from("os_payouts")
+          .select(
+            "*, clients_master(client_name), invoices(invoice_number), bank_master(bank_name)"
+          )
+          .eq("bulk_batch_id", batchId),
+        "payment_date",
+        range
+      ).order("created_at", { ascending: true });
       setExpandedRows(data || []);
       setExpandedBatch(batchId);
     } catch (err) {
@@ -358,16 +404,23 @@ const OsPayoutRecordsView = ({ onClose, onChanged }) => {
     }
   };
 
-  // ── EXPORT ──
+  // ── EXPORT (per-batch, respects range) ──
   const exportBatch = async (batchId) => {
     try {
-      const { data } = await supabase
-        .from("os_payouts")
-        .select("*, invoices(invoice_number)")
-        .eq("bulk_batch_id", batchId)
-        .order("created_at", { ascending: true });
-      if (!data?.length) {
-        alert("No records to export");
+      const data = await fetchAllRows(() =>
+        applyRange(
+          supabase
+            .from("os_payouts")
+            .select("*, invoices(invoice_number)")
+            .eq("bulk_batch_id", batchId),
+          "payment_date",
+          range
+        )
+          .order("created_at", { ascending: true })
+          .order("id")
+      );
+      if (!data.length) {
+        alert("No records to export in this date range");
         return;
       }
       const headers = [
@@ -398,11 +451,11 @@ const OsPayoutRecordsView = ({ onClose, onChanged }) => {
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
       ws["!cols"] = headers.map(() => ({ wch: 20 }));
       XLSX.utils.book_append_sheet(wb, ws, "OS Bulk Upload");
-      XLSX.writeFile(wb, `os_bulk_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      XLSX.writeFile(wb, `os_bulk_export_${new Date().toISOString().slice(0, 10)}${rangeTag(range)}.xlsx`);
       logExport({
         action: EXPORT_ACTIONS.EXCEL,
         category: "Expense",
-        description: `Downloaded OS Bulk Excel (${data.length} rows)`,
+        description: `Downloaded OS Bulk Excel (${data.length} rows)${rangeText(range)}`,
         meta: { batch_id: batchId, rows: data.length },
       });
     } catch (err) {
@@ -562,6 +615,96 @@ const OsPayoutRecordsView = ({ onClose, onChanged }) => {
     return text.includes(search.toLowerCase());
   });
 
+  // ── Export every OS bulk batch currently shown, only rows inside the date range ──
+  const exportAllBulkFiltered = async () => {
+    try {
+      const ids = new Set(filteredBulkFolders.map((f) => f.batchId));
+      if (!ids.size) {
+        alert("No batches to export");
+        return;
+      }
+      const all = await fetchAllRows(() =>
+        applyRange(
+          supabase
+            .from("os_payouts")
+            .select("*, invoices(invoice_number)")
+            .eq("entry_type", "bulk")
+            .not("bulk_batch_id", "is", null),
+          "payment_date",
+          range
+        )
+          .order("bulk_upload_date", { ascending: false })
+          .order("created_at", { ascending: true })
+          .order("id")
+      );
+      const data = all.filter((r) => ids.has(r.bulk_batch_id));
+      if (!data.length) {
+        alert("No records to export in this date range");
+        return;
+      }
+      const headers = [
+        "Batch Code", "File Name", "Invoice Number", "Pay Head", "Payment Details",
+        "Amount Paid", "Income Tax", "Net", "Employee Count", "Bank", "Date Paid", "Remarks",
+      ];
+      const rows = data.map((r) => [
+        r.bulk_batch_code || "", r.bulk_file_name || "",
+        r.invoices?.invoice_number || "", r.pay_head || "", r.payment_details || "",
+        r.amount_paid || 0, r.income_tax_deducted || 0,
+        (r.amount_paid || 0) - (r.income_tax_deducted || 0),
+        r.employee_count || 0, r.bank_name || "", r.payment_date || "", r.remarks || "",
+      ]);
+      writeXlsx(
+        headers, rows, "OS Bulk Uploads",
+        `os_bulk_filtered_${new Date().toISOString().slice(0, 10)}${rangeTag(range)}.xlsx`
+      );
+      logExport({
+        action: EXPORT_ACTIONS.EXCEL,
+        category: "Expense",
+        description: `Downloaded OS Bulk Excel (${data.length} rows)${rangeText(range)}`,
+        meta: { rows: data.length, from: range.from || null, to: range.to || null },
+      });
+    } catch (err) {
+      alert("Export failed: " + err.message);
+    }
+  };
+
+  // ── Export the Manual tab exactly as shown (date range + search) ──
+  const exportManualFiltered = () => {
+    if (!filteredSingleRecords.length) {
+      alert("No records to export");
+      return;
+    }
+    const headers = [
+      "Ref No", "Date Paid", "Invoice Number", "Client", "Pay Head", "Payment Details",
+      "Amount Paid", "Bounce Back", "Income Tax", "Net", "Employee Count",
+      "Bank", "Billable", "Remarks",
+    ];
+    const rows = filteredSingleRecords.map((r) => {
+      const bb = bbMap[r.id]?.total_bb || 0;
+      const net = Math.max(
+        (parseFloat(r.amount_paid) || 0) - bb - (parseFloat(r.income_tax_deducted) || 0),
+        0
+      );
+      return [
+        r.payout_ref_no || "", r.payment_date || "", r.invoices?.invoice_number || "",
+        r.clients_master?.client_name || "", r.pay_head || "", r.payment_details || "",
+        r.amount_paid || 0, bb, r.income_tax_deducted || 0, net,
+        r.employee_count || 0, r.bank_master?.bank_name || r.bank_name || "",
+        r.is_billable ? "Yes" : "No", r.remarks || "",
+      ];
+    });
+    writeXlsx(
+      headers, rows, "OS Manual Entries",
+      `os_manual_filtered_${new Date().toISOString().slice(0, 10)}${rangeTag(range)}.xlsx`
+    );
+    logExport({
+      action: EXPORT_ACTIONS.EXCEL,
+      category: "Expense",
+      description: `Downloaded OS Manual Excel (${filteredSingleRecords.length} rows)${rangeText(range)}`,
+      meta: { rows: filteredSingleRecords.length, from: range.from || null, to: range.to || null },
+    });
+  };
+
   // ── STATS ──
   const totalBulkCount = bulkFolders.reduce((s, f) => s + f.count, 0);
   const totalSingleCount = singleRecords.length;
@@ -641,6 +784,37 @@ const OsPayoutRecordsView = ({ onClose, onChanged }) => {
               className="w-full h-9 bg-[#f7f8fb] border border-slate-200 rounded-xl pl-9 pr-4 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#1e3a5f] focus:bg-white transition-all"
             />
           </div>
+        </div>
+      </div>
+
+      {/* DATE FILTER BAR */}
+      <div className="px-6 pt-4 flex items-center justify-between flex-wrap gap-3">
+        <DateRangeFilter
+          label="Date Paid"
+          from={range.from}
+          to={range.to}
+          onChange={setRange}
+        />
+        <div className="flex items-center gap-3">
+          {viewTab === "single" && !(range.from || range.to) && singleRecords.length >= 100 && (
+            <span className="text-[11px] text-amber-600">
+              Showing latest 100 — choose dates to load all
+            </span>
+          )}
+          {(range.from || range.to) && viewTab === "bulk" && (
+            <span className="text-[11px] text-slate-500">
+              Folders show only rows paid in this range
+            </span>
+          )}
+          {canExport && (
+            <button
+              onClick={viewTab === "bulk" ? exportAllBulkFiltered : exportManualFiltered}
+              className="h-9 px-4 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[12px] font-semibold flex items-center gap-1.5 hover:bg-blue-100 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export filtered
+            </button>
+          )}
         </div>
       </div>
 

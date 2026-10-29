@@ -27,6 +27,13 @@ import {
 import * as XLSX from "xlsx";
 import { printSalarySlip, downloadBulkSlipsZip } from "../utils/salarySlip";
 import { logExport, EXPORT_ACTIONS } from "../utils/Auditlog.js";
+import DateRangeFilter, {
+  applyRange,
+  fetchAllRows,
+  rangeTag,
+  rangeText,
+  writeXlsx,
+} from "./DateRangeFilter";
 
 const ExpenseRecordsView = ({ onClose }) => {
   const { canEdit, canDelete, canExport, role } = usePerms();
@@ -47,6 +54,9 @@ const ExpenseRecordsView = ({ onClose }) => {
   const [toast, setToast] = useState(null);
   const [slipLoading, setSlipLoading] = useState(null); // batchId or rowId being processed
 
+  // ── DATE RANGE ──
+  const [range, setRange] = useState({ from: "", to: "" });
+
   // =====================================================
   // TOAST
   // =====================================================
@@ -61,78 +71,98 @@ const ExpenseRecordsView = ({ onClose }) => {
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      // ── Fetch bulk groups ──
-      const { data: bulkData, error: bulkErr } = await supabase
-        .from("employee_expense_payouts")
-        .select(
-          "bulk_batch_id, bulk_batch_code, bulk_file_name, bulk_upload_date, net_payment, payment_amount, income_tax_deducted"
+      if (range.from && range.to && range.from > range.to) {
+        setBulkFolders([]);
+        setSingleRecords([]);
+        setRecords([]);
+        return;
+      }
+      const hasRange = !!(range.from || range.to);
+
+      // ── Bulk rows (paged past 1000, filtered by Date of Pay) ──
+      const bulkData = await fetchAllRows(() =>
+        applyRange(
+          supabase
+            .from("employee_expense_payouts")
+            .select(
+              "bulk_batch_id, bulk_batch_code, bulk_file_name, bulk_upload_date, net_payment, payment_amount, income_tax_deducted"
+            )
+            .eq("entry_type", "bulk")
+            .not("bulk_batch_id", "is", null),
+          "date_of_pay",
+          range
         )
-        .eq("entry_type", "bulk")
-        .not("bulk_batch_id", "is", null)
-        .order("bulk_upload_date", { ascending: false });
+          .order("bulk_upload_date", { ascending: false })
+          .order("id")
+      );
 
-      if (!bulkErr && bulkData) {
-        const grouped = {};
-        bulkData.forEach((row) => {
-          const key = row.bulk_batch_id;
-          if (!grouped[key]) {
-            grouped[key] = {
-              batchId: key,
-              batchCode: row.bulk_batch_code || `BATCH_${key}`,
-              fileName: row.bulk_file_name || "Unknown File",
-              uploadDate: row.bulk_upload_date,
-              count: 0,
-              totalAmount: 0,
-              totalTax: 0,
-              totalNet: 0,
-            };
-          }
-          grouped[key].count++;
-          grouped[key].totalAmount += Number(row.payment_amount || 0);
-          grouped[key].totalTax += Number(row.income_tax_deducted || 0);
-          grouped[key].totalNet += Number(row.net_payment || 0);
-        });
+      const grouped = {};
+      bulkData.forEach((row) => {
+        const key = row.bulk_batch_id;
+        if (!grouped[key]) {
+          grouped[key] = {
+            batchId: key,
+            batchCode: row.bulk_batch_code || `BATCH_${key}`,
+            fileName: row.bulk_file_name || "Unknown File",
+            uploadDate: row.bulk_upload_date,
+            count: 0,
+            totalAmount: 0,
+            totalTax: 0,
+            totalNet: 0,
+          };
+        }
+        grouped[key].count++;
+        grouped[key].totalAmount += Number(row.payment_amount || 0);
+        grouped[key].totalTax += Number(row.income_tax_deducted || 0);
+        grouped[key].totalNet += Number(row.net_payment || 0);
+      });
+      setBulkFolders(
+        Object.values(grouped).sort(
+          (a, b) => new Date(b.uploadDate || 0) - new Date(a.uploadDate || 0)
+        )
+      );
 
-        setBulkFolders(
-          Object.values(grouped).sort(
-            (a, b) =>
-              new Date(b.uploadDate || 0) - new Date(a.uploadDate || 0)
-          )
+      // ── Manual rows: all rows in range, or latest 100 when no range ──
+      const singleBase = () =>
+        applyRange(
+          supabase
+            .from("employee_expense_payouts")
+            .select(`*, entity_master(entity_name), departments_master(dept_name)`)
+            .eq("entry_type", "single"),
+          "date_of_pay",
+          range
         );
-      }
 
-      // ── Fetch single records ──
-      const { data: singleData, error: singleErr } = await supabase
-        .from("employee_expense_payouts")
-        .select(
-          `
-          *,
-          entity_master(entity_name),
-          departments_master(dept_name)
-        `
-        )
-        .eq("entry_type", "single")
-        .order("created_at", { ascending: false })
-        .limit(100);
-
-      if (!singleErr && singleData) {
-        setSingleRecords(singleData);
+      let singleData;
+      if (hasRange) {
+        singleData = await fetchAllRows(() =>
+          singleBase().order("created_at", { ascending: false }).order("id")
+        );
+      } else {
+        const { data, error } = await singleBase()
+          .order("created_at", { ascending: false })
+          .limit(100);
+        if (error) throw error;
+        singleData = data || [];
       }
+      setSingleRecords(singleData);
 
       setRecords([
-        ...(singleData || []),
-        ...(bulkData || []).map((r) => ({ ...r, _isBulk: true })),
+        ...singleData,
+        ...bulkData.map((r) => ({ ...r, _isBulk: true })),
       ]);
     } catch (err) {
       console.error(err);
+      showToast("Failed to load records: " + err.message, "error");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    collapseBatch();
     fetchRecords();
-  }, []);
+  }, [range.from, range.to]);
 
   // =====================================================
   // EXPAND BATCH
@@ -140,17 +170,20 @@ const ExpenseRecordsView = ({ onClose }) => {
   const loadBatch = async (batchId) => {
     setExpandingId(batchId);
     try {
-      const { data } = await supabase
-        .from("employee_expense_payouts")
-        .select(
+      const { data } = await applyRange(
+        supabase
+          .from("employee_expense_payouts")
+          .select(
+            `
+            *,
+            entity_master(entity_name),
+            departments_master(dept_name)
           `
-          *,
-          entity_master(entity_name),
-          departments_master(dept_name)
-        `
-        )
-        .eq("bulk_batch_id", batchId)
-        .order("emp_code", { ascending: true });
+          )
+          .eq("bulk_batch_id", batchId),
+        "date_of_pay",
+        range
+      ).order("emp_code", { ascending: true });
 
       setExpandedRows(data || []);
       setExpandedBatch(batchId);
@@ -296,18 +329,25 @@ const ExpenseRecordsView = ({ onClose }) => {
   };
 
   // =====================================================
-  // EXPORT BATCH (Excel)
+  // EXPORT BATCH (Excel) — respects date range
   // =====================================================
   const exportBatch = async (batchId) => {
     try {
-      const { data } = await supabase
-        .from("employee_expense_payouts")
-        .select("*")
-        .eq("bulk_batch_id", batchId)
-        .order("emp_code", { ascending: true });
+      const data = await fetchAllRows(() =>
+        applyRange(
+          supabase
+            .from("employee_expense_payouts")
+            .select("*")
+            .eq("bulk_batch_id", batchId),
+          "date_of_pay",
+          range
+        )
+          .order("emp_code", { ascending: true })
+          .order("id")
+      );
 
-      if (!data?.length) {
-        alert("No records to export");
+      if (!data.length) {
+        alert("No records to export in this date range");
         return;
       }
 
@@ -343,13 +383,13 @@ const ExpenseRecordsView = ({ onClose }) => {
       XLSX.utils.book_append_sheet(wb, ws, "Bulk Upload");
       XLSX.writeFile(
         wb,
-        `bulk_export_${new Date().toISOString().slice(0, 10)}.xlsx`
+        `bulk_export_${new Date().toISOString().slice(0, 10)}${rangeTag(range)}.xlsx`
       );
       logExport({
-        action:      EXPORT_ACTIONS.EXCEL,
-        category:    "Expense",
-        description: `Downloaded Bulk Expense Excel (${data.length} employees)`,
-        meta:        { batch_id: batchId, rows: data.length },
+        action: EXPORT_ACTIONS.EXCEL,
+        category: "Expense",
+        description: `Downloaded Bulk Expense Excel (${data.length} employees)${rangeText(range)}`,
+        meta: { batch_id: batchId, rows: data.length },
       });
     } catch (err) {
       alert("Export failed: " + err.message);
@@ -362,7 +402,6 @@ const ExpenseRecordsView = ({ onClose }) => {
   const downloadBatchSlips = async (folder) => {
     setSlipLoading(folder.batchId);
     try {
-      // Always fetch full data with joins for slip generation
       const { data, error } = await supabase
         .from("employee_expense_payouts")
         .select(
@@ -383,10 +422,10 @@ const ExpenseRecordsView = ({ onClose }) => {
 
       await downloadBulkSlipsZip(data, folder.batchCode || folder.batchId);
       logExport({
-        action:      EXPORT_ACTIONS.ZIP,
-        category:    "Expense",
+        action: EXPORT_ACTIONS.ZIP,
+        category: "Expense",
         description: `Downloaded Bulk Salary Slips ZIP — ${folder.batchCode} (${data.length} employees)`,
-        meta:        { batch_code: folder.batchCode, count: data.length },
+        meta: { batch_code: folder.batchCode, count: data.length },
       });
       showToast(`${data.length} slips downloaded as ZIP`);
     } catch (err) {
@@ -405,11 +444,11 @@ const ExpenseRecordsView = ({ onClose }) => {
     try {
       printSalarySlip(row);
       logExport({
-        action:       EXPORT_ACTIONS.SALARY_SLIP,
-        category:     "Expense",
-        description:  `Downloaded Salary Slip — ${row.employee_name || row.emp_code}`,
+        action: EXPORT_ACTIONS.SALARY_SLIP,
+        category: "Expense",
+        description: `Downloaded Salary Slip — ${row.employee_name || row.emp_code}`,
         reference_no: row.emp_code || null,
-        meta:         { emp_code: row.emp_code, pay_head: row.pay_head },
+        meta: { emp_code: row.emp_code, pay_head: row.pay_head },
       });
       showToast("Salary slip opened for printing/saving");
     } catch (err) {
@@ -437,6 +476,87 @@ const ExpenseRecordsView = ({ onClose }) => {
     `.toLowerCase();
     return text.includes(search.toLowerCase());
   });
+
+  // ── Export every bulk batch currently shown, only rows inside the date range ──
+  const exportAllBulkFiltered = async () => {
+    try {
+      const ids = new Set(filteredBulkFolders.map((f) => f.batchId));
+      if (!ids.size) {
+        alert("No batches to export");
+        return;
+      }
+      const all = await fetchAllRows(() =>
+        applyRange(
+          supabase
+            .from("employee_expense_payouts")
+            .select("*")
+            .eq("entry_type", "bulk")
+            .not("bulk_batch_id", "is", null),
+          "date_of_pay",
+          range
+        )
+          .order("bulk_upload_date", { ascending: false })
+          .order("emp_code", { ascending: true })
+          .order("id")
+      );
+      const data = all.filter((r) => ids.has(r.bulk_batch_id));
+      if (!data.length) {
+        alert("No records to export in this date range");
+        return;
+      }
+      const headers = [
+        "Batch Code", "File Name", "Emp Code", "Employee Name", "Designation",
+        "Pay Head", "Payment Amount", "Income Tax", "Net Payment", "Bank",
+        "Date of Pay", "Remarks",
+      ];
+      const rows = data.map((r) => [
+        r.bulk_batch_code || "", r.bulk_file_name || "", r.emp_code || "",
+        r.employee_name || "", r.designation || "", r.pay_head || "",
+        r.payment_amount || 0, r.income_tax_deducted || 0, r.net_payment || 0,
+        r.bank_name || "", r.date_of_pay || "", r.remarks || "",
+      ]);
+      writeXlsx(
+        headers, rows, "Bulk Uploads",
+        `internal_bulk_filtered_${new Date().toISOString().slice(0, 10)}${rangeTag(range)}.xlsx`
+      );
+      logExport({
+        action: EXPORT_ACTIONS.EXCEL,
+        category: "Expense",
+        description: `Downloaded Internal Bulk Excel (${data.length} rows)${rangeText(range)}`,
+        meta: { rows: data.length, from: range.from || null, to: range.to || null },
+      });
+    } catch (err) {
+      alert("Export failed: " + err.message);
+    }
+  };
+
+  // ── Export the Manual tab exactly as shown (date range + search) ──
+  const exportManualFiltered = () => {
+    if (!filteredSingleRecords.length) {
+      alert("No records to export");
+      return;
+    }
+    const headers = [
+      "Emp Code", "Employee Name", "Department", "Pay Head", "Description",
+      "Payment Amount", "Income Tax", "Net Payment", "Bank", "Date of Pay", "Remarks",
+    ];
+    const rows = filteredSingleRecords.map((r) => [
+      r.emp_code || "", r.employee_name || "", r.departments_master?.dept_name || "",
+      r.pay_head || "", r.payment_description || "", r.payment_amount || 0,
+      r.income_tax_deducted || 0, r.net_payment || 0, r.bank_name || "",
+      r.date_of_pay || "", r.remarks || "",
+    ]);
+    writeXlsx(
+      headers, rows, "Manual Entries",
+      `internal_manual_filtered_${new Date().toISOString().slice(0, 10)}${rangeTag(range)}.xlsx`
+    );
+    logExport({
+      action: EXPORT_ACTIONS.EXCEL,
+      category: "Expense",
+      description: `Downloaded Internal Manual Excel (${filteredSingleRecords.length} rows)${rangeText(range)}`,
+      meta: { rows: filteredSingleRecords.length, from: range.from || null, to: range.to || null },
+    });
+  };
 
   // =====================================================
   // STATS
@@ -558,6 +678,37 @@ const ExpenseRecordsView = ({ onClose }) => {
               className="w-full h-9 bg-[#f7f8fb] border border-slate-200 rounded-xl pl-9 pr-4 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#1e3a5f] focus:bg-white transition-all"
             />
           </div>
+        </div>
+      </div>
+
+      {/* ── DATE FILTER BAR ── */}
+      <div className="px-6 pt-4 flex items-center justify-between flex-wrap gap-3">
+        <DateRangeFilter
+          label="Date of Pay"
+          from={range.from}
+          to={range.to}
+          onChange={setRange}
+        />
+        <div className="flex items-center gap-3">
+          {viewTab === "single" && !(range.from || range.to) && singleRecords.length >= 100 && (
+            <span className="text-[11px] text-amber-600">
+              Showing latest 100 — choose dates to load all
+            </span>
+          )}
+          {(range.from || range.to) && viewTab === "bulk" && (
+            <span className="text-[11px] text-slate-500">
+              Folders show only rows paid in this range
+            </span>
+          )}
+          {canExport && (
+            <button
+              onClick={viewTab === "bulk" ? exportAllBulkFiltered : exportManualFiltered}
+              className="h-9 px-4 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[12px] font-semibold flex items-center gap-1.5 hover:bg-blue-100 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export filtered
+            </button>
+          )}
         </div>
       </div>
 
@@ -948,7 +1099,6 @@ const ExpenseRecordsView = ({ onClose }) => {
                                         <button
                                           onClick={async () => {
                                             await handleUpdate();
-                                            // Refresh expanded rows after update
                                             await loadBatch(expandedBatch);
                                           }}
                                           className="h-7 px-2.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px] font-semibold hover:bg-emerald-100 transition-colors whitespace-nowrap"
