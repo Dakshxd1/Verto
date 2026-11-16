@@ -3,9 +3,10 @@ import { saveAs } from "file-saver";
 
 /**
  * Export dashboard data to Excel exactly as shown on screen.
- * Columns match the dashboard table: Invoice Date, Impact Month, Department,
- * Client Name, Invoice Value, Verto Fee, Not Recvd Amt, Delay Days,
- * OS Amt Difference, CN / Bad Debt, Invoice Entity, GST, Type, TDS, Status
+ * Columns: Invoice Number, Invoice Date, Impact Month, Department,
+ * Client Name, Ledger Name, Invoice Value, Verto Fee, Not Recvd Amt,
+ * Delay Days, OS Amt Difference, CN / Bad Debt, Invoice Entity, GST,
+ * Type, TDS, Status
  */
 export const exportToExcel = (data, fileName = "Dashboard_Export") => {
   if (!data || data.length === 0) {
@@ -13,13 +14,13 @@ export const exportToExcel = (data, fileName = "Dashboard_Export") => {
     return;
   }
 
-  // Map data to match the exact dashboard column order and formatting
   const exportData = data.map((row) => ({
-    "Invoice Number": row.invoice_number || row.id || "",   // ← ADDED
+    "Invoice Number": row.invoice_number || row.id || "",
     "Invoice Date": row.invDate || "",
     "Impact Month": row.impactMonth || "",
     "Department": row.dept || "",
     "Client Name": row.client || "",
+    "Ledger Name": row.ledger_name || "",            // ← ADDED
     "Invoice Value": row.invValue ?? 0,
     "Verto Fee": row.vertoFee ?? 0,
     "Not Recvd Amt": row.notRecvd ?? 0,
@@ -37,31 +38,29 @@ export const exportToExcel = (data, fileName = "Dashboard_Export") => {
       : "Active",
   }));
 
-  // Create worksheet
   const worksheet = XLSX.utils.json_to_sheet(exportData);
 
-  // Set column widths — one new entry added for Invoice Number (col A)
   const colWidths = [
-    { wch: 18 },  // Invoice Number   ← ADDED
-    { wch: 14 },  // Invoice Date
-    { wch: 14 },  // Impact Month
-    { wch: 16 },  // Department
-    { wch: 28 },  // Client Name
-    { wch: 16 },  // Invoice Value
-    { wch: 14 },  // Verto Fee
-    { wch: 16 },  // Not Recvd Amt
-    { wch: 12 },  // Delay Days
-    { wch: 18 },  // OS Amt Difference
-    { wch: 16 },  // CN / Bad Debt
-    { wch: 28 },  // Invoice Entity
-    { wch: 14 },  // GST
-    { wch: 10 },  // Type
-    { wch: 14 },  // TDS
-    { wch: 12 },  // Status
+    { wch: 18 }, // Invoice Number
+    { wch: 14 }, // Invoice Date
+    { wch: 14 }, // Impact Month
+    { wch: 16 }, // Department
+    { wch: 28 }, // Client Name
+    { wch: 28 }, // Ledger Name        ← ADDED
+    { wch: 16 }, // Invoice Value
+    { wch: 14 }, // Verto Fee
+    { wch: 16 }, // Not Recvd Amt
+    { wch: 12 }, // Delay Days
+    { wch: 18 }, // OS Amt Difference
+    { wch: 16 }, // CN / Bad Debt
+    { wch: 28 }, // Invoice Entity
+    { wch: 14 }, // GST
+    { wch: 10 }, // Type
+    { wch: 14 }, // TDS
+    { wch: 12 }, // Status
   ];
   worksheet["!cols"] = colWidths;
 
-  // Style header row (unchanged logic — just now covers 16 columns instead of 15)
   const range = XLSX.utils.decode_range(worksheet["!ref"]);
   for (let col = range.s.c; col <= range.e.c; col++) {
     const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
@@ -77,10 +76,10 @@ export const exportToExcel = (data, fileName = "Dashboard_Export") => {
 
   worksheet["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
 
-  // Every index below shifts +1 because Invoice Number is now column 0 (A)
-  const currencyCols = [5, 6, 7, 9, 10, 12, 14]; // F,G,H,J,K,M,O  (was 4,5,6,8,9,11,13)
-  const centerCols = [8, 13, 15];                // I,N,P          (was 7,12,14)
-  const textCols = [0, 1, 2, 3, 4, 11];           // A,B,C,D,E,L    (added 0 for Invoice Number, was 0,1,2,3,10)
+  // Indexes shifted +1 after Client Name because Ledger Name is now column F (5)
+  const currencyCols = [6, 7, 8, 10, 11, 13, 15]; // G,H,I,K,L,N,P
+  const centerCols = [9, 14, 16];                 // J,O,Q
+  const textCols = [0, 1, 2, 3, 4, 5, 12];        // A,B,C,D,E,F,M
 
   for (let row = 1; row <= range.e.r; row++) {
     for (let col of currencyCols) {
