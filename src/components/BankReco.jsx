@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import AddBankModal from "./AddBankModal";
 import AddEntryModal from "./AddEntryModal";
 import supabase from "../lib/supabaseClient";
+import * as XLSX from "xlsx";
 import {
   Search,
   Download,
@@ -105,11 +106,8 @@ const buildPeriodBuckets = (rawRows, periodDays) => {
   const sorted = [...rawRows].sort(
     (a, b) => new Date(a.full_date) - new Date(b.full_date)
   );
-  const today = new Date();
-  // Start from the earliest row in your data, not today
   const firstDate = new Date(sorted[0].full_date);
   const start = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
-  // End 6 months after the latest row
   const lastDate = new Date(sorted[sorted.length - 1].full_date);
   const end = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, 0);
 
@@ -227,7 +225,6 @@ const FundFlowProjectionPanel = ({ fundFlowData }) => {
             </p>
           </div>
 
-          {/* Period pills */}
           <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-inner border border-gray-100">
             {PERIOD_OPTIONS.map((opt) => {
               const Icon = opt.icon;
@@ -253,7 +250,6 @@ const FundFlowProjectionPanel = ({ fundFlowData }) => {
             })}
           </div>
 
-          {/* View mode pills */}
           <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-inner border border-gray-100">
             {[
               {
@@ -291,7 +287,6 @@ const FundFlowProjectionPanel = ({ fundFlowData }) => {
           </div>
         </div>
 
-        {/* Summary strip */}
         <div className="grid grid-cols-3 gap-3 mt-4">
           {[
             {
@@ -333,10 +328,7 @@ const FundFlowProjectionPanel = ({ fundFlowData }) => {
       {/* ── Mini bar chart ── */}
       {buckets.length > 0 && (
         <Card className="p-4 overflow-x-auto">
-          <div
-            className="flex items-end gap-1 min-w-max"
-            style={{ height: 64 }}
-          >
+          <div className="flex items-end gap-1 min-w-max" style={{ height: 64 }}>
             {buckets.map((b, i) => {
               const incH = Math.round((b.income / maxBar) * 56) || 2;
               const expH = Math.round((b.expense / maxBar) * 56) || 2;
@@ -534,7 +526,6 @@ const FundFlowProjectionPanel = ({ fundFlowData }) => {
                         </td>
                       </motion.tr>
 
-                      {/* ── Expanded breakdown ── */}
                       <AnimatePresence>
                         {isExpanded && (
                           <motion.tr
@@ -741,6 +732,454 @@ const FundFlowProjectionPanel = ({ fundFlowData }) => {
   );
 };
 
+// ─── EXPORT HELPERS ────────────────────────────────────────────────────────────
+const dayStr = (d) => (d ? String(d).slice(0, 10) : "");
+const localISO = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+const signedAmt = (e) =>
+  e.type === "debit"
+    ? -Math.abs(Number(e.amount || 0))
+    : Math.abs(Number(e.amount || 0));
+
+const getEntryLabel = (e) => {
+  const f = e.flow_type || "";
+  const map = {
+    petty_cash: "Petty Cash",
+    salary: "Salary Payout",
+    statutory: "Statutory Payment",
+    penalty: "Interest / Penalty",
+    expense: "Expense",
+    travel: "Travel Expense",
+    food: "Food Expense",
+  };
+  if (map[f]) return map[f];
+  const t = {
+    payment_received: "Payment Received",
+    payment_made: "Payment Made",
+    employee_payout: "Employee Payout",
+    statutory_payment: "Statutory Payment",
+    interest_penalty: "Interest / Penalty",
+    bank_transfer: "Bank Transfer",
+    manual_adjustment: "Manual Entry",
+    advance_payment: "Advance Payment",
+    unidentified_credit: "Unidentified Credit",
+    bank_balance_adjustment: "Balance Adjustment",
+  };
+  return t[e.entry_type] || "Other";
+};
+
+// Fetch every row in pages of 1000 (Supabase default page size)
+const fetchAllRows = async (table, build) => {
+  const pageSize = 1000;
+  let from = 0;
+  let all = [];
+  while (true) {
+    let q = supabase.from(table).select("*");
+    if (build) q = build(q);
+    const { data, error } = await q.range(from, from + pageSize - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+};
+
+const isBounceEntry = (e) =>
+  /bounce|dishonou?r/i.test(
+    `${e.entry_type || ""} ${e.flow_type || ""} ${e.remarks || ""}`
+  );
+
+// ─── EXPORT MODAL ──────────────────────────────────────────────────────────────
+const ExportModal = ({
+  isOpen,
+  onClose,
+  banks,
+  preselectedBankId = "all",
+}) => {
+  const [bankId, setBankId] = useState(preselectedBankId);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setBankId(preselectedBankId || "all");
+      setFromDate("");
+      setToDate("");
+    }
+  }, [isOpen, preselectedBankId]);
+
+  const setPreset = (type) => {
+    const now = new Date();
+    if (type === "month") {
+      setFromDate(localISO(new Date(now.getFullYear(), now.getMonth(), 1)));
+      setToDate(localISO(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
+    } else if (type === "30") {
+      const s = new Date();
+      s.setDate(s.getDate() - 29);
+      setFromDate(localISO(s));
+      setToDate(localISO(now));
+    } else if (type === "fy") {
+      const y = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+      setFromDate(`${y}-04-01`);
+      setToDate(`${y + 1}-03-31`);
+    } else {
+      setFromDate("");
+      setToDate("");
+    }
+  };
+
+  const handleExport = async () => {
+    if (fromDate && toDate && fromDate > toDate) {
+      alert("'From' date cannot be after 'To' date");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const targetBanks =
+        bankId === "all"
+          ? banks
+          : banks.filter((b) => String(b.id) === String(bankId));
+
+      if (targetBanks.length === 0) {
+        alert("No banks found for the selected filter");
+        return;
+      }
+
+      // ── Fetch fresh, complete data ──
+      const allEntries = await fetchAllRows("bank_entries", (q) => {
+        q = q
+          .eq("is_deleted", false)
+          .neq("entry_type", "projection_pending")
+          .order("date", { ascending: true })
+          .order("id", { ascending: true });
+        if (bankId !== "all") q = q.eq("bank_id", bankId);
+        return q;
+      });
+
+      const allSw = await fetchAllRows("software_entries", (q) => {
+        q = q
+          .order("date", { ascending: true })
+          .order("id", { ascending: true });
+        if (bankId !== "all") q = q.eq("bank_id", bankId);
+        return q;
+      });
+
+      let pending = [];
+      try {
+        pending = await fetchAllRows("future_bank_projection_view", (q) => {
+          q = q.order("expected_date", { ascending: true });
+          if (bankId !== "all") q = q.eq("bank_id", bankId);
+          return q;
+        });
+      } catch (e) {
+        console.warn("Pending projection fetch failed:", e);
+      }
+
+      const inRange = (d) => {
+        const day = dayStr(d);
+        if (fromDate && day < fromDate) return false;
+        if (toDate && day > toDate) return false;
+        return true;
+      };
+
+      const bankName = (id) =>
+        banks.find((b) => String(b.id) === String(id))?.bank_name || "";
+
+      const summaryRows = [];
+      const entryRows = [];
+
+      targetBanks.forEach((b) => {
+        const opening0 = Number(b.opening_balance || 0);
+        const bankEntries = allEntries.filter(
+          (e) => String(e.bank_id) === String(b.id)
+        );
+
+        const before = fromDate
+          ? bankEntries.filter((e) => dayStr(e.date) < fromDate)
+          : [];
+        const range = bankEntries.filter((e) => inRange(e.date));
+
+        const openingBal = before.reduce((s, e) => s + signedAmt(e), opening0);
+        const totalCredit = range
+          .filter((e) => e.type !== "debit")
+          .reduce((s, e) => s + Math.abs(Number(e.amount || 0)), 0);
+        const totalDebit = range
+          .filter((e) => e.type === "debit")
+          .reduce((s, e) => s + Math.abs(Number(e.amount || 0)), 0);
+        const closingBank = openingBal + totalCredit - totalDebit;
+
+        const swClosing = allSw
+          .filter(
+            (s) =>
+              String(s.bank_id) === String(b.id) &&
+              !s.is_deleted &&
+              (!toDate || dayStr(s.date) <= toDate)
+          )
+          .reduce((sum, s) => sum + Number(s.amount || 0), opening0);
+
+        const diff = closingBank - swClosing;
+
+        summaryRows.push({
+          Bank: b.bank_name,
+          "Opening Balance": openingBal,
+          "Total Credit": totalCredit,
+          "Total Debit": totalDebit,
+          "Closing Balance (Bank)": closingBank,
+          "Balance (Software)": swClosing,
+          Difference: diff,
+          Status: Math.abs(diff) < 1 ? "Reconciled" : "Pending",
+        });
+
+        let running = openingBal;
+        range.forEach((e) => {
+          const amt = Math.abs(Number(e.amount || 0));
+          const isDebit = e.type === "debit";
+          running += signedAmt(e);
+          entryRows.push({
+            Date: dayStr(e.date),
+            Bank: b.bank_name,
+            Entity: e.entity || "",
+            "Credit / Debit": isDebit ? "Debit" : "Credit",
+            "Flow Type": getEntryLabel(e),
+            "Reference No": e.reference_no || "",
+            Remarks: e.remarks || "",
+            Debit: isDebit ? amt : "",
+            Credit: isDebit ? "" : amt,
+            "Running Balance": running,
+            Bounce: isBounceEntry(e) ? "Yes" : "",
+          });
+        });
+      });
+
+      const creditRows = entryRows.filter(
+        (r) => r["Credit / Debit"] === "Credit"
+      );
+      const debitRows = entryRows.filter(
+        (r) => r["Credit / Debit"] === "Debit"
+      );
+      const bounceRows = entryRows.filter((r) => r.Bounce === "Yes");
+
+      const swRows = allSw
+        .filter(
+          (s) =>
+            !s.is_deleted &&
+            targetBanks.some((b) => String(b.id) === String(s.bank_id)) &&
+            inRange(s.date)
+        )
+        .map((s) => ({
+          Date: dayStr(s.date),
+          Bank: bankName(s.bank_id),
+          "Source Table": s.source_table || "",
+          "Source ID": s.source_id || "",
+          Remarks: s.remarks || "",
+          Amount: Number(s.amount || 0),
+        }));
+
+      const pendingRows = pending
+        .filter((p) => inRange(p.expected_date))
+        .map((p) => ({
+          "Expected Date": dayStr(p.expected_date),
+          Bank: bankName(p.bank_id),
+          Category: p.category || "",
+          Remarks: p.remarks || "",
+          Amount: Number(p.amount || 0),
+          Status: p.due_status || "",
+        }));
+
+      // ── Build workbook ──
+      const wb = XLSX.utils.book_new();
+      const addSheet = (name, rows, widths) => {
+        const ws = XLSX.utils.json_to_sheet(
+          rows.length ? rows : [{ Info: "No entries in selected range" }]
+        );
+        if (widths) ws["!cols"] = widths.map((wch) => ({ wch }));
+        XLSX.utils.book_append_sheet(wb, ws, name);
+      };
+
+      const entryWidths = [12, 22, 22, 14, 22, 20, 36, 14, 14, 18, 8];
+
+      addSheet("Summary", summaryRows, [24, 18, 16, 16, 22, 20, 16, 14]);
+      addSheet("All Entries", entryRows, entryWidths);
+      addSheet("Credit", creditRows, entryWidths);
+      addSheet("Debit", debitRows, entryWidths);
+      addSheet("Bounce", bounceRows, entryWidths);
+      addSheet("Software Entries", swRows, [12, 22, 20, 20, 36, 16]);
+      addSheet("Pending (Projected)", pendingRows, [14, 22, 22, 36, 16, 14]);
+
+      const bankPart =
+        bankId === "all"
+          ? "All_Banks"
+          : String(targetBanks[0]?.bank_name || "Bank").replace(
+              /[^\w]+/g,
+              "_"
+            );
+      const datePart =
+        fromDate || toDate
+          ? `_${fromDate || "start"}_to_${toDate || "latest"}`
+          : `_${localISO(new Date())}`;
+
+      XLSX.writeFile(wb, `Bank_Reconciliation_${bankPart}${datePart}.xlsx`);
+      onClose();
+    } catch (err) {
+      console.error("Export error:", err);
+      alert("Export failed: " + (err.message || err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const presetBtn =
+    "px-2.5 py-1 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50";
+  const inputCls =
+    "w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
+  const labelCls =
+    "text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5";
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+        onClick={(e) =>
+          e.target === e.currentTarget && !loading && onClose()
+        }
+      >
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0, y: 10 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+        >
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-5 text-white flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <Download className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Export to Excel</h3>
+                <p className="text-blue-100 text-xs">
+                  Summary, Entries, Credit, Debit, Bounce, SW, Pending
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              disabled={loading}
+              className="text-white/70 hover:text-white disabled:opacity-50"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-5 space-y-4">
+            <div>
+              <label className={labelCls}>Bank</label>
+              <select
+                value={bankId}
+                onChange={(e) => setBankId(e.target.value)}
+                disabled={loading}
+                className={inputCls}
+              >
+                <option value="all">All Banks</option>
+                {banks.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.bank_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>From Date</label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  disabled={loading}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>To Date</label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  disabled={loading}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                className={presetBtn}
+                onClick={() => setPreset("month")}
+                disabled={loading}
+              >
+                This Month
+              </button>
+              <button
+                className={presetBtn}
+                onClick={() => setPreset("30")}
+                disabled={loading}
+              >
+                Last 30 Days
+              </button>
+              <button
+                className={presetBtn}
+                onClick={() => setPreset("fy")}
+                disabled={loading}
+              >
+                This FY
+              </button>
+              <button
+                className={presetBtn}
+                onClick={() => setPreset("clear")}
+                disabled={loading}
+              >
+                Clear
+              </button>
+            </div>
+            <p className="text-xs text-gray-400">
+              Leave dates empty to export everything. All rows are fetched
+              fresh from the database (bypasses the 1000-row screen limit).
+            </p>
+          </div>
+
+          <div className="px-5 pb-5 flex gap-3">
+            <button
+              onClick={onClose}
+              disabled={loading}
+              className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleExport}
+              disabled={loading}
+              className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-medium flex items-center justify-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              {loading ? "Preparing…" : "Download Excel"}
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
 // ─── BANK TRANSFER MODAL ────────────────────────────────────────────────────────
 const BankTransferModal = ({
   isOpen,
@@ -800,7 +1239,6 @@ const BankTransferModal = ({
       return;
     }
 
-    // Fix bank_id type mismatch — cast both to string for comparison
     const senderRows = entries.filter(
       (e) => String(e.bank_id) === String(form.sender_bank_id)
     );
@@ -1165,6 +1603,11 @@ const BankReco = () => {
   const [futureEntries, setFutureEntries] = useState([]);
   const [showEditBankModal, setShowEditBankModal] = useState(false);
   const [editBankData, setEditBankData] = useState(null);
+
+  // ─── EXPORT STATE ────────────────────────────────────────────────────────
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportBankId, setExportBankId] = useState("all");
+
   const [newEntry, setNewEntry] = useState({
     entity: "",
     bank_id: "",
@@ -1189,7 +1632,6 @@ const BankReco = () => {
     setShowEditBankModal(true);
   };
 
-  // Fix deduplication — use e.id instead of composite key
   const fetchEntries = async () => {
     const { data, error } = await supabase
       .from("bank_entries")
@@ -1320,13 +1762,6 @@ const BankReco = () => {
 
   // Build bank reconciliation data — sync, per-bank, uses opening_balance
   const buildBankRecoData = () => {
-    // ── 1. Build opening_balance map from bank_master ──
-    const openingMap = {};
-    banks.forEach((b) => {
-      openingMap[b.id] = Number(b.opening_balance || 0);
-    });
-
-    // ── 2. Compute total bank balance per bank (opening + all movements) ──
     const bankMovement = {};
     entries.forEach((e) => {
       if (!e.bank_id) return;
@@ -1336,7 +1771,6 @@ const BankReco = () => {
       bankMovement[id] += e.type === "debit" ? -Math.abs(amt) : Math.abs(amt);
     });
 
-    // ── 3. Compute total SW balance per bank (opening + all movements) ──
     const swMovement = {};
     softwareEntries.forEach((e) => {
       if (!e.bank_id || e.is_deleted) return;
@@ -1345,14 +1779,12 @@ const BankReco = () => {
       swMovement[id] += Number(e.amount || 0);
     });
 
-    // ── 4. Build one row per bank ──
     const rows = banks.map((bank) => {
       const opening = Number(bank.opening_balance || 0);
       const bankBal = opening + (bankMovement[bank.id] || 0);
       const swBal = opening + (swMovement[bank.id] || 0);
       const diff = bankBal - swBal;
 
-      // Collect all entries for this bank for the detail panel
       const bankEntries = entries.filter(
         (e) => String(e.bank_id) === String(bank.id)
       );
@@ -1401,7 +1833,6 @@ const BankReco = () => {
         };
       });
 
-      // Reconciling items: entries in bank with no SW mirror
       const unreconciledItems = bankEntries.filter(
         (e) =>
           e.source_id &&
@@ -1425,7 +1856,6 @@ const BankReco = () => {
         asPerSwTotalBal: swBal,
         difference: diff,
         remainingBalance: Math.abs(diff),
-        // reconciled = difference < ₹1
         status: Math.abs(diff) < 1 ? "reconciled" : "pending",
         manualEntries,
         unreconciledItems,
@@ -1446,7 +1876,6 @@ const BankReco = () => {
     fetchInterestPenalties();
   }, []);
 
-  // Fix useEffect — remove async wrapper, add banks as dependency
   useEffect(() => {
     if (banks.length > 0) buildBankRecoData();
   }, [entries, softwareEntries, banks]);
@@ -1562,7 +1991,6 @@ const BankReco = () => {
       return 0;
     });
 
-  // Fix stale selectedRow update — just clear it instead of setTimeout
   const handleAddEntry = async () => {
     if (isIntern) return;
     if (!newEntry.bank_id || !newEntry.amount || !newEntry.dateOfBankBal) {
@@ -1579,7 +2007,6 @@ const BankReco = () => {
       return;
     }
 
-    // Add a debit safety check
     if (newEntry.transaction_mode === "debit") {
       const bankBal = selectedRow?.asPerBankTotalBal || 0;
       if (enteredAmount > bankBal) {
@@ -1640,14 +2067,13 @@ const BankReco = () => {
       dateOfBankBal: "",
       amount: "",
       remarks: "",
-      entry_type: "other",
+      entry_type: "manual_adjustment",
+      transaction_mode: "credit",
     });
     await fetchEntries();
     await fetchSoftwareEntries();
     await fetchFundFlowProjection();
 
-    // selectedRow will auto-update via bankData state change after fetchEntries completes
-    // Just clear it so the user sees fresh data when they re-select
     setSelectedRow(null);
 
     window.refreshDashboard?.();
@@ -1676,6 +2102,7 @@ const BankReco = () => {
       .eq("id", id);
     if (error) alert("Update failed: " + error.message);
   };
+
   // ─── RENDER ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4 pb-6">
@@ -1717,6 +2144,14 @@ const BankReco = () => {
           setShowEditBankModal(false);
           setEditBankData(null);
         }}
+      />
+
+      {/* ── Export Modal ── */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        banks={banks}
+        preselectedBankId={exportBankId}
       />
 
       {/* ── Filter bar ── */}
@@ -1771,25 +2206,13 @@ const BankReco = () => {
           </div>
           <Button
             onClick={() => {
-              const csv = bankData
-                .map(
-                  (d) =>
-                    `${d.month},${d.date},${d.asPerBankTotalBal},${d.asPerSwTotalBal},${d.difference}`
-                )
-                .join("\n");
-              const blob = new Blob(
-                [["Month,Date,Bank,Software,Difference\n", csv].join("")],
-                { type: "text/csv" }
-              );
-              const link = document.createElement("a");
-              link.href = URL.createObjectURL(blob);
-              link.download = "bank_reconciliation.csv";
-              link.click();
+              setExportBankId("all");
+              setShowExportModal(true);
             }}
             className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700"
           >
             <Download className="w-4 h-4" />
-            <span>Export CSV</span>
+            <span>Export Excel</span>
           </Button>
         </div>
       </Card>
@@ -2023,7 +2446,6 @@ const BankReco = () => {
                                   </div>
                                 )}
 
-                                {/* Add unreconciled items breakdown */}
                                 {row.unreconciledItems?.length > 0 && (
                                   <div className="mt-3 bg-rose-50 border border-rose-200 rounded-lg p-3">
                                     <p className="text-xs font-bold text-rose-700 uppercase tracking-wider mb-2">
@@ -2060,7 +2482,6 @@ const BankReco = () => {
                                   </div>
                                 )}
 
-                                {/* ─── Pending Payment Action Center ─── */}
                                 <Card className="p-4 mt-4 border border-amber-200 bg-amber-50">
                                   <div className="flex items-center justify-between mb-4">
                                     <h3 className="font-bold text-amber-800 flex items-center gap-2">
@@ -2261,7 +2682,15 @@ const BankReco = () => {
                         </div>
                       </div>
                       <div className="flex space-x-2 pt-2">
-                        <Button className="flex-1" variant="outline" size="sm">
+                        <Button
+                          className="flex-1"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setExportBankId(String(selectedRow.bank_id));
+                            setShowExportModal(true);
+                          }}
+                        >
                           <Download className="w-4 h-4 mr-2" />
                           Download
                         </Button>
@@ -2503,7 +2932,6 @@ const BankReco = () => {
             ? selectedRow.asPerBankTotalBal - selectedRow.asPerSwTotalBal
             : 0
         }
-        // NEW props
         entries={entries}
         onDeleteEntry={handleDeleteEntry}
         onEditEntry={handleEditEntry}
