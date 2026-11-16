@@ -1,12 +1,14 @@
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
+// First word of the client name, e.g. "Blink Digital Pvt Ltd" -> "Blink"
+const getFirstName = (name) => String(name || "").trim().split(/\s+/)[0] || "";
+
 /**
- * Export dashboard data to Excel exactly as shown on screen.
  * Columns: Invoice Number, Invoice Date, Impact Month, Department,
- * Client Name, Ledger Name, Invoice Value, Verto Fee, Not Recvd Amt,
- * Delay Days, OS Amt Difference, CN / Bad Debt, Invoice Entity, GST,
- * Type, TDS, Status
+ * Client Name, Client First Name, Ledger Name, Invoice Value, Verto Fee,
+ * Not Recvd Amt, Delay Days, OS Amt Difference, CN / Bad Debt,
+ * Invoice Entity, GST, Type, TDS, Status
  */
 export const exportToExcel = (data, fileName = "Dashboard_Export") => {
   if (!data || data.length === 0) {
@@ -20,7 +22,8 @@ export const exportToExcel = (data, fileName = "Dashboard_Export") => {
     "Impact Month": row.impactMonth || "",
     "Department": row.dept || "",
     "Client Name": row.client || "",
-    "Ledger Name": row.ledger_name || "",            // ← ADDED
+    "Client First Name": getFirstName(row.client),   // ← ADDED
+    "Ledger Name": row.ledger_name || "",
     "Invoice Value": row.invValue ?? 0,
     "Verto Fee": row.vertoFee ?? 0,
     "Not Recvd Amt": row.notRecvd ?? 0,
@@ -40,13 +43,14 @@ export const exportToExcel = (data, fileName = "Dashboard_Export") => {
 
   const worksheet = XLSX.utils.json_to_sheet(exportData);
 
-  const colWidths = [
+  worksheet["!cols"] = [
     { wch: 18 }, // Invoice Number
     { wch: 14 }, // Invoice Date
     { wch: 14 }, // Impact Month
     { wch: 16 }, // Department
     { wch: 28 }, // Client Name
-    { wch: 28 }, // Ledger Name        ← ADDED
+    { wch: 18 }, // Client First Name   ← ADDED
+    { wch: 28 }, // Ledger Name
     { wch: 16 }, // Invoice Value
     { wch: 14 }, // Verto Fee
     { wch: 16 }, // Not Recvd Amt
@@ -59,7 +63,6 @@ export const exportToExcel = (data, fileName = "Dashboard_Export") => {
     { wch: 14 }, // TDS
     { wch: 12 }, // Status
   ];
-  worksheet["!cols"] = colWidths;
 
   const range = XLSX.utils.decode_range(worksheet["!ref"]);
   for (let col = range.s.c; col <= range.e.c; col++) {
@@ -76,10 +79,10 @@ export const exportToExcel = (data, fileName = "Dashboard_Export") => {
 
   worksheet["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
 
-  // Indexes shifted +1 after Client Name because Ledger Name is now column F (5)
-  const currencyCols = [6, 7, 8, 10, 11, 13, 15]; // G,H,I,K,L,N,P
-  const centerCols = [9, 14, 16];                 // J,O,Q
-  const textCols = [0, 1, 2, 3, 4, 5, 12];        // A,B,C,D,E,F,M
+  // Indexes shifted +1 again because Client First Name is now column F (5)
+  const currencyCols = [7, 8, 9, 11, 12, 14, 16]; // H,I,J,L,M,O,Q
+  const centerCols = [10, 15, 17];                // K,P,R
+  const textCols = [0, 1, 2, 3, 4, 5, 6, 13];     // A–G, N
 
   for (let row = 1; row <= range.e.r; row++) {
     for (let col of currencyCols) {
